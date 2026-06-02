@@ -1,0 +1,57 @@
+.chat-page {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: #F5F5F7;
+  overflow: hidden;
+}
+
+.chat-health-banner {
+  flex-shrink: 0;
+  font-size: 12px;
+  padding: 6px 16px;
+  background: #F8F9FA;
+  color: #6C6C70;
+  border-bottom: 1px solid #E5E5EA;
+}
+
+.chat-health-banner.is-healthy {
+  background: #E6F4EA;
+  color: #1E7E34;
+  border-bottom-color: #C8E6C9;
+}
+
+.chat-health-banner.is-degraded {
+  background: #FFF4E5;
+  color: #B26A00;
+  border-bottom-color: #FCD9A6;
+}
+
+.chat-health-banner.is-unreachable {
+  background: #FFEBEA;
+  color: #B00020;
+  border-bottom-color: #F5C2C0;
+}
+
+.chat-page-error {
+  flex-shrink: 0;
+  margin: 0 16px 8px;
+  padding: 8px 12px;
+  background: #FFEBEA;
+  color: #B00020;
+  border-radius: 8px;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.chat-page-error-dismiss {
+  border: none;
+  background: transparent;
+  color: inherit;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}

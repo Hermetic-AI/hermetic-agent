@@ -1,0 +1,57 @@
+{
+  "name": "ci-quality-gates",
+  "version": "1.0.0",
+  "description": "CI/CD 质量门禁配置：Python/Java/TypeScript 项目的自动化质量检查管道",
+  "skill_type": "ci-cd",
+  "applicable_to": ["opencode", "claude-code", "codex-cli", "cursor", "openclaw", "maxclaw", "autoclaw", "kimiclaw", "trae"],
+  "source_files": [
+    "harness-rules/quality-gates.yml"
+  ],
+  "capabilities": {
+    "python_gates": {
+      "description": "Python CI 质量门禁",
+      "tools": ["flake8", "mypy", "interrogate", "pytest"],
+      "gates": {
+        "linting": {"tool": "flake8", "threshold": "0 violations", "command": "flake8 src/ --exclude venv"},
+        "type_check": {"tool": "mypy", "threshold": "0 errors", "command": "mypy src/ --ignore-missing-imports"},
+        "docstrings": {"tool": "interrogate", "threshold": "≥80%", "command": "interrogate src/ -v --fail-under=80"},
+        "tests": {"tool": "pytest", "threshold": "≥70%", "command": "pytest tests/ --cov=src --cov-fail-under=70"},
+        "complexity": {"tool": "flake8 C901", "threshold": "≤10", "command": "flake8 --select=C901 --max-complexity=10"}
+      }
+    },
+    "java_gates": {
+      "description": "Java CI 质量门禁",
+      "tools": ["checkstyle", "archunit", "jacoco", "pmd"],
+      "gates": {
+        "style": {"tool": "checkstyle", "threshold": "0 violations", "command": "mvn checkstyle:check"},
+        "architecture": {"tool": "archunit", "threshold": "0 failures", "command": "mvn test -Dtest=ArchitectureTest"},
+        "tests": {"tool": "jacoco", "threshold": "≥70%", "command": "mvn test jacoco:report"},
+        "duplication": {"tool": "pmd-cpd", "threshold": "<3%", "command": "mvn pmd:cpd"}
+      }
+    },
+    "typescript_gates": {
+      "description": "TypeScript CI 质量门禁",
+      "tools": ["eslint", "typescript", "jest"],
+      "gates": {
+        "linting": {"tool": "eslint", "threshold": "0 violations", "command": "npm run lint"},
+        "type_check": {"tool": "tsc", "threshold": "0 errors", "command": "npx tsc --noEmit"},
+        "tests": {"tool": "jest", "threshold": "≥70%", "command": "npm test -- --coverage"},
+        "file_size": {"tool": "wc", "threshold": "<500 lines", "command": "find src -name '*.ts' -o -name '*.tsx' | xargs wc -l"}
+      }
+    },
+    "coverage_targets": {
+      "critical": {"target": 90, "minimum": 80},
+      "business_logic": {"target": 80, "minimum": 70},
+      "data_access": {"target": 75, "minimum": 60},
+      "utilities": {"target": 60, "minimum": 50}
+    }
+  },
+  "triggers": {
+    "python": ["push to main/develop", "pull_request to main/develop"],
+    "java": ["push to main/develop", "pull_request to main/develop"],
+    "typescript": ["push to main/develop", "pull_request to main/develop"]
+  },
+  "config_file": ".github/workflows/quality-gates.yml",
+  "created": "2026-06-01",
+  "tags": ["ci-cd", "quality-gates", "github-actions", "github-workflow", "automation", "testing"]
+}

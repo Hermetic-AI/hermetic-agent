@@ -1,0 +1,73 @@
+.card {
+  background: #ffffff;
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+  transition: transform 0.3s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(180deg, rgba(255,255,255,0.8) 0%, transparent 50%);
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask-composite: exclude;
+  pointer-events: none;
+}
+
+.card-clickable {
+  cursor: pointer;
+}
+
+.card-clickable:hover {
+  transform: translateY(-6px);
+  box-shadow: var(--shadow-xl);
+}
+
+.card-clickable:active {
+  transform: translateY(-3px);
+  box-shadow: var(--shadow-lg);
+}
+
+.card-flight {
+  border-left: 5px solid transparent;
+  border-image: linear-gradient(180deg, #0051A1, #4A9BE8) 1;
+}
+
+.card-order {
+  border-left: 5px solid transparent;
+  border-image: linear-gradient(180deg, #4A9BE8, #007AFF) 1;
+}
+
+.card-header {
+  padding: 20px;
+  border-bottom: 1px solid var(--color-border-light);
+  transition: background 0.2s ease;
+}
+
+.card-clickable:hover .card-header {
+  background: linear-gradient(180deg, rgba(248, 249, 252, 0.8) 0%, transparent 100%);
+}
+
+.card-body {
+  padding: 20px;
+  transition: background 0.2s ease;
+}
+
+.card-clickable:hover .card-body {
+  background: linear-gradient(180deg, rgba(248, 249, 252, 0.5) 0%, transparent 100%);
+}
+
+.card-footer {
+  padding: 16px 20px;
+  background: var(--color-bg-tertiary);
+  border-top: 1px solid var(--color-border-light);
+  transition: background 0.2s ease;
+}
+
+.card-clickable:hover .card-footer {
+  background: linear-gradient(180deg, rgba(240, 242, 248, 0.9) 0%, rgba(240, 242, 248, 0.7) 100%);
+}

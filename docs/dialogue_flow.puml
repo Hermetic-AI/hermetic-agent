@@ -1,0 +1,180 @@
+@startuml
+title OpenCode Dialogue Flow
+
+actor User
+participant "API Route" as API
+participant "Scheduler" as Scheduler
+participant "AgentPoolManager" as Pool
+participant "SessionManager" as SessionMgr
+participant "AsyncOpencode" as OpencodeClient
+participant "AgentInstance" as Agent
+
+User -> API: POST /agent/chat
+activate API
+
+API -> Scheduler: run(message, agent_name, model, timeout)
+activate Scheduler
+
+alt Acquire Agent Instance
+    Scheduler -> Pool: acquire_idle_instance(agent_name)
+    activate Pool
+
+    Pool -> Pool: find IDLE AgentInstance
+    alt Found
+        Pool -> Agent: status = BUSY
+        activate Agent
+        Pool --> Scheduler: AgentInstance
+    else No Idle
+        Pool --> Scheduler: NoIdleAgentError
+        Scheduler --> API: error
+        API --> User: error response
+    end
+    deactivate Pool
+end
+
+alt Create Session
+    Scheduler -> SessionMgr: create(agent_name, model, system_prompt)
+    activate SessionMgr
+
+    SessionMgr -> OpencodeClient: client.session.create()
+    activate OpencodeClient
+
+    OpencodeClient -> Agent: HTTP POST /session/create
+    activate Agent
+
+    Agent --> OpencodeClient: session_id
+    deactivate Agent
+
+    OpencodeClient --> SessionMgr: session_id
+    deactivate OpencodeClient
+
+    SessionMgr --> Scheduler: session_id
+    deactivate SessionMgr
+end
+
+alt Send Message
+    Scheduler -> SessionMgr: chat(session_id, message, timeout)
+    activate SessionMgr
+
+    SessionMgr -> OpencodeClient: client.session.chat(session_id, parts, timeout)
+    activate OpencodeClient
+
+    OpencodeClient -> Agent: HTTP POST /session/{session_id}/chat
+    activate Agent
+
+    loop LLM Processing
+        Agent -> Agent: inference
+    end
+
+    Agent --> OpencodeClient: response
+    deactivate Agent
+
+    OpencodeClient --> SessionMgr: result
+    deactivate OpencodeClient
+
+    SessionMgr --> Scheduler: result
+    deactivate SessionMgr
+end
+
+alt Release Agent
+    Scheduler -> Pool: release(instance_name)
+    activate Pool
+
+    Pool -> Agent: status = IDLE
+    deactivate Pool
+end
+
+Scheduler --> API: TaskResult
+deactivate Scheduler
+
+API --> User: ChatResponse
+deactivate API
+
+@enduml
+
+@startuml
+title OpenCode Streaming Flow
+
+actor User
+participant "API Route" as StreamAPI
+participant "SessionManager" as SessionMgr
+participant "AsyncOpencode" as StreamClient
+participant "Agent" as Agent
+
+User -> StreamAPI: POST /agent/chat/stream
+activate StreamAPI
+
+StreamAPI -> SessionMgr: chat_stream(session_id, message, timeout)
+activate SessionMgr
+
+SessionMgr -> StreamClient: with_streaming_response.chat(session_id, parts)
+activate StreamClient
+
+StreamClient -> Agent: HTTP POST /session/{session_id}/chat (streaming)
+activate Agent
+
+loop SSE Events
+    Agent --> StreamClient: event: session
+    StreamClient --> StreamAPI: session_id event
+
+    loop text chunks
+        Agent --> StreamClient: event: text
+        StreamClient --> StreamAPI: text event
+    end
+
+    alt has reasoning
+        Agent --> StreamClient: event: reasoning
+        StreamClient --> StreamAPI: reasoning event
+    end
+end
+
+Agent --> StreamClient: event: done
+deactivate Agent
+
+StreamClient --> SessionMgr: complete
+deactivate StreamClient
+
+SessionMgr --> StreamAPI: complete
+deactivate SessionMgr
+
+StreamAPI --> User: SSE stream end
+deactivate StreamAPI
+
+@enduml
+
+@startuml
+title OpenCode Core Architecture
+
+package "Sanic App" {
+    [main.py] as Main
+    [app.py] as App
+}
+
+package "API Layer" {
+    [routes.py] as Routes
+}
+
+package "Core Components" {
+    [scheduler.py] as Scheduler
+    [session.py] as SessionMgr
+    [agent_pool.py] as PoolMgr
+}
+
+package "External" {
+    [AsyncOpencode SDK] as SDK
+    [opencode serve] as Serve
+}
+
+Main --> App: create_app()
+App --> Routes: register blueprints
+App --> Scheduler: startup()
+App --> SessionMgr: startup()
+App --> PoolMgr: startup()
+
+Routes --> Scheduler: run()/run_parallel()
+Scheduler --> PoolMgr: acquire/release
+Scheduler --> SessionMgr: create/chat
+SessionMgr --> SDK: client.session.*
+SDK --> Serve: HTTP API
+
+@enduml

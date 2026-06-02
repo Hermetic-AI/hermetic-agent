@@ -1,0 +1,44 @@
+.orders-page {
+  padding: 24px;
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+.orders-header {
+  margin-bottom: 24px;
+}
+
+.orders-header h1 {
+  font-size: 24px;
+  font-weight: 600;
+  color: #333;
+  margin: 0;
+}
+
+.orders-subtitle {
+  margin: 6px 0 0;
+  font-size: 13px;
+  color: #8E8E93;
+}
+
+.orders-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.order-card-wrapper {
+  animation: fadeInUp 400ms ease forwards;
+  opacity: 0;
+}
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}

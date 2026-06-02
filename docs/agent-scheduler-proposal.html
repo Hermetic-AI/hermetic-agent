@@ -1,0 +1,955 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>智能体调度中枢技术方案</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+            background: #1a1a2e;
+            color: #333;
+            overflow: hidden;
+        }
+        .slide {
+            display: none;
+            width: 100vw;
+            height: 100vh;
+            padding: 60px 80px;
+            background: #fff;
+            position: relative;
+        }
+        .slide.active {
+            display: flex;
+            flex-direction: column;
+        }
+        .slide-header {
+            border-bottom: 3px solid #1a1a2e;
+            padding-bottom: 20px;
+            margin-bottom: 40px;
+        }
+        .slide-header h1 {
+            font-size: 42px;
+            font-weight: 600;
+            color: #1a1a2e;
+            letter-spacing: -1px;
+        }
+        .slide-header .subtitle {
+            font-size: 18px;
+            color: #666;
+            margin-top: 8px;
+        }
+        .slide-content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-start;
+        }
+        .slide-content h2 {
+            font-size: 24px;
+            color: #1a1a2e;
+            margin-bottom: 24px;
+            font-weight: 500;
+        }
+        .slide-content p {
+            font-size: 20px;
+            line-height: 1.8;
+            color: #444;
+            margin-bottom: 16px;
+        }
+        .slide-content ul {
+            list-style: none;
+            padding-left: 0;
+        }
+        .slide-content li {
+            font-size: 20px;
+            line-height: 2;
+            color: #444;
+            padding-left: 24px;
+            position: relative;
+        }
+        .slide-content li::before {
+            content: "";
+            position: absolute;
+            left: 0;
+            top: 12px;
+            width: 8px;
+            height: 8px;
+            background: #1a1a2e;
+            border-radius: 50%;
+        }
+        .grid-2 {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 40px;
+        }
+        .card {
+            background: #f8f9fa;
+            padding: 28px;
+            border-radius: 12px;
+            border-left: 4px solid #1a1a2e;
+        }
+        .card h3 {
+            font-size: 20px;
+            color: #1a1a2e;
+            margin-bottom: 12px;
+            font-weight: 500;
+        }
+        .card p {
+            font-size: 16px;
+            color: #666;
+        }
+        .highlight {
+            background: linear-gradient(120deg, #1a1a2e 0%, #1a1a2e 100%);
+            background-size: 100% 40%;
+            background-repeat: no-repeat;
+            background-position: 0 90%;
+        }
+        .engine-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 20px;
+            margin-top: 20px;
+        }
+        .engine-card {
+            background: #f8f9fa;
+            padding: 24px;
+            border-radius: 10px;
+            text-align: center;
+        }
+        .engine-card .name {
+            font-size: 18px;
+            font-weight: 600;
+            color: #1a1a2e;
+            margin-bottom: 8px;
+        }
+        .engine-card .check {
+            color: #2d7a2d;
+            font-size: 14px;
+        }
+        .engine-card .cross {
+            color: #c44;
+            font-size: 14px;
+        }
+        .engine-card .warn {
+            color: #b8860b;
+            font-size: 14px;
+        }
+        .phase-timeline {
+            display: flex;
+            gap: 30px;
+            margin-top: 30px;
+        }
+        .phase {
+            flex: 1;
+            background: #f8f9fa;
+            padding: 28px;
+            border-radius: 12px;
+            position: relative;
+        }
+        .phase::after {
+            content: "→";
+            position: absolute;
+            right: -24px;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: 24px;
+            color: #1a1a2e;
+        }
+        .phase:last-child::after {
+            display: none;
+        }
+        .phase .num {
+            font-size: 14px;
+            color: #888;
+            margin-bottom: 8px;
+        }
+        .phase .title {
+            font-size: 20px;
+            font-weight: 600;
+            color: #1a1a2e;
+            margin-bottom: 8px;
+        }
+        .phase .time {
+            font-size: 14px;
+            color: #666;
+            margin-bottom: 16px;
+        }
+        .phase ul {
+            list-style: none;
+        }
+        .phase li {
+            font-size: 14px;
+            color: #555;
+            line-height: 1.8;
+            padding-left: 16px;
+            position: relative;
+        }
+        .phase li::before {
+            content: "•";
+            position: absolute;
+            left: 0;
+            color: #1a1a2e;
+        }
+        .module-list {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 24px;
+        }
+        .module {
+            background: #f8f9fa;
+            padding: 24px;
+            border-radius: 10px;
+        }
+        .module h3 {
+            font-size: 18px;
+            color: #1a1a2e;
+            margin-bottom: 12px;
+        }
+        .module p {
+            font-size: 14px;
+            color: #666;
+            line-height: 1.6;
+        }
+        .advantage-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        .advantage-table th,
+        .advantage-table td {
+            padding: 16px 20px;
+            text-align: left;
+            border-bottom: 1px solid #eee;
+        }
+        .advantage-table th {
+            background: #1a1a2e;
+            color: #fff;
+            font-weight: 500;
+        }
+        .advantage-table tr:nth-child(even) {
+            background: #f8f9fa;
+        }
+        .scenario-list {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 24px;
+        }
+        .scenario {
+            background: #f8f9fa;
+            padding: 24px;
+            border-radius: 10px;
+        }
+        .scenario h3 {
+            font-size: 18px;
+            color: #1a1a2e;
+            margin-bottom: 10px;
+        }
+        .scenario p {
+            font-size: 15px;
+            color: #666;
+        }
+        .nav {
+            position: fixed;
+            bottom: 30px;
+            right: 40px;
+            display: flex;
+            gap: 12px;
+            z-index: 100;
+        }
+        .nav button {
+            width: 48px;
+            height: 48px;
+            border: none;
+            background: #1a1a2e;
+            color: #fff;
+            border-radius: 50%;
+            cursor: pointer;
+            font-size: 20px;
+            transition: transform 0.2s;
+        }
+        .nav button:hover {
+            transform: scale(1.1);
+        }
+        .page-num {
+            position: fixed;
+            bottom: 40px;
+            left: 40px;
+            font-size: 14px;
+            color: #999;
+        }
+        .cover {
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            background: #1a1a2e;
+        }
+        .cover h1 {
+            font-size: 56px;
+            color: #fff;
+            margin-bottom: 24px;
+            letter-spacing: -2px;
+        }
+        .cover .meta {
+            color: #888;
+            font-size: 18px;
+            margin-top: 40px;
+        }
+        .cover .company {
+            color: #666;
+            font-size: 16px;
+            margin-top: 16px;
+        }
+        .pain-point-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 30px;
+        }
+        .pain-col h3 {
+            font-size: 18px;
+            color: #1a1a2e;
+            margin-bottom: 16px;
+            padding-bottom: 8px;
+            border-bottom: 2px solid #1a1a2e;
+        }
+        .pain-col ul {
+            list-style: none;
+        }
+        .pain-col li {
+            font-size: 15px;
+            color: #555;
+            line-height: 2;
+        }
+        .summary-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 24px;
+        }
+        .summary-item {
+            display: flex;
+            align-items: flex-start;
+            gap: 16px;
+        }
+        .summary-item .num {
+            width: 36px;
+            height: 36px;
+            background: #1a1a2e;
+            color: #fff;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 16px;
+            flex-shrink: 0;
+        }
+        .summary-item .text h4 {
+            font-size: 16px;
+            color: #1a1a2e;
+            margin-bottom: 4px;
+        }
+        .summary-item .text p {
+            font-size: 14px;
+            color: #666;
+        }
+        .architecture-box {
+            background: #f8f9fa;
+            padding: 32px;
+            border-radius: 12px;
+            margin-top: 20px;
+        }
+        .arch-layer {
+            display: flex;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        .arch-label {
+            width: 120px;
+            font-size: 14px;
+            font-weight: 600;
+            color: #1a1a2e;
+        }
+        .arch-components {
+            display: flex;
+            gap: 12px;
+            flex: 1;
+        }
+        .arch-comp {
+            background: #fff;
+            padding: 12px 20px;
+            border-radius: 8px;
+            font-size: 14px;
+            color: #444;
+            border: 1px solid #ddd;
+        }
+    </style>
+</head>
+<body>
+    <!-- Slide 1: Cover -->
+    <div class="slide cover active" id="slide-1">
+        <h1>智能体调度中枢技术方案</h1>
+        <div class="meta">基于 OpenCode 引擎的私有化 AI 调度架构</div>
+        <div class="company">v1.0 · 2026年5月</div>
+    </div>
+
+    <!-- Slide 2: Background - Harness Paradigm -->
+    <div class="slide" id="slide-2">
+        <div class="slide-header">
+            <h1>AI Agent 技术范式演进</h1>
+            <div class="subtitle">从预设流程到 Agent 自主调度工具</div>
+        </div>
+        <div class="slide-content">
+            <table class="advantage-table" style="margin-bottom: 32px;">
+                <thead>
+                    <tr>
+                        <th>时代</th>
+                        <th>范式</th>
+                        <th>代表技术</th>
+                        <th>特点</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>早期</td>
+                        <td>预设流程</td>
+                        <td>规则引擎、对话树</td>
+                        <td>人工穷举所有路径</td>
+                    </tr>
+                    <tr>
+                        <td>中期</td>
+                        <td>状态机编排</td>
+                        <td>LangGraph、Spring AI Graph</td>
+                        <td>预设节点和转移条件</td>
+                    </tr>
+                    <tr>
+                        <td>当前</td>
+                        <td>Agent 自主调度</td>
+                        <td>OpenAI Tool Use、Anthropic MCP、OpenCode Skill</td>
+                        <td>Agent 根据上下文动态决定调用工具</td>
+                    </tr>
+                </tbody>
+            </table>
+            <div class="grid-2">
+                <div class="card">
+                    <h3>状态机：预设路径</h3>
+                    <p style="font-size: 14px; color: #666; margin-top: 8px;">用户 → 意图分类 → 节点A → 节点B → 结束</p>
+                    <p style="font-size: 14px; color: #999; margin-top: 8px;">每一步固定，AI 只是执行预设路径</p>
+                </div>
+                <div class="card">
+                    <h3>Agent Harness：自主调度</h3>
+                    <p style="font-size: 14px; color: #666; margin-top: 8px;">用户 → Agent 理解意图 → Agent 自主选择工具 → 动态执行</p>
+                    <p style="font-size: 14px; color: #2d7a2d; margin-top: 8px;">AI 理解目标，自主决定用什么工具达成</p>
+                </div>
+            </div>
+            <div style="margin-top: 28px; padding: 20px; background: #1a1a2e; border-radius: 10px;">
+                <p style="font-size: 16px; color: #fff; margin: 0;">行业共识：OpenAI Tool Use、Anthropic MCP、OpenCode Skill 均围绕"Agent 自主调度"设计 —— 让 Agent 驾驭工具，而非被预设流程束缚</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Slide 3: Why not self-build -->
+    <div class="slide" id="slide-3">
+        <div class="slide-header">
+            <h1>为什么自建调度层</h1>
+            <div class="subtitle">拥抱成熟开源生态 vs 重复造轮子</div>
+        </div>
+        <div class="slide-content">
+            <div class="grid-2">
+                <div class="card">
+                    <h3>自研编排的长期成本</h3>
+                    <ul style="margin-top: 12px;">
+                        <li style="font-size: 15px; line-height: 1.8;">AI Agent 技术迭代迅速，自研方案难以跟进最新进展</li>
+                        <li style="font-size: 15px; line-height: 1.8;">状态图、ReAct、Tool Call 等范式不断演进，维护成本高</li>
+                        <li style="font-size: 15px; line-height: 1.8;">人员更替导致技术债务积累，核心逻辑无人能懂</li>
+                        <li style="font-size: 15px; line-height: 1.8;">从零解决 session 管理、并发、超时等工程问题</li>
+                    </ul>
+                </div>
+                <div class="card">
+                    <h3>使用成熟开源 Agent 引擎</h3>
+                    <ul style="margin-top: 12px;">
+                        <li style="font-size: 15px; line-height: 1.8;">专注业务逻辑，调度层只做编排，不碰 Agent 核心</li>
+                        <li style="font-size: 15px; line-height: 1.8;">社区推动技术演进，红利自动享受，无需自己跟进</li>
+                        <li style="font-size: 15px; line-height: 1.8;">SDK 官方维护，API 稳定性有保障</li>
+                        <li style="font-size: 15px; line-height: 1.8;">开源项目透明可审计，满足企业合规要求</li>
+                    </ul>
+                </div>
+            </div>
+            <div style="margin-top: 32px; padding: 24px; background: #f8f9fa; border-radius: 10px;">
+                <p style="font-size: 18px; margin-bottom: 0;"><strong>核心思路：</strong>站在成熟开源肩膀上，专注差旅业务深度定制，而非重复造轮子</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Slide 4: Skills vs State Graph -->
+    <div class="slide" id="slide-4">
+        <div class="slide-header">
+            <h1>业务流程定义方式对比</h1>
+            <div class="subtitle">Skill 描述式 vs 状态图代码式</div>
+        </div>
+        <div class="slide-content">
+            <div class="grid-2">
+                <div class="card">
+                    <h3>状态图代码开发</h3>
+                    <ul style="margin-top: 12px;">
+                        <li style="font-size: 15px; line-height: 1.8;">每个业务流程需工程师画图、编码、测试</li>
+                        <li style="font-size: 15px; line-height: 1.8;">新增航司或酒店品牌 → 修改图结构 + 重新发版</li>
+                        <li style="font-size: 15px; line-height: 1.8;">退改签规则变化 → 找到对应节点，改代码，回归测试</li>
+                        <li style="font-size: 15px; line-height: 1.8;">业务人员无法参与，只能提需求给工程师</li>
+                        <li style="font-size: 15px; line-height: 1.8;">意图分类节点出错 → 后续全错，召回率低</li>
+                    </ul>
+                </div>
+                <div class="card">
+                    <h3>Skill 描述式开发</h3>
+                    <ul style="margin-top: 12px;">
+                        <li style="font-size: 15px; line-height: 1.8;">业务规则以 Markdown 文档定义，接近自然语言</li>
+                        <li style="font-size: 15px; line-height: 1.8;">新增航司 → 编写或更新 SKILL.md，Agent 自动理解并执行</li>
+                        <li style="font-size: 15px; line-height: 1.8;">差标调整 → 更新 Skill 描述，无需改代码和发版</li>
+                        <li style="font-size: 15px; line-height: 1.8;">业务人员可直接参与规则编写和审核</li>
+                        <li style="font-size: 15px; line-height: 1.8;">Agent 自主理解模糊意图，无需预设分类节点</li>
+                    </ul>
+                </div>
+            </div>
+            <div style="margin-top: 32px; padding: 24px; background: #1a1a2e; border-radius: 10px;">
+                <p style="font-size: 18px; color: #fff; margin: 0;">以"查询北京到上海航班"为例：状态图需要预设意图分类 → 节点A → 节点B；Skill 只需描述"当用户需要订机票时，使用 search_flights 工具"</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Slide 5: Engine Comparison -->
+    <div class="slide" id="slide-5">
+        <div class="slide-header">
+            <h1>引擎比选</h1>
+            <div class="subtitle">四款主流 Agent 引擎对比</div>
+        </div>
+        <div class="slide-content">
+            <table class="advantage-table">
+                <thead>
+                    <tr>
+                        <th>引擎</th>
+                        <th>通信方式</th>
+                        <th>远程调度</th>
+                        <th>多实例管理</th>
+                        <th>官方 Python SDK</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><strong>OpenCode</strong></td>
+                        <td>HTTP REST</td>
+                        <td class="check">✓ 原生支持</td>
+                        <td class="check">✓ 端口即实例</td>
+                        <td class="check">✓ 官方</td>
+                    </tr>
+                    <tr>
+                        <td>Claude Code</td>
+                        <td>进程调用</td>
+                        <td class="cross">✗ 本地绑定</td>
+                        <td class="cross">✗ 单进程</td>
+                        <td class="check">✓ 官方</td>
+                    </tr>
+                    <tr>
+                        <td>Qwen Code</td>
+                        <td>stdio 进程传输</td>
+                        <td class="cross">✗ 本地绑定</td>
+                        <td class="cross">✗ 单进程</td>
+                        <td class="warn">⚠️ 实验性质</td>
+                    </tr>
+                    <tr>
+                        <td>Hermes Agent</td>
+                        <td>CLI + 消息网关</td>
+                        <td class="warn">⚠️ 需 SSH</td>
+                        <td class="warn">⚠️ 非面向调度</td>
+                        <td class="cross">✗ 无官方</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Slide 6: Why OpenCode -->
+    <div class="slide" id="slide-6">
+        <div class="slide-header">
+            <h1>为什么选择 OpenCode</h1>
+            <div class="subtitle">架构天然匹配调度中枢模式</div>
+        </div>
+        <div class="slide-content">
+            <div class="grid-2">
+                <div class="card">
+                    <h3>架构优势</h3>
+                    <p>opencode serve 是独立 HTTP 进程，暴露 RESTful 接口。调度层通过 SDK 发起 HTTP 调用，引擎可在另一进程/另一台机器运行，网络透明。</p>
+                </div>
+                <div class="card">
+                    <h3>SDK 质量保障</h3>
+                    <p>opencode-sdk-python 由官方维护，从 OpenAPI 规范自动生成，API 变更时 SDK 同步更新。会话管理能力完整封装。</p>
+                </div>
+                <div class="card">
+                    <h3>SSE 流式响应</h3>
+                    <p>client.event.list() 原生支持 SSE 流式事件推送，实时展示 Agent 执行状态，用户体验流畅。</p>
+                </div>
+                <div class="card">
+                    <h3>对比结论</h3>
+                    <p>Claude Code / Qwen Code 本质是本地进程通信，无法支撑分布式调度。OpenCode 是唯一原生支持远程调度的方案。</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Slide 7: Architecture -->
+    <div class="slide" id="slide-7">
+        <div class="slide-header">
+            <h1>系统架构</h1>
+            <div class="subtitle">差旅业务版</div>
+        </div>
+        <div class="slide-content">
+            <div class="architecture-box">
+                <div class="arch-layer">
+                    <div class="arch-label">前端层</div>
+                    <div class="arch-components">
+                        <div class="arch-comp">App / Web</div>
+                    </div>
+                </div>
+                <div class="arch-layer">
+                    <div class="arch-label">网关层</div>
+                    <div class="arch-components">
+                        <div class="arch-comp">Sanic（鉴权 / 限流 / 路由）</div>
+                    </div>
+                </div>
+                <div class="arch-layer">
+                    <div class="arch-label">调度中枢</div>
+                    <div class="arch-components">
+                        <div class="arch-comp">AgentPool Manager</div>
+                        <div class="arch-comp">Session Manager</div>
+                        <div class="arch-comp">MCP Client</div>
+                        <div class="arch-comp">Skill 层</div>
+                        <div class="arch-comp">知识库 MCP</div>
+                    </div>
+                </div>
+                <div class="arch-layer">
+                    <div class="arch-label">引擎层</div>
+                    <div class="arch-components">
+                        <div class="arch-comp">opencode serve :4091</div>
+                        <div class="arch-comp">opencode serve :4092</div>
+                        <div class="arch-comp">opencode serve :4093</div>
+                    </div>
+                </div>
+                <div class="arch-layer">
+                    <div class="arch-label">业务层</div>
+                    <div class="arch-components">
+                        <div class="arch-comp">机票 MCP</div>
+                        <div class="arch-comp">酒店 MCP</div>
+                        <div class="arch-comp">行程 MCP</div>
+                        <div class="arch-comp">沙箱层 sandbox-mcp</div>
+                    </div>
+                </div>
+                <div class="arch-layer">
+                    <div class="arch-label">企业系统</div>
+                    <div class="arch-components">
+                        <div class="arch-comp">OA / 财务 / HR</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Slide 8: Phase Roadmap -->
+    <div class="slide" id="slide-8">
+        <div class="slide-header">
+            <h1>实施路线图</h1>
+            <div class="subtitle">MVP 快速验证 · 沙箱后续按需引入</div>
+        </div>
+        <div class="slide-content">
+            <div class="phase-timeline">
+                <div class="phase">
+                    <div class="num">第一周</div>
+                    <div class="title">基础引擎</div>
+                    <div class="time">Day 1 ~ Day 7</div>
+                    <ul>
+                        <li>opencode serve 单实例部署</li>
+                        <li>SDK 调度层集成</li>
+                        <li>基础业务 MCP 接入（机票/酒店）</li>
+                        <li>基础对话界面验证</li>
+                    </ul>
+                </div>
+                <div class="phase">
+                    <div class="num">第二三周</div>
+                    <div class="title">流程串联</div>
+                    <div class="time">Day 8 ~ Day 21</div>
+                    <ul>
+                        <li>多轮对话上下文优化</li>
+                        <li>差标合规校验串联</li>
+                        <li>预订全流程调通</li>
+                        <li>异常处理与容错</li>
+                    </ul>
+                </div>
+                <div class="phase">
+                    <div class="num">第四周</div>
+                    <div class="title">验证展示</div>
+                    <div class="time">Day 22 ~ Day 28</div>
+                    <ul>
+                        <li>端到端业务流程演示</li>
+                        <li>核心场景验收</li>
+                        <li>性能与稳定性验证</li>
+                        <li>下阶段规划确认</li>
+                    </ul>
+                </div>
+            </div>
+            <div style="margin-top: 28px; padding: 20px; background: #fffbe6; border-radius: 10px; border-left: 4px solid #b8860b;">
+                <p style="font-size: 16px; color: #666; margin: 0;"><strong>沙箱方案</strong>在 MVP 验证后评估，按需引入 sandbox-mcp 进行代码执行隔离。</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Slide 9: Core Modules -->
+    <div class="slide" id="slide-9">
+        <div class="slide-header">
+            <h1>核心模块设计</h1>
+        </div>
+        <div class="slide-content">
+            <div class="module-list">
+                <div class="module">
+                    <h3>AgentPoolManager</h3>
+                    <p>管理多个 opencode serve 实例，维护状态（idle/busy/offline），自动分配空闲实例，支持动态扩缩容</p>
+                </div>
+                <div class="module">
+                    <h3>SessionManager</h3>
+                    <p>封装 Session API，负责会话完整生命周期：create / chat / messages / abort / revert / summarize / delete</p>
+                </div>
+                <div class="module">
+                    <h3>Scheduler</h3>
+                    <p>编排任务与实例映射，支持单任务、多任务并行/串行、同 Session 多轮对话、任务超时与中止</p>
+                </div>
+                <div class="module">
+                    <h3>MCP Client</h3>
+                    <p>连接外部 MCP Server（差旅业务、知识库、沙箱），统一路由工具调用</p>
+                </div>
+                <div class="module">
+                    <h3>Skill 层</h3>
+                    <p>通过 SKILL.md 定义差旅指令集，Agent 按需加载，Skill/MCP 热加载无需重启</p>
+                </div>
+                <div class="module">
+                    <h3>TaskQueue（可选）</h3>
+                    <p>基于 Redis 实现分布式任务队列，支持优先级、定时触发、任务重试与失败告警</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Slide 10: Deployment -->
+    <div class="slide" id="slide-10">
+        <div class="slide-header">
+            <h1>部署方案</h1>
+        </div>
+        <div class="slide-content">
+            <div class="grid-2">
+                <div>
+                    <h2>模式一：本地开发</h2>
+                    <p>适用于开发调试阶段</p>
+                    <div style="background: #f8f9fa; padding: 20px; border-radius: 8px; margin-top: 16px;">
+                        <p style="font-family: monospace; font-size: 14px; margin: 0;">opencode serve --port 4096 --hostname 127.0.0.1</p>
+                    </div>
+                </div>
+                <div>
+                    <h2>模式二：远程服务器</h2>
+                    <p>适用于生产环境，数据完全私有</p>
+                    <div style="background: #f8f9fa; padding: 20px; border-radius: 8px; margin-top: 16px;">
+                        <p style="font-family: monospace; font-size: 14px; margin: 0;">opencode serve --port 4096 --hostname 0.0.0.0</p>
+                    </div>
+                </div>
+                <div>
+                    <h2>模式三：集群模式（推荐）</h2>
+                    <p>部署 3 个或以上实例，自动分配负载</p>
+                    <div style="background: #f8f9fa; padding: 20px; border-radius: 8px; margin-top: 16px;">
+                        <p style="font-family: monospace; font-size: 14px; margin: 0;">服务器1:4091 / 服务器2:4092 / 服务器3:4093</p>
+                    </div>
+                </div>
+                <div>
+                    <h2>环境要求</h2>
+                    <ul>
+                        <li>Python 3.8+（推荐 3.10+）</li>
+                        <li>CPU 4核（推荐 8核+）</li>
+                        <li>内存 8GB（推荐 16GB+）</li>
+                        <li>SSD 优先</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Slide 11: Scenarios -->
+    <div class="slide" id="slide-11">
+        <div class="slide-header">
+            <h1>应用场景</h1>
+        </div>
+        <div class="slide-content">
+            <div class="scenario-list">
+                <div class="scenario">
+                    <h3>智能差旅咨询</h3>
+                    <p>员工咨询差旅政策，AI 助手即时回答，多轮对话记忆上下文</p>
+                </div>
+                <div class="scenario">
+                    <h3>一站式机票酒店预订</h3>
+                    <p>描述需求 → 自动查询 → 符合差标推荐 → 确认预订，平均 30 秒完成</p>
+                </div>
+                <div class="scenario">
+                    <h3>行程变更与退改</h3>
+                    <p>航班延误自动感知，推荐改签方案，一键执行退改，同步更新行程</p>
+                </div>
+                <div class="scenario">
+                    <h3>多 Agent 协作</h3>
+                    <p>多城市行程并行处理：查航班 / 搜酒店 / 核差标，总响应 < 15s</p>
+                </div>
+                <div class="scenario">
+                    <h3>企业费用分析</h3>
+                    <p>费用统计报表，异常消费预警，对接财务系统触发审批流</p>
+                </div>
+                <div class="scenario">
+                    <h3>合规预警</h3>
+                    <p>差标校验，违规订单自动拦截，合规准确率 > 90%</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Slide 12: Advantages -->
+    <div class="slide" id="slide-12">
+        <div class="slide-header">
+            <h1>技术优势</h1>
+            <div class="subtitle">本方案 vs 纯云端 API 方案</div>
+        </div>
+        <div class="slide-content">
+            <table class="advantage-table">
+                <thead>
+                    <tr>
+                        <th>维度</th>
+                        <th>本方案</th>
+                        <th>纯云端 API</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>数据隐私</td>
+                        <td class="check">✓ 完全私有，数据不出域</td>
+                        <td class="cross">✗ 数据上传第三方</td>
+                    </tr>
+                    <tr>
+                        <td>成本控制</td>
+                        <td class="check">✓ 固定服务器成本</td>
+                        <td class="cross">✗ 按 token 计费线性增长</td>
+                    </tr>
+                    <tr>
+                        <td>差旅业务深度</td>
+                        <td class="check">✓ 差标合规引擎、MCP 差旅工具</td>
+                        <td class="cross">✗ 通用 API，无法理解行业语义</td>
+                    </tr>
+                    <tr>
+                        <td>多供应商整合</td>
+                        <td class="check">✓ MCP 架构支持多供应商接入</td>
+                        <td class="warn">⚠️ 受限单一平台</td>
+                    </tr>
+                    <tr>
+                        <td>合规可控</td>
+                        <td class="check">✓ 内置差旅政策校验</td>
+                        <td class="cross">✗ 无内置合规能力</td>
+                    </tr>
+                    <tr>
+                        <td>部署灵活性</td>
+                        <td class="check">✓ 本地、私有云、混合云</td>
+                        <td class="cross">✗ 仅支持云端</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Slide 13: Summary -->
+    <div class="slide" id="slide-13">
+        <div class="slide-header">
+            <h1>总结</h1>
+        </div>
+        <div class="slide-content">
+            <div class="summary-grid">
+                <div class="summary-item">
+                    <div class="num">1</div>
+                    <div class="text">
+                        <h4>自主可控</h4>
+                        <p>调度中枢、引擎、业务 MCP 全部私有部署，数据不出域，满足企业数据安全与 IT 合规要求</p>
+                    </div>
+                </div>
+                <div class="summary-item">
+                    <div class="num">2</div>
+                    <div class="text">
+                        <h4>差旅深度定制</h4>
+                        <p>内置差标合规引擎、MCP 差旅业务工具，真正理解差旅行业语义</p>
+                    </div>
+                </div>
+                <div class="summary-item">
+                    <div class="num">3</div>
+                    <div class="text">
+                        <h4>成本可预期</h4>
+                        <p>固定服务器成本，无按 token 计费波动风险，精准预算运营成本</p>
+                    </div>
+                </div>
+                <div class="summary-item">
+                    <div class="num">4</div>
+                    <div class="text">
+                        <h4>三阶段平滑演进</h4>
+                        <p>从 MVP 到商业化平台渐进落地，每个阶段有明确交付物和验收标准</p>
+                    </div>
+                </div>
+            </div>
+            <div style="margin-top: 48px; padding: 32px; background: #f8f9fa; border-radius: 12px; text-align: center;">
+                <p style="font-size: 20px; color: #1a1a2e; margin: 0;">适用于中小型企业单机快速落地<br>也支持大型企业多地域高可用集群部署</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Navigation -->
+    <div class="nav">
+        <button onclick="prevSlide()">←</button>
+        <button onclick="nextSlide()">→</button>
+    </div>
+    <div class="page-num"><span id="current">1</span> / <span id="total">13</span></div>
+
+    <script>
+        let current = 1;
+        const total = 13;
+
+        function showSlide(n) {
+            if (n < 1) n = 1;
+            if (n > total) n = total;
+            current = n;
+
+            document.querySelectorAll('.slide').forEach(s => s.classList.remove('active'));
+            document.getElementById('slide-' + n).classList.add('active');
+            document.getElementById('current').textContent = n;
+        }
+
+        function nextSlide() {
+            showSlide(current + 1);
+        }
+
+        function prevSlide() {
+            showSlide(current - 1);
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight' || e.key === ' ') {
+                e.preventDefault();
+                nextSlide();
+            } else if (e.key === 'ArrowLeft') {
+                prevSlide();
+            }
+        });
+
+        document.addEventListener('click', function(e) {
+            if (!e.target.closest('.nav') && !e.target.closest('button')) {
+                nextSlide();
+            }
+        });
+    </script>
+</body>
+</html>
