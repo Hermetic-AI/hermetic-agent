@@ -19,9 +19,11 @@ from sanic_ext import openapi as sanic_openapi
 from openagent.api.controllers.chat_controller import chat_bp
 from openagent.api.controllers.pool_controller import pool_bp
 from openagent.api.controllers.registry_controller import registry_bp
+from openagent.api.controllers.scenario_controller import scenario_bp
 from openagent.api.controllers.session_controller import session_bp
 from openagent.api.lifecycle import shutdown, startup
 from openagent.api.readiness import build_ready_response
+from openagent.api.turn_routes import turn_bp
 from openagent.config.settings import Settings, get_settings
 
 logger = structlog.get_logger(__name__)
@@ -56,12 +58,43 @@ def _configure_logging(settings: Settings) -> None:
 
 
 def _install_error_handler(app: Sanic) -> None:
-    """安装全局 500 异常处理器：记录 traceback 并以 JSON 形式返回。"""
+    """安装全局异常处理器。
+
+    - 真正的 5xx（未预期异常）→ 记录 traceback 并以 JSON 形式返回 500。
+    - 4xx（``NotFound`` / ``MethodNotAllowed`` 等客户端错误，例如浏览器请求
+      ``/favicon.ico``）→ 让 Sanic 自带的 404/405 响应处理，不当成 500 报错。
+    """
     import traceback as _tb
+
+    try:
+        from sanic.exceptions import SanicException
+    except ImportError:  # pragma: no cover
+        SanicException = Exception  # type: ignore[misc,assignment]
+
+    @app.exception(SanicException)
+    async def _client_error(request: Request, exception: SanicException) -> JSONResponse:
+        """4xx 客户端错误：透传 Sanic 的状态码，不再当成 500。"""
+        # 静默 /favicon.ico 这种预期内的探测请求；其它 4xx 记一条 info 即可。
+        if request.path == "/favicon.ico":
+            return JSONResponse(
+                {"success": False, "error": "Not Found", "path": request.path},
+                status=exception.status_code,
+            )
+        logger.info(
+            "client_error",
+            path=request.path,
+            method=request.method,
+            status=exception.status_code,
+            error=str(exception),
+        )
+        return JSONResponse(
+            {"success": False, "status": exception.status_code, "error": str(exception)},
+            status=exception.status_code,
+        )
 
     @app.exception(Exception)
     async def _unhandled(request: Request, exception: Exception) -> JSONResponse:
-        """兜底异常处理：打印结构化日志后返回 500 JSON。"""
+        """5xx 兜底异常处理：打印结构化日志后返回 500 JSON。"""
         tb = _tb.format_exc()
         logger.exception(
             "unhandled_exception",
@@ -122,6 +155,8 @@ def create_app(settings: Settings | None = None) -> Sanic:
     app.blueprint(session_bp)
     app.blueprint(registry_bp)
     app.blueprint(pool_bp)
+    app.blueprint(turn_bp)  # F3: HITL turn 生命周期端点
+    app.blueprint(scenario_bp)
 
     _install_error_handler(app)
 

@@ -1,0 +1,51 @@
+# ============================================================
+# 默认场景 — 优先级低于 _generic
+# 与 _generic 行为相同，但 priority 略高（更早被选中）
+# 用作: 业务场景不存在时的中间兜底
+# ============================================================
+name: _default
+version: "1.0.0"
+description: "默认场景，业务场景不存在时的中间兜底"
+enabled: true
+tags: [default, fallback]
+owner: openagent-core
+tier: bronze
+
+routing:
+  trigger_keywords: []
+  priority: 90000
+
+execution:
+  system_prompt: |
+    你是 OpenAgent 默认助手。请礼貌、简洁地回答用户问题。
+    超出能力范围时主动转人工。
+  skills: []
+  tools: []
+  orchestration: single
+
+security:
+  tool_level: safe
+  allowed_tools: [Read, Grep, Glob]
+  denied_tools: [Write, Edit, Bash, WebFetch, WebSearch]
+  allowed_commands: []
+  denied_commands: [rm -rf, sudo, dd, mkfs]
+  network: off
+  max_turns: 5
+  max_budget_usd: 0.1
+  require_approval_for_writes: true
+
+workspace:
+  strategy: project_relative
+  workspace_dirs: [${PROJECT_DIR}]
+  readonly_dirs: [${WORK_SHARED}/docs]
+  deny_dirs: [/etc, "~/.ssh", "~/.aws", "${HOME}"]
+  deny_path_patterns: ["**/.env", "**/.env.*", "**/id_rsa", "**/*.pem", "**/*.key"]
+  launcher:
+    prefer_engine: claude_code
+    fallback_engine: opencode
+
+a2ui: { enabled: false, protocol: auip }
+progressive_skill: { strategy: none, budget_tokens: 500, budget_policy: error, initial_skills: [], load_on_state: {} }
+resource_dirs: { prompts: ${WORK_SHARED}/prompts/_generic, skills: ${WORK_SHARED}/skills/_generic }
+resources: { agent: null, model: null, timeout: 30 }
+metadata: { cost_center: O-0001, ab_group: control, sla_tier: bronze, is_fallback: true }

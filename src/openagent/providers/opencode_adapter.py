@@ -65,6 +65,7 @@ class OpenCodeAdapter(AgentProvider):
     async def create_session(
         self, agent_name: str, model: str | None = None, system_prompt: str | None = None,
         *, base_url: str | None = None, session_id: str | None = None,
+        directory: str | None = None,
     ) -> SessionInfo:
         """创建或恢复 OpenCode 会话。
 
@@ -74,6 +75,8 @@ class OpenCodeAdapter(AgentProvider):
             system_prompt: 可选系统提示词。
             base_url: opencode serve 的 HTTP 入口。
             session_id: 提供时进入 resume 流程。
+            directory: 会话绑定的项目工作区路径(scenario 提供)。None
+                时使用 opencode serve 启动时的 --cwd。
 
         Returns:
             新建或恢复的 SessionInfo。
@@ -83,16 +86,22 @@ class OpenCodeAdapter(AgentProvider):
             agent_name=agent_name,
             base_url=base_url,
             has_session_id=bool(session_id),
+            has_directory=bool(directory),
         )
         try:
             result = await lc.create_session(
                 self, agent_name, model=model, system_prompt=system_prompt,
-                base_url=base_url, session_id=session_id,
+                base_url=base_url, session_id=session_id, directory=directory,
             )
         except Exception as e:
             logger.error("opencode_session_create_failed", agent_name=agent_name, error=str(e))
             raise
-        logger.info("opencode_session_created", session_id=result.session_id, agent_name=agent_name)
+        logger.info(
+            "opencode_session_created",
+            session_id=result.session_id,
+            agent_name=agent_name,
+            directory=directory,
+        )
         return result
 
     async def chat(

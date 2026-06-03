@@ -99,6 +99,45 @@ pnpm lint
 - **Storage backends**: `postgres` (default, asyncpg) or `memory` (dev/fallback). Set via `AGENT_SCHEDULER_STORAGE_BACKEND=memory`.
 - **Skills**: Loaded from directories via `SkillRegistry.load_from_paths()`. Each skill is a `SKILL.md` file with frontmatter (`name`, `description`, `triggers`) and content.
 - **MCP Tools**: Registered via `MCPRegistry.register_handler()` (local) or `register_remote()` (HTTP). Tools are format-converted per SDK (`to_opencode_format`, `to_claude_code_format`).
-- **SSE streaming**: Both SDK adapters yield unified `StreamEvent` objects (`session`, `text`, `reasoning`, `tool_use`, `tool_result`, `done`, `error`).
+- **SSE streaming**: Both SDK adapters yield unified `StreamEvent` objects. See `src/openagent/streaming.py` for the 12 supported event types: `scenario`, `session`, `text`, `reasoning`, `tool_use`, `tool_result`, `card`, `state`, `suspend`, `resume`, `done`, `error`.
 - **Structured logging**: Uses `structlog` with JSON/text output controlled by `AGENT_SCHEDULER_LOG_FORMAT`.
+
+## 🚨 HARD CONSTRAINT: 统一对话入口
+
+> **对话 chat 入口必须全局统一**. 严禁新增任何 per-scenario chat 端点.
+
+**只有 2 个对话端点, 都集中在 `src/openagent/api/controllers/chat_controller.py`:**
+
+| 端点 | 用途 | 备注 |
+|---|---|---|
+| `POST /agent/chat` | 同步 chat, 返回 JSON | F2 已接 `ScenarioMiddleware` + `ScenarioInjector` + `SuspendableScheduler` |
+| `POST /agent/chat/stream` | 流式 SSE chat | 同上, 开头 emit `scenario` 事件; HITL 走 `SuspendableScheduler` 推 `card` + `suspend` |
+
+**严禁**:
+- ❌ `POST /agent/scenarios/{name}/chat` (已删除)
+- ❌ `POST /agent/scenarios/{name}/chat/stream` (已删除)
+- ❌ 任何把"scenario 名塞进 URL"另开对话入口的做法
+- ❌ 在 scenario_controller.py / skill runtime / 别处另起一个 chat handler
+- ❌ 在 frontend 另起一个"send to scenario X"的服务, 绕开 /agent/chat
+
+**Scenario 路由只在 chat 入口前发生** (`ScenarioMiddleware.route()` 6 优先级), 不应该让 client 主动"挑 scenario URL"。client 的全部对话请求都发到 `/agent/chat[/stream]`, scenario 由 `body.scenario` / `X-Scenario` / keyword 推断决定。
+
+**校验方式** (CI 必跑):
+
+```python
+# scripts/check_unified_chat_entry.py
+import re, pathlib
+forbidden_paths = [r"/agent/scenarios/[^/]+/chat", r"/agent/scenarios/[^/]+/chat/stream"]
+# 扫所有 controller 文件, 任何匹配 → CI fail
+```
+
+`tests/test_scenario_controller.py::test_no_per_scenario_chat_endpoint` 必过, 否则 PR 拒绝。
+
+**为什么**:
+1. 入口分散导致 routing / injection / 审计 / turn lifecycle 无法统一
+2. Skill 状态机依赖"同一个 turn 内 token 流连续", 多入口破坏这个不变量
+3. 测试 mock 需要写 N 份, 维护成本高
+4. OpenAPI 文档变冗长, 客户端要选 endpoint
+
+**历史教训**: 2026-06-03 P6 阶段在 `scenario_controller.py` 加了 `/agent/scenarios/{name}/chat` + `/chat/stream` 两个 stub 端点, 2026-06-03 立刻删掉 (F10)。
 - **File limits** (per .skills guidelines): Python modules ≤ 300 lines, functions ≤ 40 lines, complexity ≤ 10.

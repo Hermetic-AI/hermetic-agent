@@ -1,0 +1,821 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "OpenAgent Agent Scheduler Hub API",
+    "version": "0.1.0",
+    "description": "OpenCode / Claude Code 双 SDK Agent 调度平台.\n\n**事件流式端点**: SSE (Content-Type: text/event-stream). 事件格式:\n`data: {\"type\": \"...\", \"data\": {...}}\\n\\n`.\n\n**Scenario 路由**: 客户端在 body.scenario 或 X-Scenario header 指定 scenario;\n否则由 ScenarioRouter 按 keyword 推断 (URL > Header > Body > Keyword > Intent > Default).\n6 个内置 scenario: `_generic` / `_default` / `flight_booking` / `expense_audit` / `customer_service` / `code_review`."
+  },
+  "servers": [
+    {
+      "url": "http://localhost:8000",
+      "description": "本地开发"
+    }
+  ],
+  "tags": [
+    {
+      "name": "System",
+      "description": "健康 / 就绪检查"
+    },
+    {
+      "name": "Chat",
+      "description": "同步 / 流式 chat (P6: 已接 scenario + injection + HITL)"
+    },
+    {
+      "name": "Session",
+      "description": "Agent 会话管理"
+    },
+    {
+      "name": "Turn",
+      "description": "HITL Turn 生命周期 (F3)"
+    },
+    {
+      "name": "Skills",
+      "description": "Skill 注册与查询"
+    },
+    {
+      "name": "Tools",
+      "description": "MCP 工具管理"
+    },
+    {
+      "name": "Pool",
+      "description": "Agent 实例池"
+    },
+    {
+      "name": "Scenarios",
+      "description": "Scenario CRUD + 路由 (P6)"
+    }
+  ],
+  "paths": {
+    "/health": {
+      "get": {
+        "tags": [
+          "System"
+        ],
+        "summary": "健康检查 (进程存活)",
+        "responses": {
+          "200": {
+            "description": "{\"status\": \"ok\"}"
+          }
+        }
+      }
+    },
+    "/ready": {
+      "get": {
+        "tags": [
+          "System"
+        ],
+        "summary": "就绪检查 (聚合 storage / bridge / registry / scenario / turn_store / hitl)",
+        "responses": {
+          "200": {
+            "description": "全部就绪"
+          },
+          "503": {
+            "description": "missing 数组列出未就绪项"
+          }
+        }
+      }
+    },
+    "/agent/chat": {
+      "post": {
+        "tags": [
+          "Chat"
+        ],
+        "summary": "发送消息并同步等待 Agent 回复 (F2: 已接 scenario + injection)",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChatRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "scenario 路由失败 / 入参非法"
+          },
+          "500": {
+            "description": "服务器内部错误"
+          }
+        }
+      }
+    },
+    "/agent/chat/stream": {
+      "post": {
+        "tags": [
+          "Chat"
+        ],
+        "summary": "发送消息并以 SSE 流式返回 (F2: 开头 emit scenario 事件, HITL 走 SuspendableScheduler)",
+        "description": "**事件序列**:\n1. `scenario` 事件 (matched_by / name / version / orchestration)\n2. `session` 事件 (session_id)\n3. 业务事件 (text / reasoning / tool_use / tool_result / state)\n4. 若 orchestration=hitl: `card` + `suspend` 事件后停流\n5. `done` 事件结束\n\n若 scenario 路由失败: 第一个事件是 `error` (code 字段含 12 个 code 之一)。",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChatRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "SSE 流 (Content-Type: text/event-stream)",
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "scenario 不可用"
+          }
+        }
+      }
+    },
+    "/agent/session": {
+      "post": {
+        "tags": [
+          "Session"
+        ],
+        "summary": "创建新会话",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateSessionRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "会话创建成功"
+          }
+        }
+      }
+    },
+    "/agent/session/{session_id}": {
+      "get": {
+        "tags": [
+          "Session"
+        ],
+        "summary": "查询会话元信息"
+      },
+      "delete": {
+        "tags": [
+          "Session"
+        ],
+        "summary": "删除会话"
+      }
+    },
+    "/agent/session/{session_id}/messages": {
+      "get": {
+        "tags": [
+          "Session"
+        ],
+        "summary": "获取会话历史消息"
+      }
+    },
+    "/agent/session/{session_id}/abort": {
+      "post": {
+        "tags": [
+          "Session"
+        ],
+        "summary": "中止正在运行的会话"
+      }
+    },
+    "/agent/skills": {
+      "post": {
+        "tags": [
+          "Skills"
+        ],
+        "summary": "注册/覆盖一个 skill"
+      }
+    },
+    "/agent/tools": {
+      "get": {
+        "tags": [
+          "Tools"
+        ],
+        "summary": "列出 MCP 工具"
+      }
+    },
+    "/agent/tools/{name}/enabled": {
+      "patch": {
+        "tags": [
+          "Tools"
+        ],
+        "summary": "启用/禁用工具"
+      }
+    },
+    "/agent/pool/stats": {
+      "get": {
+        "tags": [
+          "Pool"
+        ],
+        "summary": "Agent 实例池统计"
+      }
+    },
+    "/agent/pool/register": {
+      "post": {
+        "tags": [
+          "Pool"
+        ],
+        "summary": "注册 Agent 实例"
+      }
+    },
+    "/agent/pool/{name}": {
+      "delete": {
+        "tags": [
+          "Pool"
+        ],
+        "summary": "注销 Agent 实例"
+      }
+    },
+    "/agent/scenarios": {
+      "post": {
+        "tags": [
+          "Scenarios"
+        ],
+        "summary": "注册/覆盖一个 scenario (YAML 或 dict body)",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "name"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "version": {
+                    "type": "string"
+                  },
+                  "routing": {
+                    "type": "object"
+                  },
+                  "execution": {
+                    "type": "object"
+                  },
+                  "security": {
+                    "type": "object"
+                  },
+                  "workspace": {
+                    "type": "object"
+                  },
+                  "a2ui": {
+                    "type": "object"
+                  },
+                  "progressive_skill": {
+                    "type": "object"
+                  },
+                  "resource_dirs": {
+                    "type": "object"
+                  },
+                  "resources": {
+                    "type": "object"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "{success, scenario, source: 'api'|'yaml'|'db'}"
+          },
+          "400": {
+            "description": "SCENARIO_VALIDATION_FAILED / SCENARIO_WORKSPACE_FORBIDDEN"
+          }
+        }
+      }
+    },
+    "/agent/scenarios/{name}": {
+      "delete": {
+        "tags": [
+          "Scenarios"
+        ],
+        "summary": "注销 scenario",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "{success, name}"
+          },
+          "404": {
+            "description": "SCENARIO_NOT_FOUND"
+          }
+        }
+      }
+    },
+    "/agent/scenarios/reload": {
+      "post": {
+        "tags": [
+          "Scenarios"
+        ],
+        "summary": "从 settings.scenario_paths 重载所有 scenario (热重载)",
+        "responses": {
+          "200": {
+            "description": "{success, loaded: 6}"
+          }
+        }
+      }
+    },
+    "/agent/scenarios/{name}/validate": {
+      "get": {
+        "tags": [
+          "Scenarios"
+        ],
+        "summary": "校验一个 scenario (不注册) — 主要给 CI 用",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "{valid: true, scenario}"
+          },
+          "400": {
+            "description": "SCENARIO_VALIDATION_FAILED"
+          }
+        }
+      }
+    },
+    "/agent/scenarios/routing-log": {
+      "get": {
+        "tags": [
+          "Scenarios"
+        ],
+        "summary": "查询 routing 历史 (暂 stub → 501)",
+        "responses": {
+          "501": {
+            "description": "未实现"
+          }
+        }
+      }
+    },
+    "/agent/turn/{turn_id}": {
+      "get": {
+        "tags": [
+          "Turn"
+        ],
+        "summary": "查询 Turn 状态 (session_id / skill_name / skill_version / status / created_at)",
+        "parameters": [
+          {
+            "name": "turn_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "{success, turn}",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TurnStateResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "TURN_NOT_FOUND"
+          },
+          "503": {
+            "description": "TURN_STORE_UNAVAILABLE"
+          }
+        }
+      }
+    },
+    "/agent/turn/{turn_id}/events": {
+      "get": {
+        "tags": [
+          "Turn"
+        ],
+        "summary": "补拉 Turn 事件 (SSE, from ?after=N)",
+        "description": "每个事件 `data: {\"type\": \"...\", \"data\": {...}}`. 最后以 `done` (reason=replay_end, replayed=N) 结束. 用于前端 reconnect / replay.",
+        "parameters": [
+          {
+            "name": "turn_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "after",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "SSE 流"
+          },
+          "404": {
+            "description": "TURN_NOT_FOUND"
+          },
+          "503": {
+            "description": "TURN_STORE_UNAVAILABLE"
+          }
+        }
+      }
+    },
+    "/agent/turn/{turn_id}/resume": {
+      "post": {
+        "tags": [
+          "Turn"
+        ],
+        "summary": "恢复一个被挂起的 Turn (HITL)",
+        "description": "Body: `{correlation_id, user_input, action_id}`.\n\n**事件序列** (HITL 恢复):\n1. `resume` (含 checkpoint_id)\n2. `tool_result` (ask_user 工具被回填 user_input)\n3. `state` (resume transition)\n4. `done` (end_turn)\n\n错误情况: 推送一个 `error` 事件后立即结束流.",
+        "parameters": [
+          {
+            "name": "turn_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResumeTurnRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "SSE 流"
+          },
+          "400": {
+            "description": "缺 correlation_id / scenario 不存在"
+          },
+          "404": {
+            "description": "TURN_NOT_FOUND"
+          },
+          "503": {
+            "description": "TURN_STORE_UNAVAILABLE / SCENARIO_REGISTRY_UNAVAILABLE / HITL_NOT_READY"
+          }
+        }
+      }
+    },
+    "/agent/turn/{turn_id}/heartbeat": {
+      "post": {
+        "tags": [
+          "Turn"
+        ],
+        "summary": "延长 Turn 挂起超时 (前端每 60s 调一次)",
+        "parameters": [
+          {
+            "name": "turn_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "{success, turn_id, status, ts}"
+          },
+          "404": {
+            "description": "TURN_NOT_FOUND"
+          }
+        }
+      }
+    },
+    "/agent/turn/{turn_id}/cancel": {
+      "post": {
+        "tags": [
+          "Turn"
+        ],
+        "summary": "取消 Turn (已 suspend 的 turn 不会再被 resume)",
+        "parameters": [
+          {
+            "name": "turn_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "{success, turn_id, status: cancelled}"
+          },
+          "404": {
+            "description": "TURN_NOT_FOUND"
+          },
+          "500": {
+            "description": "CANCEL_FAILED"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "ChatRequest": {
+        "type": "object",
+        "required": [
+          "message"
+        ],
+        "properties": {
+          "message": {
+            "type": "string",
+            "minLength": 1,
+            "description": "用户消息"
+          },
+          "session_id": {
+            "type": "string",
+            "description": "继续已有会话"
+          },
+          "agent_name": {
+            "type": "string",
+            "description": "指定 Agent"
+          },
+          "model": {
+            "type": "string",
+            "description": "指定模型 (claude-sonnet-4-5 等)"
+          },
+          "system_prompt": {
+            "type": "string",
+            "description": "(被 scenario 注入覆盖)"
+          },
+          "skills": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "(被 scenario 白名单过滤)"
+          },
+          "tools": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "(被 scenario 白名单过滤)"
+          },
+          "timeout": {
+            "type": "number",
+            "description": "超时秒"
+          },
+          "scenario": {
+            "type": "string",
+            "description": "显式指定 scenario (URL/Header 也可)"
+          }
+        }
+      },
+      "ChatResponse": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "session_id": {
+            "type": "string"
+          },
+          "agent_name": {
+            "type": "string"
+          },
+          "result": {
+            "type": "object",
+            "properties": {
+              "message": {
+                "type": "object",
+                "properties": {
+                  "role": {
+                    "type": "string"
+                  },
+                  "content": {
+                    "type": "string"
+                  }
+                }
+              },
+              "tool_calls": {
+                "type": "array"
+              },
+              "stop_reason": {
+                "type": "string"
+              }
+            }
+          },
+          "error": {
+            "type": "string"
+          },
+          "duration": {
+            "type": "number"
+          },
+          "scenario": {
+            "type": "object",
+            "description": "F2 新增: scenario 命中信息",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "version": {
+                "type": "string"
+              },
+              "orchestration": {
+                "type": "string"
+              },
+              "matched_by": {
+                "type": "string",
+                "enum": [
+                  "url",
+                  "header",
+                  "body",
+                  "keyword",
+                  "intent",
+                  "default"
+                ]
+              }
+            }
+          },
+          "routing": {
+            "type": "object",
+            "description": "F2 新增: 注入器过滤结果",
+            "properties": {
+              "matched_by": {
+                "type": "string"
+              },
+              "rejected_skills": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "rejected_tools": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      },
+      "CreateSessionRequest": {
+        "type": "object",
+        "required": [
+          "agent_name"
+        ],
+        "properties": {
+          "agent_name": {
+            "type": "string"
+          },
+          "model": {
+            "type": "string"
+          },
+          "system_prompt": {
+            "type": "string"
+          },
+          "session_id": {
+            "type": "string",
+            "description": "指定会话 ID (用于恢复)"
+          }
+        }
+      },
+      "ResumeTurnRequest": {
+        "type": "object",
+        "required": [
+          "correlation_id"
+        ],
+        "properties": {
+          "correlation_id": {
+            "type": "string",
+            "description": "来自 SUSPEND 事件"
+          },
+          "user_input": {
+            "type": "object",
+            "description": "用户输入 (结构由 SUSPEND.input_schema 决定)"
+          },
+          "action_id": {
+            "type": "string",
+            "description": "触发的动作按钮 id"
+          }
+        }
+      },
+      "TurnStateResponse": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "turn": {
+            "type": "object",
+            "properties": {
+              "session_id": {
+                "type": "string"
+              },
+              "skill_name": {
+                "type": "string"
+              },
+              "skill_version": {
+                "type": "string"
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "running",
+                  "suspended",
+                  "done",
+                  "error",
+                  "cancelled"
+                ]
+              },
+              "created_at": {
+                "type": "string",
+                "format": "date-time"
+              }
+            }
+          }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "default": false
+          },
+          "code": {
+            "type": "string",
+            "description": "12 个 code 之一, 见 ERROR_CODES"
+          },
+          "error": {
+            "type": "string"
+          },
+          "action": {
+            "type": "string",
+            "description": "可行动信息"
+          }
+        }
+      }
+    },
+    "ERROR_CODES": {
+      "type": "object",
+      "description": "12 个 error code (见 docs/design/integrated-orchestration-plan.md §10)",
+      "example": {
+        "SCENARIO_NOT_FOUND": "scenario 不存在",
+        "SCENARIO_DISABLED": "scenario 关闭",
+        "SCENARIO_VALIDATION_FAILED": "YAML schema 校验失败",
+        "SCENARIO_RESOURCE_UNAVAILABLE": "物理资源缺失 (cards_dir / SKILL.md 不存在)",
+        "SCENARIO_WORKSPACE_FORBIDDEN": "workspace_dirs[0] 是 / 或 ~",
+        "SKILL_NOT_ALLOWED": "caller_skills 越权",
+        "TOOL_NOT_ALLOWED": "caller_tools 越权",
+        "POLICY_VIOLATION": "path/command/network 违规",
+        "SKILL_BUDGET_EXCEEDED": "progressive_skill 片段超 budget",
+        "YAML_PLACEHOLDER_UNRESOLVED": "${...} 占位符未注入",
+        "LAUNCH_FAILED": "opencode/claude_code 启动失败",
+        "ROUTING_FAILED": "无 default 兜底"
+      }
+    }
+  }
+}

@@ -22,6 +22,7 @@ from openagent.providers.base import (
     AgentConfig,
     ChatMessage,
     ChatResult,
+    SessionInfo,
     ToolCall,
 )
 from openagent.store.base import Message as StorageMessage
@@ -65,6 +66,24 @@ def get_client(adapter: "OpenCodeAdapter", agent_name: str, base_url: str) -> As
     if key not in adapter._clients:
         adapter._clients[key] = AsyncOpencode(base_url=base_url)
     return adapter._clients[key]
+
+
+def _workspace_query(session_info: SessionInfo) -> dict[str, Any]:
+    """构造 opencode SDK 的 ``extra_query`` 参数,把会话工作区传给 server.
+
+    opencode server 的 ``WorkspaceRoutingMiddleware`` 接受
+    ``?directory=...``,用于:
+      - ``InstanceState`` 按目录做 per-project 状态隔离
+      - skill 发现从该目录向上扫描
+      - 注入到 LLM 的 env 报告中
+      - 限制文件/工具访问
+
+    Returns:
+        ``{"directory": "/path"}`` 当 session 绑定了工作区;否则空 dict。
+    """
+    if session_info.directory:
+        return {"directory": session_info.directory}
+    return {}
 
 
 # ---------------------------------------------------------------------------
@@ -133,8 +152,10 @@ async def blocking_chat(
             model_id=model or session_info.model or "default",
             provider_id="opencode",
             parts=parts,
+            system=system_prompt,
             tools=tool_list,
             timeout=timeout,
+            **_workspace_query(session_info),
         )
     except Exception as e:
         logger.error("opencode_chat_failed", session_id=session_id, error=str(e))
@@ -274,8 +295,10 @@ async def stream_chat(
                     model_id=model or session_info.model or "default",
                     provider_id="opencode",
                     parts=parts,
+                    system=system_prompt,
                     tools=tool_list,
                     timeout=timeout,
+                    **_workspace_query(session_info),
                 )
             )
 

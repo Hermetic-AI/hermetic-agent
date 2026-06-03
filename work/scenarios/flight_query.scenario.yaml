@@ -1,0 +1,137 @@
+# ============================================================
+# 飞鹤机票查询 — 演示用最简场景
+# 与 flight_booking.scenario.yaml 的关系: 这只是查票,不订票
+# 用 single orchestration,不接 HITL,纯查询
+# ============================================================
+name: flight_query
+version: "1.0.0"
+description: |
+  飞鹤机票查询场景。User 提需求 → 调 flight-query skill + MCP 工具
+  → 整理成表格返回。不下订,不接 HITL,纯查询。
+enabled: true
+tags: [travel, query]
+owner: openagent-core
+tier: silver
+
+# ============================================================
+# 路由: 关键词命中 (priority 100, 比 _default/_generic 优先)
+# ============================================================
+routing:
+  trigger_keywords: [查机票, 查航班, flight query, 航班查询, query flight]
+  trigger_intent: null
+  url_path: null
+  priority: 100
+
+# ============================================================
+# 执行: system_prompt + skills + tools
+# ============================================================
+execution:
+  system_prompt: |
+    你是飞鹤差旅 AI 助手 — 机票查询专责。
+    当用户问"明天北京到上海的航班"时,严格遵循 [flight-query] skill 的工作流:
+    1. 解析用户需求(出发/到达/日期/舱等/筛选)
+    2. 缺信息就追问(出发/到达/日期/回程必问)
+    3. 调 queryFlightBasic 工具
+    4. 按"输出格式"小节整理成 Markdown 表格
+
+    严禁:
+    - 编造航班号、价格、政策
+    - 在用户没确认前执行任何写操作
+    - 调用白名单以外的工具
+  skills: [flight-query]            # 关键: 把 OpenAgent 注册的 skill 名写在这
+  tools: [query_flight_basic, get_weather]   # 来自 MCP, scenarios/injector.py 过滤后下发
+  orchestration: single            # 单步聊天, 不用 HITL / parallel / chain
+
+# ============================================================
+# 安全: safe 档 — 不让 LLM 写文件,只读 + LLM 自己的工具
+# ============================================================
+security:
+  tool_level: safe
+  allowed_tools: [Read, Grep, Glob]
+  denied_tools: [Write, Edit, Bash, WebFetch, WebSearch]
+  allowed_commands: []
+  denied_commands: [rm -rf, sudo, dd, mkfs, "chmod 777", ":(){:|:&};:"]
+  network: local
+  max_turns: 10
+  max_budget_usd: 0.3
+  require_approval_for_writes: true
+
+# ============================================================
+# 工作区 — 这里是 per-session 透传给 opencode 的根
+# ${PROJECT_DIR} 在 scenario_lifecycle._build_placeholder_ctx 中解析为
+# work/tenants/tenant-A/projects/project-1
+# ============================================================
+workspace:
+  strategy: project_relative
+  workspace_dirs:
+    - ${PROJECT_DIR}
+  readonly_dirs:
+    - ${WORK_SHARED}/docs
+  deny_dirs:
+    - /etc
+    - ~/.ssh
+    - ~/.aws
+    - ~/.config/gcloud
+    - ${HOME}
+  deny_path_patterns:
+    - "**/.env"
+    - "**/.env.*"
+    - "**/id_rsa"
+    - "**/id_ed25519"
+    - "**/*.pem"
+    - "**/*.key"
+    - "**/secrets/**"
+  launcher:
+    prefer_engine: opencode
+    fallback_engine: claude_code
+    engine_config:
+      opencode:
+        config_template: standard
+
+# ============================================================
+# A2UI (本次示例不用, 关掉)
+# ============================================================
+a2ui:
+  enabled: false
+  protocol: auip
+
+# ============================================================
+# 渐进 SKILL: 一次性全量加载 (skill 内容不长, 4K budget 够用)
+# ============================================================
+progressive_skill:
+  strategy: all
+  budget_tokens: 4000
+  budget_policy: warn
+  initial_skills: []
+  load_on_state: {}
+
+# ============================================================
+# 资源目录
+#   skills 根目录: ${WORK_SHARED}/skills — loader 会校验
+#     <root>/<skill_name>/SKILL.md 必须存在
+#   shared_skills: OpenAgent 自己的 SkillRegistry 加载时也扫这个根
+# ============================================================
+resource_dirs:
+  prompts: ${WORK_SHARED}/prompts/flight_query
+  skills: ${WORK_SHARED}/skills
+  mcp_servers: ${SCENARIO_DIR}/mcp
+  shared_skills: ${WORK_SHARED}/skills
+  tools: ${SCENARIO_DIR}/tools
+  cards: ${SCENARIO_DIR}/cards
+
+# ============================================================
+# 资源
+# ============================================================
+resources:
+  agent: opencode-default          # 对应 launcher.py 注册的 agent 名称
+  model: claude-sonnet-4-5
+  timeout: 120
+
+# ============================================================
+# 业务元数据
+# ============================================================
+metadata:
+  cost_center: T-1001
+  ab_group: control
+  sla_tier: silver
+  dashboard_url: null

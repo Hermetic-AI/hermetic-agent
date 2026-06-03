@@ -51,6 +51,9 @@ class ChatResponse(BaseModel):
     result: Optional[Any] = None
     error: Optional[str] = None
     duration: Optional[float] = None
+    # F2: scenario 命中信息 (来自 ScenarioMiddleware)
+    scenario: Optional[dict] = None
+    routing: Optional[dict] = None
 
 
 # ---------------------------------------------------------------------------

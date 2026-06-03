@@ -34,11 +34,17 @@ async def create_session(
     *,
     base_url: str | None = None,
     session_id: str | None = None,
+    directory: str | None = None,
 ) -> SessionInfo:
     """创建或恢复 OpenCode 会话。
 
     当未提供 ``session_id`` 时调用 opencode serve 的 session.create
     分配新会话；提供时直接复用。
+
+    当提供 ``directory`` 时,opencode serve 会把会话绑定到该工作区
+    (skill 发现、env 报告、文件访问都以此为基准) — 通过 SDK 的
+    ``extra_query={"directory": ...}`` 传递,opencode server 的
+    ``WorkspaceRoutingMiddleware`` 会接管。
 
     Args:
         adapter: 适配器实例。
@@ -47,6 +53,7 @@ async def create_session(
         system_prompt: 可选系统提示词（当前未透传）。
         base_url: opencode serve 的 HTTP 入口。
         session_id: 可选；提供时复用该 ID。
+        directory: 可选；会话绑定的项目工作区路径(由 scenario 提供)。
 
     Returns:
         新建或复用的 SessionInfo。
@@ -59,14 +66,19 @@ async def create_session(
         agent_name=agent_name,
         base_url=base_url,
         has_session_id=bool(session_id),
+        has_directory=bool(directory),
     )
     base_url = base_url or "http://localhost:4096"
     client = get_client(adapter, agent_name, base_url)
     if session_id:
         sid = session_id
     else:
+        # workspace 绑定: 通过 extra_query 把 directory 传给 opencode server
+        create_kwargs: dict[str, Any] = {}
+        if directory:
+            create_kwargs["extra_query"] = {"directory": directory}
         try:
-            result = await client.session.create()
+            result = await client.session.create(**create_kwargs)
             sid = result.id if hasattr(result, "id") else str(result)
         except Exception as e:
             logger.error("opencode_session_create_failed", agent_name=agent_name, error=str(e))
@@ -77,19 +89,29 @@ async def create_session(
         agent_name=agent_name,
         agent_base_url=base_url,
         model=model,
+        directory=directory,
     )
     adapter._sessions[sid] = session_info
     adapter._session_to_agent[sid] = agent_name
 
+    session_meta: dict[str, Any] = {}
+    if directory:
+        session_meta["directory"] = directory
     session = StorageSession(
         session_id=sid,
         title="New Session",
         model=model,
         agent_name=agent_name,
+        metadata=session_meta,
     )
     await adapter._storage.create_session(session)
 
-    logger.info("opencode_session_created", session_id=sid, agent_name=agent_name)
+    logger.info(
+        "opencode_session_created",
+        session_id=sid,
+        agent_name=agent_name,
+        directory=directory,
+    )
     return session_info
 
 

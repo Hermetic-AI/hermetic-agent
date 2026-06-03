@@ -67,6 +67,7 @@ class SessionInfo:
     agent_base_url: str
     model: str | None = None
     created_at: float | None = None
+    directory: str | None = None
 
 
 @dataclass

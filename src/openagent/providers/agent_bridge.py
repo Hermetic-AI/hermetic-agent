@@ -127,20 +127,19 @@ class AgentBridge:
         agent_name: str,
         model: str | None = None,
         system_prompt: str | None = None,
-        session_id: str | None = None,
+        *,
+        directory: str | None = None,
     ) -> SessionInfo:
-        """通过对应适配器创建或恢复会话。
+        """Create session via correct adapter.
 
         Args:
-            agent_name: Agent 名称。
+            agent_name: 目标 Agent 名称。
             model: 可选模型标识。
             system_prompt: 可选系统提示词。
-            session_id: 提供时进入 resume 流程。
-
-        Returns:
-            新建或恢复的 SessionInfo。
+            directory: 会话绑定的项目工作区路径(由 scenario 提供)。
+                opencode adapter 会透传到 server 的 WorkspaceRouting
+                middleware,实现 session 级别的工作区隔离。
         """
-        logger.info("session_create_start", agent_name=agent_name, has_session_id=bool(session_id))
         adapter = self.get_provider(agent_name)
         config = self._agents[agent_name]
         session_info = await adapter.create_session(
@@ -148,10 +147,9 @@ class AgentBridge:
             model=model,
             system_prompt=system_prompt,
             base_url=config.base_url,
-            session_id=session_id,
+            directory=directory,
         )
         self._session_to_agent[session_info.session_id] = agent_name
-        logger.info("session_created", session_id=session_info.session_id, agent_name=agent_name)
         return session_info
 
     def get_agent_for_session(self, session_id: str) -> str | None:

@@ -121,6 +121,20 @@ class Settings(BaseSettings):
         ),
     )
 
+    # Scenario 路由 (P6)
+    scenario_paths: list[str] = Field(
+        default_factory=lambda: ["work/scenarios"],
+        description="Scenario YAML 加载目录列表 (相对 work_root 或绝对路径)",
+    )
+    default_scenario: str = Field(
+        default="_default",
+        description="路由 6 优先级都失败时兜底的 scenario 名",
+    )
+    work_root: str = Field(
+        default="work",
+        description="工作区根目录 (所有 ${WORK_ROOT}/${WORK_SHARED} 占位符的解析基准)",
+    )
+
 
 @lru_cache
 def get_settings() -> Settings:

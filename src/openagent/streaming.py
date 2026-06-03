@@ -13,7 +13,8 @@ OPENCODE_STREAM_END = "__opencode_stream_end__"
 
 
 StreamEventType = Literal[
-    "session", "text", "reasoning", "tool_use", "tool_result", "done", "error"
+    "scenario", "session", "text", "reasoning", "tool_use", "tool_result",
+    "card", "state", "suspend", "resume", "done", "error",
 ]
 
 
@@ -30,6 +31,20 @@ class StreamEvent:
     def to_sse(self) -> str:
         """序列化为 ``data: <json>\\n\\n`` 形式的 SSE 字符串。"""
         return f"data: {json.dumps(asdict(self))}\n\n"
+
+    @classmethod
+    def scenario(
+        cls,
+        name: str,
+        version: str = "",
+        matched_by: str = "default",
+        **kwargs,
+    ) -> "StreamEvent":
+        """Create a scenario event (P6: 路由结果)."""
+        return cls(
+            type="scenario",
+            data={"name": name, "version": version, "matched_by": matched_by, **kwargs},
+        )
 
     @classmethod
     def session(cls, session_id: str, **kwargs) -> "StreamEvent":
@@ -84,6 +99,60 @@ class StreamEvent:
             message: 人类可读的错误描述。
         """
         return cls(type="error", data={"message": message, **kwargs})
+
+    @classmethod
+    def card(
+        cls,
+        card_id: str,
+        card_type: str,
+        card: dict,
+        correlation_id: str = "",
+        **kwargs,
+    ) -> "StreamEvent":
+        """构造 card 事件 (AUIP / A2UI)."""
+        return cls(
+            type="card",
+            data={
+                "card_id": card_id,
+                "card_type": card_type,
+                "card": card,
+                "correlation_id": correlation_id,
+                **kwargs,
+            },
+        )
+
+    @classmethod
+    def state(cls, state: str, **kwargs) -> "StreamEvent":
+        """构造 state 事件 (业务状态切换)."""
+        return cls(type="state", data={"state": state, **kwargs})
+
+    @classmethod
+    def suspend(
+        cls,
+        checkpoint_id: str,
+        card: dict,
+        correlation_id: str,
+        input_schema: dict | None = None,
+        timeout_at: float | None = None,
+        **kwargs,
+    ) -> "StreamEvent":
+        """构造 suspend 事件 (HITL 挂起)."""
+        return cls(
+            type="suspend",
+            data={
+                "checkpoint_id": checkpoint_id,
+                "card": card,
+                "correlation_id": correlation_id,
+                "input_schema": input_schema or {},
+                "timeout_at": timeout_at,
+                **kwargs,
+            },
+        )
+
+    @classmethod
+    def resume(cls, checkpoint_id: str = "", **kwargs) -> "StreamEvent":
+        """构造 resume 事件 (HITL 恢复)."""
+        return cls(type="resume", data={"checkpoint_id": checkpoint_id, **kwargs})
 
 
 def map_opencode_part(part: dict) -> StreamEvent | None:

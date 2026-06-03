@@ -152,6 +152,14 @@ async def startup(app: Sanic, settings: Any) -> None:
     app.ctx.skill_registry = skill_registry
     app.ctx.mcp_registry = mcp_registry
     app.ctx.scheduler = scheduler
+    app.ctx.settings = settings  # P6: 让 controller 能取到 settings
+
+    # P6: 初始化 Scenario 子系统 (registry / router / injector / middleware)
+    from openagent.api.scenario_lifecycle import init_scenarios
+    await init_scenarios(app, settings)
+
+    # F4: 初始化 Turn 子系统 (HITL 挂起 / 恢复 / 事件持久化)
+    _init_turn_subsystem(app, settings)
 
     logger.info(
         "application_ready",
@@ -181,3 +189,53 @@ async def shutdown(app: Sanic) -> None:
         except Exception as e:
             logger.error("mcp_registry_close_failed", error=str(e))
     logger.info("application_shutdown_completed")
+
+
+# ---------------------------------------------------------------------------
+# F4: Turn subsystem (HITL)
+# ---------------------------------------------------------------------------
+
+
+def _init_turn_subsystem(app: Sanic, settings: Any) -> None:
+    """挂 InMemoryTurnStore + SuspendableScheduler 工厂.
+
+    每个 scenario 独立一个 manifest (P5 简化版: 全部用 default manifest).
+    """
+    from openagent.core.suspendable_scheduler import SuspendableScheduler
+    from openagent.core.turn_store import InMemoryTurnStore
+    from openagent.skill_runtime.manifest import SkillManifest, StateSpec
+
+    store = InMemoryTurnStore()
+    app.ctx.turn_store = store
+    logger.info("turn_store_ready", backend="in_memory")
+
+    # F4: 默认 manifest - 允许所有状态调所有工具, 让 P5 mock 模式可工作
+    # 真实生产中应从 scenario.a2ui.state_machine 加载
+    def _default_manifest(scenario: Any) -> SkillManifest:
+        manifest = SkillManifest(name=scenario.name, version=scenario.version, initial_state="S01")
+        # 给所有 book-flight 13 状态 + 3 终态配 allowed_tools
+        all_tool_names = [
+            "ask_user",  # 框架级, 任何状态都允许
+            "query_flight_basic", "choose_flight", "choose_cabin",
+            "fill_passenger", "validate_booking_info", "build_order_preview",
+            "submit_order", "confirm_order", "reset_booking_session",
+        ]
+        for state_id in [
+            "S01", "S02", "S03", "S04", "S05", "S06", "S07", "S08", "S09",
+            "S10", "S11", "S12", "S13", "F1", "F2", "F3",
+        ]:
+            manifest.states[state_id] = StateSpec(
+                description=state_id,
+                allowed_tools=all_tool_names,
+            )
+        return manifest
+
+    def _hitl_factory(scenario: Any) -> SuspendableScheduler:
+        manifest = _default_manifest(scenario)
+        return SuspendableScheduler(
+            turn_store=store,
+            manifest=manifest,
+        )
+
+    app.ctx.hitl_factory = _hitl_factory
+    logger.info("hitl_factory_ready", strategy="default_manifest_all_states_all_tools")
