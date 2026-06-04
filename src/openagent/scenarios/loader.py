@@ -157,20 +157,42 @@ def _validate_resources(cfg: ScenarioConfig) -> None:
 
 
 def _check_workspace(cfg: ScenarioConfig) -> list[str]:
+    """校验 workspace 路径.
+
+    - ``workspace_dirs`` (可写目录): 必须存在 — 缺失直接阻断场景加载.
+    - ``readonly_dirs`` (可读目录): **可选** — 缺失只打 warning, 场景照常加载;
+      目录不存在 agent 读不到东西, 跟场景能不能跑没关系, 不该让整个
+      scenario 被 reject.
+    """
     out: list[str] = []
     for ws in cfg.workspace.workspace_dirs:
         if not Path(ws).exists():
             out.append(f"workspace_dir not found: {ws}")
     for ro in cfg.workspace.readonly_dirs:
         if ro and not Path(ro).exists():
-            out.append(f"readonly_dir not found: {ro}")
+            logger.warning(
+                "scenario_readonly_dir_missing",
+                scenario=cfg.name,
+                readonly_dir=ro,
+            )
     return out
 
 
 def _check_a2ui(cfg: ScenarioConfig) -> list[str]:
+    """校验 a2ui 路径.
+
+    - ``cards_dir`` (a2ui 启用时): **可选** — 缺失只打 warning, 场景照常加载;
+      没 card 模板 agent 仍可工作, 只是失去 a2ui 渲染能力.
+    - ``state_machine`` (a2ui + hitl): **必须** — 状态机是 hitl 编排的核心,
+      缺失整个场景就废了.
+    """
     out: list[str] = []
     if cfg.a2ui.enabled and cfg.a2ui.cards_dir and not Path(cfg.a2ui.cards_dir).exists():
-        out.append(f"a2ui.cards_dir not found: {cfg.a2ui.cards_dir}")
+        logger.warning(
+            "scenario_a2ui_cards_dir_missing",
+            scenario=cfg.name,
+            cards_dir=cfg.a2ui.cards_dir,
+        )
     if (
         cfg.execution.orchestration == "hitl"
         and cfg.a2ui.state_machine

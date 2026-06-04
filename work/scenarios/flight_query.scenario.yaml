@@ -38,8 +38,11 @@ execution:
     - 编造航班号、价格、政策
     - 在用户没确认前执行任何写操作
     - 调用白名单以外的工具
-  skills: [flight-query]            # 关键: 把 OpenAgent 注册的 skill 名写在这
-  tools: [query_flight_basic, get_weather]   # 来自 MCP, scenarios/injector.py 过滤后下发
+  skills:
+    - flight-query                    # 核心层(必读):契约 + 协议 + 工具列表 + 速查 + 铁律
+    - flight-query.query_flight_basic # on-demand: query_flight_basic 完整 schema + NL 映射 + 错误码 + 模板
+    - flight-query.iata_icao_codes     # on-demand: IATA/ICAO 速查 + 模糊处理
+  tools: [queryFlightBasic, filterFlightList]   # 来自 MCP, scenarios/injector.py 过滤后下发;名字必须与 flight-query/tools/flight-mcp.json 严格一致
   orchestration: single            # 单步聊天, 不用 HITL / parallel / chain
 
 # ============================================================

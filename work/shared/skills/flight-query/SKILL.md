@@ -1,378 +1,248 @@
 ---
 name: flight-query
-description: 通过 MCP 端点查询国内/国际航班，支持单程、往返、最低价、指定航司、舱等筛选、含行李/餐食、时段、退改、差标合规等条件。把用户的自然语言转成 queryFlightBasic / getWeather 工具调用，并以表格形式输出结果。
-version: 1.0.0
+description: 通过 MCP 端点查询国内航班（单程/往返）。从自然语言解析 OD + 日期 + 筛选条件,调 MCP 的 `queryFlightBasic` / `filterFlightList` 工具,以 Markdown 表格输出。Token 走 header 透传,禁止硬编码。
+version: 1.5.0
 allowed-tools:
   - Bash
 argument-hint: "[出发地] [到达地] [出发日期] [可选: 返程日期] [可选: 筛选条件]"
 ---
 
-# Flight Query Agent Skill
+# Flight Query Agent Skill (flight-query) — Core
 
-通过 MCP 端点 `https://traveldev.feiheair.com/api/mcp` 查询航班，支持舱等、行李、退改、差标、航司、限价、直飞、时段、含餐、排序等丰富筛选条件。
+> **本文档 = 核心层(必读,始终加载)**。深度细节走 on-demand 子 skill(见 §6)。
+>
+> **范围**:仅「机票查询」。选舱/填人/核价/下单走 `flight-booking` skill。
+>
+> **MCP 工具接口源**:本 skill **不**定义工具 schema;权威定义见
+> **`tools/flight-mcp.json`**(skill 自包含,MCP `tools/list` 真实响应,源快照归档在 `docs/api/mcp-response-0604.json`)。
+> 本 skill 仅从 `tools/flight-mcp.json` 挑出与"机票查询"相关的 2 个工具并指明**何时用**。
+> 任何字段冲突时,以 `tools/flight-mcp.json` 为准。
 
-## MCP 端点配置
+---
+
+## 1. Token 透传契约(Header Passthrough → system_prompt 注入)
+
+> **铁律**:本 skill 不硬编码任何 token。Token 由调用方在每次 HTTP 请求时通过 header 传入,OpenAgent **注入到 system_prompt** 让 LLM 自己填入 MCP header。
+
+### 1.1 完整流程
+
+```
+[Client] POST /agent/chat
+  Headers: X-MCP-Token: <token>      (or Authorization: Bearer <token>)
+                │
+                ▼
+[OpenAgent routes.py]  _extract_mcp_token(request) 读 header
+                │
+                ▼
+[bridge → adapter → opencode_chat.py]
+                │
+                ▼
+[把 token 拼到 system_prompt 末尾的 <runtime-context> 块]
+                │
+                ▼
+[opencode serve]  把 system 消息送给 LLM
+                │
+                ▼
+[LLM 看到 system 里有 MCP_TOKEN,自己拼 curl header 调用 MCP]
+                │
+                ▼
+[opencode Bash tool 实际执行 curl] ──→ [MCP: traveldev.feiheair.com/api/mcp]
+                                          Headers: token: <value>
+```
+
+### 1.2 LLM 实际看到的 system 消息(每请求拼一次)
+
+```
+[scenario 的 execution.system_prompt]
+(例如: 你是飞鹤差旅 AI 助手 — 机票查询专责...)
+
+<runtime-context>
+MCP_TOKEN: <user's token, per-request>
+MCP_ENDPOINT: https://traveldev.feiheair.com/api/mcp
+MCP_AUTH_STYLE: header token: <value> | Authorization: Bearer <value>
+MCP_USAGE: 本对话专属 MCP token。调用任何 MCP 工具时,把它放到对应 header
+           (token: ... 或 Authorization: Bearer ...)中。
+MCP_SECURITY: 不要在自然语言回复、表格、日志里回显这个 token。
+</runtime-context>
+```
+
+### 1.3 接收格式(MCP 端两种都接受,任选)
+
+| 写入 header | 说明 |
+|---|---|
+| `token: <value>` | MCP 端默认接受 |
+| `Authorization: Bearer <value>` | OAuth 标准形式,亦可 |
+
+### 1.4 LLM 行为约束
+
+- **从 `<runtime-context>` 块取 `MCP_TOKEN`** 填入 curl header,**不**瞎编 token
+- 不在 `tools/call` 参数里放 token 字段
+- 不在自然语言回复、表格、日志里回显 token
+- `401` 最多重试 1 次 — token 失效就告知"权限配置异常,联系管理员"
+- 不接受 caller 传 `token=...` query 参数
+
+---
+
+## 2. MCP 端点 & 协议
 
 | 项 | 值 |
-| --- | --- |
+|---|---|
 | Endpoint | `https://traveldev.feiheair.com/api/mcp` |
-| Token | `y6lnsna8rpkt856fe2k1` |
-| Protocol | JSON-RPC over HTTP (MCP) |
+| Protocol | JSON-RPC 2.0 over HTTP |
 | Accept | `application/json,text/event-stream` |
-
-## 可用工具
-
-| 工具名 | 用途 |
-| --- | --- |
-| `queryFlightBasic` | 主工具：查航班，支持舱等/行李/退改/差标/航司/限价/直飞/时段/含餐/排序 |
-
-调用前可先用 `tools/list` 确认工具清单（见下方"健康检查"）。
+| Content-Type | `application/json` (UTF-8) |
+| Auth header | 见 §1 |
+| 响应结构 | `.result.content[0].text` 是 JSON 字符串,需二次 `JSON.parse` |
 
 ---
 
-## 健康检查（首次使用）
+## 3. 工具清单(本 skill 用 2 个)
 
-```bash
-curl --location --request POST 'https://traveldev.feiheair.com/api/mcp' \
-  --header 'token: r6lns3cc9gikkpmg6mbq' \
-  --header 'Accept: application/json,text/event-stream' \
-  --header 'Content-Type: application/json' \
-  --data-raw '{
-      "jsonrpc": "2.0",
-      "id": 1,
-      "method": "tools/list",
-      "params": {}
-  }'
+> **权威源**:`tools/flight-mcp.json`(skill 自包含,服务端 `tools/list` 真实响应)。
+> **本节是"什么时候用哪个"的使用指南**,不重复 schema。
+
+| MCP 工具名 | 何时用 | 详见 |
+|---|---|---|
+| `queryFlightBasic` | **首调** — 调 TMS 查航班。支持舱等/行李/退改/差标/航司/限价/直飞/时段/含餐/排序。**改 OD/日期/舱等/航司/限价/直飞/排序 → 重调** | 子 skill `flight-query:query_flight_basic` |
+| `filterFlightList` | **次调** — 在已加载的列表上**内存筛选**,不调 TMS。**只**用于 TMS 不支持的维度(`planeSize` / `maxDuration`)或用户加追加简单条件。**改 OD/日期/舱等 → 不要用本工具,改用 `queryFlightBasic`** | `tools/flight-mcp.json` 直接查 |
+| 其他 13 个 | `getWeather` / `buildOrderPreview` / `fillPassenger` / `getDefaultContact` / `getOrderDetail` / `getTripApplicationDetail` / `bindCostCenter` / `listCostCenters` / `listTripApplications` / `recordPolicyUserDecision` / `resetBookingSession` / `validateBookingInfo` / `read_skill` | **本 skill 不接** — 归 `flight-booking` skill 或不归 |
+
+### 3.1 路由决策(LLM 行为)
+
+```
+用户: "明天北京到上海最便宜的,只要东航,含行李,上午走"
+   │
+   ▼ 解析
+   OD: 北京→上海  日期: <tomorrow>  舱等: 经济  航司: 东航  行李: 是  时段: MORNING
+   cheapest: true
+   │
+   ▼ 这些条件都是 queryFlightBasic 一次能查的 → 走 queryFlightBasic
+   │
+   {"name":"queryFlightBasic","arguments":{...一次性传完...}}
+   │
+   ▼ 返回 flightList
+   │
+   ▼ 用户追加: "只要大飞机的"  → planeSize 不在 queryFlightBasic 里
+   │
+   ▼ 走 filterFlightList (内存筛选, 不调 TMS)
 ```
 
-若返回 `result.tools` 包含 `queryFlightBasic`，则端点正常。
+```
+用户: "明天下午北京到上海,看看有哪些航班,再帮我挑个飞行时长最短的"
+   │
+   ▼ "看看有哪些" → 不传 cheapest / cabinClass → 走 queryFlightBasic 拿全量
+   │
+   ▼ "飞行时长最短" → TMS 没有这维度 → 用户说了再调 filterFlightList(maxDuration: ...)
+   │
+   {"name":"filterFlightList","arguments":{"sessionId":"...","sortBy":"DURATION"}}
+```
+
+> **关键铁律**:用户要换 OD/日期/舱等/航司/限价/直飞/排序 → **必须重调** `queryFlightBasic`,**不**在 `filterFlightList` 上做客户端过滤。
+> `filterFlightList` 仅用于 TMS 不支持的维度(`planeSize` / `maxDuration`)。
 
 ---
 
-## 通用调用模板
+## 4. 城市/机场代码(翻译辅助)
 
-```bash
-curl --silent --location --request POST 'https://traveldev.feiheair.com/api/mcp' \
-  --header 'token: r6lns3cc9gikkpmg6mbq' \
-  --header 'Accept: application/json,text/event-stream' \
-  --header 'Content-Type: application/json' \
-  --data-raw '{
-      "jsonrpc": "2.0",
-      "id": 1,
-      "method": "tools/call",
-      "params": {
-          "name": "queryFlightBasic",
-          "arguments": { /* 见下方各场景的参数 */ }
-      }
-  }'
+> MCP `queryFlightBasic` 的 `departureCity` / `arrivalCity` **接受用户原话**(中文城市名优先,详见 `mcp-response-0604.json` 的 `inputSchema.properties.departureCity.description`)。本节是"用户说 IATA/ICAO/机场名 → LLM 翻成用户原话"的翻译辅助。
+
+### 4.1 翻译流程(LLM 行为)
+
+```
+用户: "BJS 到 SHA 明天的航班"
+          │
+          ▼ LLM 查 §4.2 表(或加载子 skill flight-query:iata_icao_codes)
+          │
+   BJS → 北京     SHA → 上海
+          │
+          ▼ 拼 JSON-RPC
+          │
+   {"name":"queryFlightBasic","arguments":{"departureCity":"北京","arrivalCity":"上海",...}}
 ```
 
-返回值在 `.result.content[0].text`（MCP 标准），通常是 JSON 字符串，需要再 `JSON.parse` 一次拿到航班列表。
+> 用户**直接说中文**(北京、上海)→ 跳过翻译,直接用。
+> 用户**说 IATA/ICAO** → 查 §4.2 翻成中文再发。
+> 用户**说机场名**(首都/大兴/虹桥/浦东)→ 查 §4.2 翻成对应城市名(可备注"按 XX 机场")。
+
+### 4.2 IATA/ICAO → 中文城市名(常用)
+
+| 用户原话 | 发给 MCP 的原话 | 备注 |
+|---|---|---|
+| 北京 / BJS / PEK / PKX | `北京` | 城市码 BJS 含首都+大兴;LLM 不强制区分机场 |
+| 上海 / SHA / PVG | `上海` | 城市码 SHA 含虹桥+浦东 |
+| 深圳 / SZX | `深圳` |  |
+| 广州 / CAN | `广州` |  |
+| 香港 / HKG | `香港` |  |
+| 澳门 / MFM | `澳门` |  |
+| 成都 / CTU | `成都` |  |
+| 杭州 / HGH | `杭州` |  |
+| 台北 / TPE | `台北` |  |
+| 东京 / HND / NRT | `东京` | 羽田/成田合并 |
+| 新加坡 / SIN | `新加坡` |  |
+| (其他) | **查 `flight-query:iata_icao_codes` 子 skill** | 表里没有 → 主动问用户 |
+
+> 完整版含 ICAO 4 字码 + 模糊处理 → **`flight-query:iata_icao_codes`**(on-demand,见 §6)。
 
 ---
 
-## 自然语言 → 参数映射
+## 5. 错误处理(精简)
 
-把用户原话一次性映射成 `queryFlightBasic.arguments` 的字段。下表是常用映射，遇到模糊表述走"歧义处理"小节。
+| 现象 | 处置 |
+|---|---|
+| `401 / token invalid` | "权限配置异常,联系管理员";最多重试 1 次 |
+| `errorCode≠0`(业务级) | 按 `errorMsg` 提示用户改条件 |
+| 返回空列表 | 提示放宽(换日期/换舱等/换 OD) |
+| HTTP 400 `Invalid message format`(Spring `WebMvcStatelessServerTransport#handlePost` stack) | **服务端 MCP bug**(已知),token 认证已通过但 JSON-RPC body 解析失败。告知"机票查询服务暂时不可用",**不**重试,**不**编造航班 |
+| HTTP 5xx `JSON parse error: Cannot deserialize...` | 同上(同一 bug 的另一 stack 路径) |
+| `-32099 访问频率过高` | 退避 ~1s 重试 1 次;仍失败告知"系统繁忙" |
+| 城市识别错误 | 主动澄清(同 §4 速查里没说清的) |
 
-| 用户原话 | 字段 | 值 / 取值范围 |
-| --- | --- | --- |
-| 北京、上海、深圳、成都 | `departureCity` / `arrivalCity` | 用**用户原话**，不要翻译/补全 |
-| 明天、后天、下周三、6月5号 | → 转成 `yyyy-MM-dd` | 见"日期换算"小节 |
-| 明天下午、晚上 8 点走 | `departureDayPart` | `MORNING` / `AFTERNOON` / `EVENING` |
-| 最便宜、挑个最低的 | `cheapest: true` | 仅返回 1 条 |
-| 看看有哪些 | `cheapest: false`（或不传） | 返回多条 |
-| 经济舱、公务舱、头等舱 | `cabinClass` | `ECONOMY` / `BUSINESS` / `FIRST`，全价经济用 `FULL_ECONOMY` |
-| 含行李、要托运 | `baggage: true` | |
-| 含餐、要饭吃 | `requireMeal: true` | |
-| 只要南航 / 国航 | `airlineName: "南航"` | 中文或二字码 |
-| 不要春秋 9C | `excludeAirlineKeywords: "春秋,中联航"` | 逗号分隔 |
-| 直飞、不经停 | `nonStop: true` | |
-| 不超过 800 块 | `maxPrice: 800` | 整数（元） |
-| 能退票、能改签 | `refundable: true` | 含免费退改 |
-| 免费退改 | `freeRefund: true` | 仅退改费=0 |
-| 差旅合规、出差标准 | `policyCompliant: true` | |
-| 早上 6 点到中午的 | `depTimeStart: "06:00"`, `depTimeEnd: "12:00"` | HH:mm |
-| 上午 / 下午 / 晚上 | `departureDayPart` | 与 `depTime*` 二选一，**优先用** `departureDayPart` |
-| 价格升序、最便宜优先 | `sortBy: "PRICE"` | 默认就是 PRICE |
-| 飞行时间最短 | `sortBy: "DURATION"` | |
-| 退改最灵活 | `sortBy: "REFUND_FLEXIBILITY"` | |
-| 飞过去再飞回来、往返 | 同时传 `returnDate` + `roundTripListMode` | `RECOMMENDED`=去程回程打包推荐，`FREE`=自由组合 |
-
-### 日期换算规则
-
-- 用户说相对日期（明天 / 后天 / 大后天 / 下周X）→ **用当前日期** 转成绝对日期，格式 `yyyy-MM-dd`，月份和日期**必须补零**（如 `2026-06-03`，不要 `2026-6-3`）。
-- 用户说"明天下午"这类同时含日期+时段 → 日期进 `departureDate`，时段进 `departureDayPart`。
-- 不知道具体日期 → 主动向用户确认，**禁止自猜**。
-- 往返时 `returnDate` 必传，**禁止自猜**回程日期。
-
-### 歧义处理
-
-| 场景 | 处理 |
-| --- | --- |
-| "明天北京到上海" → 没指定舱等 | 默认 `ECONOMY`，不传 `cabinClass` |
-| "去上海出差，差标以内" | `policyCompliant: true` |
-| "我下周要飞深圳，时间灵活，挑个最便宜的" | `cheapest: true` |
-| "上海去北京，再从北京回上海" | 单次调用，分别传两次；如要打包推荐传 `roundTripListMode: "RECOMMENDED"` + `returnDate` |
-| "南航的只要下午的" | 同时设 `airlineName: "南航"` + `departureDayPart: "AFTERNOON"` |
-| 城市重名（北京/东京都有"东京"问题） | 向用户澄清具体是哪个城市或机场 |
-
-**模糊偏好（"哪个最划算""帮我推荐""挑一个"）**：先调工具拿到完整列表，**不要传** `cheapest: true`，拿到结果后由 LLM 自行筛选/排序/解释。
+**已知服务端问题(2026-06-04)**:MCP 对**部分** `tools/list` 请求返 HTTP 400 + `Invalid message format`(Spring 反序列化失败)。`tools/call` 路由正常(返回 `-32602 Unknown tool` 时是名字错,不是服务端 bug)。
 
 ---
 
-## 典型场景示例
+## 6. 子 skill(按需加载)
 
-### 1. 单程 · 最低价
+> LLM: 用户问具体细节时,**主动用 `skill` 工具加载**对应子 skill;不要把全部内容塞上下文。
 
-用户："明天北京到上海最便宜的"
-
-```json
-{
-  "departureCity": "北京",
-  "arrivalCity": "上海",
-  "departureDate": "2026-06-03",
-  "cheapest": true
-}
-```
-
-### 2. 单程 · 看全量
-
-用户："帮我查一下 6 月 5 号深圳到成都的航班"
-
-```json
-{
-  "departureCity": "深圳",
-  "arrivalCity": "成都",
-  "departureDate": "2026-06-05"
-}
-```
-
-### 3. 往返 · 打包推荐
-
-用户："下周一去上海出差，13 号回"
-
-```json
-{
-  "departureCity": "北京",
-  "arrivalCity": "上海",
-  "departureDate": "2026-06-08",
-  "returnDate": "2026-06-13",
-  "roundTripListMode": "RECOMMENDED"
-}
-```
-
-### 4. 往返 · 自由组合（分段订）
-
-用户："先帮我看去程的"
-
-```json
-{
-  "departureCity": "北京",
-  "arrivalCity": "上海",
-  "departureDate": "2026-06-08",
-  "returnDate": "2026-06-13",
-  "roundTripListMode": "FREE"
-}
-```
-
-### 5. 含行李 + 下午 + 直飞
-
-用户："明天下午北京到上海，要直飞还要托运行李"
-
-```json
-{
-  "departureCity": "北京",
-  "arrivalCity": "上海",
-  "departureDate": "2026-06-03",
-  "departureDayPart": "AFTERNOON",
-  "nonStop": true,
-  "baggage": true
-}
-```
-
-### 6. 限价
-
-用户："6 月 10 号上海到深圳，不要超过 600 块的"
-
-```json
-{
-  "departureCity": "上海",
-  "arrivalCity": "深圳",
-  "departureDate": "2026-06-10",
-  "maxPrice": 600
-}
-```
-
-### 7. 指定航司 + 含餐
-
-用户："后天广州到北京，南航的，要含正餐的"
-
-```json
-{
-  "departureCity": "广州",
-  "arrivalCity": "北京",
-  "departureDate": "2026-06-04",
-  "airlineName": "南航",
-  "requireMeal": true
-}
-```
-
-### 8. 排除廉航
-
-用户："明天北京到上海，别给我春秋 9C 这种"
-
-```json
-{
-  "departureCity": "北京",
-  "arrivalCity": "上海",
-  "departureDate": "2026-06-03",
-  "excludeAirlineKeywords": "春秋,9C,中联航"
-}
-```
-
-### 9. 免费退改
-
-用户："找个能免费退改的"
-
-```json
-{
-  "departureCity": "北京",
-  "arrivalCity": "上海",
-  "departureDate": "2026-06-03",
-  "freeRefund": true
-}
-```
-
-### 10. 差标合规 + 全价经济
-
-用户："出差到上海，要差标合规的全价经济舱"
-
-```json
-{
-  "departureCity": "北京",
-  "arrivalCity": "上海",
-  "departureDate": "2026-06-03",
-  "cabinClass": "FULL_ECONOMY",
-  "policyCompliant": true
-}
-```
-
-### 11. 时间最短
-
-用户："哪个最快到"
-
-```json
-{
-  "departureCity": "北京",
-  "arrivalCity": "上海",
-  "departureDate": "2026-06-03",
-  "sortBy": "DURATION"
-}
-```
-
-### 12. 改出发地/到达地/日期/舱等 → 必须重调
-
-> **铁律**：任何时候改了 `departureCity` / `arrivalCity` / `departureDate` / `cabinClass`，**必须重新调用** `queryFlightBasic`，**不要**在前次结果上做客户端过滤。
+| 子 skill 名 | 加载时机 | 内容 |
+|---|---|---|
+| `flight-query:query_flight_basic` | 准备调 `queryFlightBasic` / 需查完整参数 schema / 出参怎么解析 / NL→param 映射 | 完整输入 schema(从 `mcp-response-0604.json` 摘)+ 输出字段说明 + 5 个 use case + 输出模板 |
+| `flight-query:iata_icao_codes` | 遇到 IATA/ICAO 码要翻译 / 未识别城市 / 用户问"XX 城市的代码" | 30+ 城市 IATA+ICAO 对照 + 模糊处理 + 临时表查询指引 |
+| `flight-query:flight_booking`(待建) | 用户要"选航班/下单" | 见 `flight-booking` skill,本 skill **不**加载 |
 
 ---
 
-## 改用 `getWeather` 的场景
+## 7. 铁律
 
-行程前用户问"明天那边天气怎么样" / "会不会影响航班" → 用 `getWeather` 查目的地的天气，作为是否提醒用户提前出门 / 改签的依据。
-
-```bash
-curl --silent --location --request POST 'https://traveldev.feiheair.com/api/mcp' \
-  --header 'token: r6lns3cc9gikkpmg6mbq' \
-  --header 'Accept: application/json,text/event-stream' \
-  --header 'Content-Type: application/json' \
-  --data-raw '{
-      "jsonrpc": "2.0",
-      "id": 1,
-      "method": "tools/call",
-      "params": {
-          "name": "getWeather",
-          "arguments": { "city": "上海" }
-      }
-  }'
-```
+1. **改 OD/日期/舱等/航司/限价/直飞/排序必须重调 `queryFlightBasic`**,**不**在 `filterFlightList` 上做客户端过滤
+2. **`filterFlightList` 仅用于 TMS 不支持的维度**(`planeSize` / `maxDuration`)或用户加追加简单条件
+3. **绝对不要自猜日期**(包括回程)— `returnDate` 用户没说就追问
+4. **相对日期**用当前日期转 `yyyy-MM-dd`,月份日期**必须补零**(`2026-06-04`,**不**是 `2026-6-4`)
+5. **模糊偏好**("挑一个/最划算")老实说"本接口返回的是全量 / 含 X 维度最低价;以下是筛选结果",**不**瞎编
+6. **城市用用户原话**(中文优先);IATA/ICAO/机场名先翻译(见 §4)
+7. **token 不外泄**(§1)
+8. **调工具失败 → 不编造**,老实说"查询失败"
+9. **本 skill 仅查票** → 选航班/选舱/填人/核价/下单走 `flight-booking` skill
 
 ---
 
-## 输出格式
+## 8. 一句话示例(只给 `arguments` 字段;实际要包 JSON-RPC envelope)
 
-拿到原始返回后，**必须**整理成对用户友好的表格（Markdown）。建议结构：
+- "明天北京到上海" → `{"departureCity":"北京","arrivalCity":"上海","departureDate":"<tomorrow>"}`
+- "下周二上海到深圳经济舱" → `{"departureCity":"上海","arrivalCity":"深圳","departureDate":"<next-tue>","cabinClass":"ECONOMY"}`
+- "6 月 10 日去北京,13 号回,只看东航" → 加 `"returnDate":"2026-06-13","airlineName":"东航"`
+- "最便宜的、含行李的、上午走" → `"cheapest":true,"baggage":true,"departureDayPart":"MORNING"`
+- "再加个只要大飞机的" → 切 `filterFlightList`:`{"sessionId":"...","planeSize":"大"}`
 
-```
-✈️ 北京 → 上海 · 2026-06-03（周二）· 经济舱
-
-| # | 航班 | 起飞-到达 | 机型 | 价格 | 行李 | 餐 | 退改 | 备注 |
-|---|------|----------|------|------|------|----|------|------|
-| 1 | CA1856 国航 | 07:30-09:45 | 738 | ¥680 | ✅含20kg | ✅正餐 | 退¥120/改¥80 | 直飞 |
-| 2 | MU5102 东航 | 10:00-12:20 | 320 | ¥720 | ✅含20kg | ✅正餐 | 退¥150/改¥100 | 直飞 |
-| 3 | 9C8864 春秋 | 14:00-16:15 | 320 | ¥399 | ❌手提7kg | ❌ | 不可退改 | 经停... |
-
-推荐 1：CA1856 — 时间+价格+餐食+退改综合最优。
-```
-
-要点：
-
-- 至少展示：航班号、航司、起降时间、价格、行李、餐食、退改、直飞标识
-- 如果用户问"最便宜" → 高亮最低价那一行
-- 如果用户问"最划算" → 主动用 LLM 分析（综合价格/时间/退改），不强求工具过滤
-- 往返 → 分"去程"和"回程"两段表格
-- 0 条结果 → 提示放宽条件（如"未找到直飞航班，可考虑放开关直飞"）
+> **`searchType` 选填**。完整 enum 列表见 `tools/flight-mcp.json` 的 `inputSchema.properties.searchType.enum`(15 个中文值)。建议优先填好 `cheapest` / `cabinClass` / `baggage` 等驱动参数,`searchType` 留空让服务端推导。
 
 ---
 
-## 工作流（标准流程）
+## 9. 版本与变更记录
 
-1. **解析用户需求**：提取出发地、到达地、日期、舱等、所有筛选条件。日期相对词先转绝对日期。
-2. **缺关键信息就追问**：缺出发地/到达地/日期 → 问；相对日期不确定 → 问；往返缺回程 → 问。
-3. **构造 `queryFlightBasic` 参数**：按"自然语言→参数映射"填字段。
-4. **curl 调用 MCP**（带 token、Accept、Content-Type）。
-5. **解析响应**：`.result.content[0].text` 二次 `JSON.parse` 得到航班列表。
-6. **渲染表格**：按"输出格式"展示。如果用户说"挑一个/推荐" → 主动 LLM 分析。
-7. **后续动作**：
-   - 用户选了某航班 → 提示下一步（出票/改签查询，不在当前工具范围）
-   - 用户要查天气 → 调 `getWeather`
-   - 用户要改条件 → 重调 `queryFlightBasic`
-
----
-
-## 错误处理
-
-| 现象 | 原因 | 处置 |
-| --- | --- | --- |
-| `401 / token invalid` 或返回 `SC_2002`/`SC_2003` 自定义错误 | token 过期或错误 | 检查 token 是否还是 `r6lns3cc9gikkpmg6mbq`；必要时联系 MCP 维护方换 token |
-| 工具返回 `error` 字段 | 参数错误 / 城市无航班 / 日期非法 | 看 `error` 内容；若是参数问题重读映射表修正；若是无结果，建议用户换日期/航线 |
-| 返回空数组 | 没有任何航班满足条件 | 提示用户放宽筛选（去舱等/去航司/放宽时段/放宽价格） |
-| HTTP 500 `Unexpected error: JSON parse error: Cannot deserialize value of type java.lang.String from Object value` | **服务端 MCP 实现的反序列化 bug**（与请求体格式无关，包括 `tools/list`、`tools/call`、`initialize` 都会触发） | **这是服务端 bug，客户端无解**。告知用户"机票查询服务暂时不可用，请稍后重试或联系服务方"。可在响应中保留入参（出发地/到达地/日期）以便服务恢复后重试。 |
-| 网络超时 | MCP 端点问题 | 重试 1 次；仍失败则告知用户稍后重试 |
-| 城市识别错误 | 同名城市 / 拼写问题 | 让用户确认城市全称或机场 IATA 代码 |
-
-### 已知服务端问题（2026-06 验证）
-
-> `https://traveldev.feiheair.com/api/mcp` 当前对所有 `tools/call` 请求（包括 `tools/list`、`initialize`、`ping`）都会返回 HTTP 500 与上述 Jackson 反序列化异常。**这是 Spring MCP 服务端 `WebMvcStatelessServerTransport#handlePost` 在 `McpSchema.deserializeJsonRpcMessage` 处的 bug**，与调用方的请求体格式（jsonrpc 字段、id 类型、params 嵌套、Accept 头、Content-Type、UTF-8 编码等）均无关——已通过十余种变体测试复现。Skill 内的调用模板严格遵循 MCP 规范，服务端恢复后即可正常使用。
-
----
-
-## 注意事项 / 铁律
-
-1. **改 OD/日期/舱等必须重调工具**，不要在前次结果上客户端过滤。
-2. **绝对不要自猜日期**（包括回程日期），用户没说就问。
-3. **相对日期**（明天/后天）必须用**当前真实日期**换算。
-4. **模糊偏好**（"挑一个"）先查全量再用 LLM 分析，不要 `cheapest: true`。
-5. **不支持的维度**（飞机大小、飞行时长）查完后用 LLM 自行从结果里筛选/说明。
-6. **city 用原话**，不要翻译、不要"补全"成英文/拼音。
-7. **token 不要外泄到日志/截图** 里。
-8. 调工具失败/网络异常 → 不要编造航班数据，老实说"查询失败"。
-
----
-
-## 一句话示例
-
-- "明天北京到上海" → 单程经济舱，不带筛选的全量查询。
-- "下周二上海到深圳下午最便宜的只要南航" → `cheapest: true` + `airlineName: "南航"` + `departureDayPart: "AFTERNOON"`。
-- "6 月 10 号去上海出差，13 号回，要差标合规" → 往返 `RECOMMENDED` + `policyCompliant: true`。
-- "挑个最划算的去上海" → 不传 `cheapest`，拿到全量后 LLM 综合判断。
+| 版本 | 日期 | 变更 |
+|---|---|---|
+| 1.0.0 ~ 1.3.0 | (历史) | 早期版本;§1 Token 透传契约;渐进式加载 |
+| 1.4.0 | 2026-06-03 | 修了"工具名/参数" — 用了 `queryFlightBasic` + `departureCity` 等。当时声称"MCP Inspector 验证过" — **这是错的**,**没有**真实抓包验证。值猜对了(`全量查询` 确实存在),但 searchType 枚举、cabinClass、baggage、refundable 等多个可选参数**漏写**了。撤回。 |
+| **1.5.0** | 2026-06-04 | **本版** — 按用户要求重构:<br>1. 工具 schema **不**在本文件 — 改引用 **`tools/flight-mcp.json`**(skill 自包含,真实 `tools/list` 响应);源快照归档在 `docs/api/mcp-response-0604.json`,SKILL 不再直接引用<br>2. §3 工具清单瘦身,只列"何时用哪个"<br>3. 删掉 v1.4.0 编的"17 个工具,本 skill 用 1 个" — 实际 MCP 是 **15 个**,本 skill 用 **2 个**(`queryFlightBasic` + `filterFlightList`)<br>4. §7 加铁律"改 OD/舱等/航司 → 重调 queryFlightBasic,不调 filterFlightList"<br>5. §8 给出 `searchType` 提示但不列全表(以源 JSON 为准) |

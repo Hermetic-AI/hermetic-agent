@@ -5,14 +5,14 @@
 2. 加载一个临时构造的 keyword scenario
 3. 路由 URL / Header / Body / Keyword / Default 全链路
 4. 注入白名单 + 拒绝记录
-5. 资源缺失 → ScenarioResourceError
+5. 资源校验分层: workspace_dirs / a2ui.state_machine / 技能 SKILL.md 缺失
+   仍抛 ScenarioResourceError; readonly_dirs / a2ui.cards_dir 缺失只打
+   warning, 场景照常加载.
 """
 
 from __future__ import annotations
 
 from pathlib import Path
-
-import pytest
 
 from openagent.scenarios import (
     InMemoryAuditLogger,
@@ -27,7 +27,6 @@ from openagent.scenarios.config import (
     RoutingConfig,
     WorkspaceConfig,
 )
-from openagent.scenarios.errors import ScenarioResourceError
 from openagent.scenarios.loader import load_scenario
 
 WORK_DIR = Path(__file__).resolve().parents[1] / "work"
@@ -167,26 +166,30 @@ def test_smoke_inject_whitelist_intersection():
 
 
 # ----------------------------------------------------------------------
-# 4. 资源缺失 → ScenarioResourceError
+# 4. 资源校验分层 — 软硬分开
 # ----------------------------------------------------------------------
 
 
-def test_smoke_missing_resource_raises(tmp_path: Path):
+def test_smoke_missing_cards_dir_only_warns(tmp_path: Path):
+    """a2ui.cards_dir 缺失 → 软警告, 场景照常加载 (新契约).
+
+    旧契约是抛 ScenarioResourceError, 但这会让 ``work/shared/docs`` 还没
+    落盘的客户连 reload 都返回 0. 现在 cards_dir / readonly_dirs 都算
+    可选能力, 不再阻断加载.
+    """
     yaml_text = f"""
 name: needs_cards
 version: "1.0.0"
 routing: {{priority: 100}}
-execution: {{orchestration: hitl, skills: []}}
+execution: {{orchestration: single, skills: []}}
 workspace: {{workspace_dirs: ["{tmp_path.as_posix()}"]}}
 a2ui: {{enabled: true, cards_dir: "{tmp_path.as_posix()}/nonexistent_cards"}}
 progressive_skill: {{strategy: none}}
 """
-    p = tmp_path / "bad.scenario.yaml"
+    p = tmp_path / "ok.scenario.yaml"
     p.write_text(yaml_text, encoding="utf-8")
-    with pytest.raises(ScenarioResourceError) as ei:
-        load_scenario(p, {})
-    assert ei.value.missing
-    assert any("nonexistent_cards" in m for m in ei.value.missing)
+    cfg = load_scenario(p, {})  # 不抛错
+    assert cfg.name == "needs_cards"
 
 
 # ----------------------------------------------------------------------
