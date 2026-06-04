@@ -25,6 +25,10 @@ from openagent.providers.base import (
     SessionInfo,
     ToolCall,
 )
+from openagent.providers.llm_payload import (
+    build_opencode_payload,
+    log_opencode_request,
+)
 from openagent.store.base import Message as StorageMessage
 from openagent.streaming import (
     OPENCODE_STREAM_END,
@@ -86,6 +90,58 @@ def _workspace_query(session_info: SessionInfo) -> dict[str, Any]:
     return {}
 
 
+def _build_runtime_context(
+    base_system_prompt: str | None,
+    mcp_token: str | None,
+) -> str | None:
+    """在 scenario 的 system_prompt 末尾追加 ``<runtime-context>`` 块.
+
+    把 per-request 的 MCP token 注入到 LLM 可见的 system 消息里 —— **不**
+    走 opencode 配置或代理(那需要重启 agent 或多一层代理,用户都嫌重)。
+
+    流程:
+      1. 用户发 ``POST /agent/chat`` 带 ``X-MCP-Token: yyyy`` (或 ``Authorization: Bearer yyyy``)
+      2. routes.py 读 header → bridge.chat(mcp_token=...) → adapter → 本函数
+      3. 本函数把 token 拼到 system_prompt 末尾
+      4. opencode serve 把 system 消息送给 LLM
+      5. LLM 在调 MCP (走 Bash + curl) 时,从 system 块取 token 填 header
+      6. opencode 的 Bash tool 实际执行 curl,带 token 打到 MCP 端
+
+    返回 ``None`` 表示"原始 base_system_prompt 也是 None",无 token 时原样返回 base。
+    """
+    if not mcp_token:
+        return base_system_prompt
+    ctx = (
+        "\n\n<runtime-context>\n"
+        "MCP_TOKEN: " + mcp_token + "\n"
+        "MCP_ENDPOINT: https://traveldev.feiheair.com/api/mcp\n"
+        "MCP_AUTH_STYLE: header token: <value> | Authorization: Bearer <value>\n"
+        "MCP_USAGE: 本对话专属 MCP token。调用任何 MCP 工具时,把它放到对应 "
+        "header(token: ... 或 Authorization: Bearer ...)中。\n"
+        "MCP_SECURITY: 不要在自然语言回复、表格、日志里回显这个 token。\n"
+        "</runtime-context>"
+    )
+    if base_system_prompt:
+        return base_system_prompt + ctx
+    return ctx.lstrip("\n")
+
+
+def _log_payload_kwargs(sdk_kwargs: dict[str, Any]) -> dict[str, Any]:
+    """把 SDK 调用的 kwargs(用 ``id=``)翻译成 ``build_opencode_payload`` 用的(用 ``session_id=``)。
+
+    ``opencode_payload_kwargs`` 同时服务两个调用:
+      - ``client.session.chat(**sdk_kwargs)``    — SDK,参数名是 ``id``
+      - ``build_opencode_payload(**sdk_kwargs)`` — 本地 log 辅助,参数名是 ``session_id``
+
+    这两个签名不一致,所以 log 调用前翻译一次。直接 ``**sdk_kwargs`` 会因
+    多余的 ``id=`` 或缺失 ``session_id=`` 抛 ``TypeError``。
+    """
+    out = {k: v for k, v in sdk_kwargs.items() if k != "id"}
+    if "id" in sdk_kwargs:
+        out["session_id"] = sdk_kwargs["id"]
+    return out
+
+
 # ---------------------------------------------------------------------------
 # Chat dispatch
 # ---------------------------------------------------------------------------
@@ -100,6 +156,7 @@ async def blocking_chat(
     system_prompt: str | None = None,
     tools: list[Any] | None = None,
     timeout: float | None = None,
+    mcp_token: str | None = None,
 ) -> ChatResult:
     """阻塞式 chat——调用 SDK 并解析最终响应返回 ChatResult。
 
@@ -115,7 +172,13 @@ async def blocking_chat(
     Returns:
         ChatResult；包含助手回复、工具调用或失败时的错误信息。
     """
-    logger.info("opencode_chat_start", session_id=session_id, message_count=len(messages))
+    logger.info(
+        "opencode_chat_start",
+        session_id=session_id,
+        message_count=len(messages),
+        has_mcp_token=bool(mcp_token),
+        mcp_token_len=len(mcp_token) if mcp_token else 0,
+    )
     session_info = adapter._sessions.get(session_id)
     if not session_info:
         logger.error("opencode_chat_session_not_found", session_id=session_id)
@@ -146,17 +209,21 @@ async def blocking_chat(
     if tools:
         tool_list = adapter._mcp_registry.to_opencode_format([t.name for t in tools])
 
+    opencode_payload_kwargs = dict(
+        id=session_id,  # SDK param 名是 id,不是 session_id (Python kwarg 校验)
+        model_id=model or session_info.model or "default",
+        provider_id="opencode",
+        parts=parts,
+        system=_build_runtime_context(system_prompt, mcp_token),
+        tools=tool_list,
+        timeout=timeout,
+        extra_query=_workspace_query(session_info),
+    )
+
+    log_opencode_request(build_opencode_payload(**_log_payload_kwargs(opencode_payload_kwargs)))
+
     try:
-        result = await client.session.chat(
-            session_id,
-            model_id=model or session_info.model or "default",
-            provider_id="opencode",
-            parts=parts,
-            system=system_prompt,
-            tools=tool_list,
-            timeout=timeout,
-            **_workspace_query(session_info),
-        )
+        result = await client.session.chat(**opencode_payload_kwargs)
     except Exception as e:
         logger.error("opencode_chat_failed", session_id=session_id, error=str(e))
         return ChatResult(
@@ -214,6 +281,7 @@ async def stream_chat(
     system_prompt: str | None = None,
     tools: list[Any] | None = None,
     timeout: float | None = None,
+    mcp_token: str | None = None,
 ) -> AsyncIterator[StreamEvent]:
     """Stream chat progress in real time via the opencode-ai event bus.
 
@@ -252,7 +320,13 @@ async def stream_chat(
     Yields:
         StreamEvent 流。
     """
-    logger.info("opencode_stream_start", session_id=session_id, message_count=len(messages))
+    logger.info(
+        "opencode_stream_start",
+        session_id=session_id,
+        message_count=len(messages),
+        has_mcp_token=bool(mcp_token),
+        mcp_token_len=len(mcp_token) if mcp_token else 0,
+    )
     session_info = adapter._sessions.get(session_id)
     if not session_info:
         logger.error("opencode_stream_session_not_found", session_id=session_id)
@@ -282,6 +356,18 @@ async def stream_chat(
     last_text: str = ""
     accumulated_text: str = ""
 
+    opencode_payload_kwargs = dict(
+        id=session_id,  # SDK param 名是 id,不是 session_id (Python kwarg 校验)
+        model_id=model or session_info.model or "default",
+        provider_id="opencode",
+        parts=parts,
+        system=_build_runtime_context(system_prompt, mcp_token),
+        tools=tool_list,
+        timeout=timeout,
+        extra_query=_workspace_query(session_info),
+    )
+    log_opencode_request(build_opencode_payload(**_log_payload_kwargs(opencode_payload_kwargs)))
+
     try:
         # Open the SSE event subscription BEFORE firing the chat so we
         # do not miss the initial ``message.updated`` events.
@@ -290,16 +376,7 @@ async def stream_chat(
             # Fire the chat as a background task. The opencode serve side
             # will start emitting events on the SSE stream we just opened.
             chat_task = asyncio.create_task(
-                client.session.chat(
-                    session_id,
-                    model_id=model or session_info.model or "default",
-                    provider_id="opencode",
-                    parts=parts,
-                    system=system_prompt,
-                    tools=tool_list,
-                    timeout=timeout,
-                    **_workspace_query(session_info),
-                )
+                client.session.chat(**opencode_payload_kwargs)
             )
 
             async for event in event_stream:

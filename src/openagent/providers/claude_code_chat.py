@@ -18,6 +18,10 @@ from openagent.providers.base import (
     ChatMessage,
     ChatResult,
 )
+from openagent.providers.llm_payload import (
+    build_claude_payload,
+    log_claude_request,
+)
 from openagent.store.base import Message as StorageMessage
 from openagent.streaming import StreamEvent
 
@@ -213,6 +217,12 @@ async def blocking_chat(
     result_message: ResultMessage | None = None
     assistant_content = ""
 
+    log_claude_request(build_claude_payload(
+        session_id=session_id,
+        prompt=last_user_msg,
+        options=opts.model_dump() if hasattr(opts, "model_dump") else None,
+    ))
+
     try:
         # Correct SDK pattern: query() (await) then receive_response() (async for)
         await client.query(prompt=last_user_msg, session_id=session_id)
@@ -308,6 +318,13 @@ async def stream_chat(
             break
 
     yield StreamEvent.session(session_id=session_id, agent_name=agent_name)
+
+    # stream_chat 不持有 opts 变量; 只把与本次 query 直接相关的字段打进 payload.
+    log_claude_request(build_claude_payload(
+        session_id=session_id,
+        prompt=last_user_msg,
+        options={"model": config.default_model, "system_prompt": system_prompt},
+    ))
 
     try:
         # Correct SDK pattern: query() (await) then receive_response() (async for)

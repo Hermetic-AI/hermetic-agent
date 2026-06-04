@@ -108,9 +108,9 @@ class OpenCodeAdapter(AgentProvider):
         self, session_id: str, messages: list[ChatMessage],
         *, model: str | None = None, system_prompt: str | None = None,
         tools: list[Any] | None = None, timeout: float | None = None,
-        stream: bool = False,
+        stream: bool = False, mcp_token: str | None = None,
     ) -> ChatResult | AsyncIterator[StreamEvent]:
-        """按 stream 标志选择阻塞或流式 chat 通道。
+        """按 stream 标志选择阻塞或流式 chat 通道.
 
         Args:
             session_id: 目标会话 ID。
@@ -120,6 +120,8 @@ class OpenCodeAdapter(AgentProvider):
             tools: 可选工具列表。
             timeout: 可选超时秒数。
             stream: True 时返回 StreamEvent 异步迭代器。
+            mcp_token: per-request MCP 认证 token;会被拼到 system_prompt 的
+                <runtime-context> 块里,LLM 在调 MCP 时用。
 
         Returns:
             ChatResult 或 StreamEvent 异步迭代器。
@@ -129,15 +131,16 @@ class OpenCodeAdapter(AgentProvider):
             session_id=session_id,
             stream=stream,
             message_count=len(messages),
+            has_mcp_token=bool(mcp_token),
         )
         if stream:
             return stream_chat(
                 self, session_id, messages, model=model, system_prompt=system_prompt,
-                tools=tools, timeout=timeout,
+                tools=tools, timeout=timeout, mcp_token=mcp_token,
             )
         result = await blocking_chat(
             self, session_id, messages, model=model, system_prompt=system_prompt,
-            tools=tools, timeout=timeout,
+            tools=tools, timeout=timeout, mcp_token=mcp_token,
         )
         logger.info("opencode_chat_completed", session_id=session_id, success=result.success)
         return result

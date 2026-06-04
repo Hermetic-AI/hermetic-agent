@@ -45,6 +45,10 @@ from openagent.skills.registry import Skill, SkillRegistry
 from openagent.mcp.registry import MCPRegistry, MCPTool
 from openagent.streaming import StreamEvent
 
+import structlog
+
+logger = structlog.get_logger(__name__)
+
 router = Blueprint("agent_scheduler", url_prefix="/agent")
 
 
@@ -242,6 +246,30 @@ def _resolve_session_directory(request: Request) -> str | None:
     return dirs[0] if dirs else None
 
 
+def _extract_mcp_token(request: Request) -> str | None:
+    """从请求 header 提取 MCP 认证 token (per-request, 不持久化).
+
+    支持两种 header 写法 (MCP 服务端两种都接受):
+    - ``X-MCP-Token: yyyy``  (OpenAgent 推荐形式, 显式)
+    - ``Authorization: Bearer yyyy``  (标准 OAuth 形式, 兜底)
+
+    返回 ``None`` 时: 当前请求不带 token, 下游走 token-less 路径
+    (MCP 工具调用会 401, SKILL.md 错误处理有兜底话术)。
+    """
+    direct = request.headers.get("X-MCP-Token")
+    if direct:
+        token = direct.strip() or None
+        logger.info("mcp_token_extracted", source="X-MCP-Token", token_present=bool(token), token_len=len(token) if token else 0)
+        return token
+    auth = request.headers.get("Authorization", "")
+    if auth.lower().startswith("bearer "):
+        token = auth[7:].strip() or None
+        logger.info("mcp_token_extracted", source="Authorization-Bearer", token_present=bool(token), token_len=len(token) if token else 0)
+        return token
+    logger.info("mcp_token_extracted", source="none", token_present=False)
+    return None
+
+
 def get_skill_registry(request: Request) -> SkillRegistry:
     """获取 SkillRegistry 实例"""
     return request.app.ctx.skill_registry
@@ -287,6 +315,7 @@ async def chat(request: Request) -> JSONResponse:
                 skills=json_body.skills,
                 tools=json_body.tools,
                 timeout=json_body.timeout,
+                mcp_token=_extract_mcp_token(request),
             )
             session_info = None
             for agent_name in bridge.list_agents():
@@ -327,6 +356,7 @@ async def chat(request: Request) -> JSONResponse:
                 skills=json_body.skills,
                 tools=json_body.tools,
                 timeout=json_body.timeout,
+                mcp_token=_extract_mcp_token(request),
             )
 
         return JSONResponse(
@@ -431,6 +461,7 @@ async def chat_stream(request: Request) -> ResponseStream:
                 skills=json_body.skills,
                 tools=json_body.tools,
                 timeout=json_body.timeout,
+                mcp_token=_extract_mcp_token(request),
                 stream=True,
             )
             async for event in iterator:

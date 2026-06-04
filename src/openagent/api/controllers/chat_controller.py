@@ -30,6 +30,7 @@ from openagent.api.schemas import (
 )
 from openagent.providers.base import ChatMessage
 from openagent.streaming import StreamEvent
+from openagent.api.routes import _extract_mcp_token
 
 logger = structlog.get_logger(__name__)
 
@@ -302,6 +303,7 @@ async def chat(request: Request) -> JSONResponse:
             skills=params["skills"],
             tools=params["tools"],
             timeout=json_body.timeout,
+            mcp_token=_extract_mcp_token(request),
         )
         logger.info(
             "chat_completed",
@@ -476,6 +478,7 @@ async def chat_stream(request: Request) -> ResponseStream:
                 skills=params["skills"],
                 tools=params["tools"],
                 timeout=json_body.timeout,
+                mcp_token=_extract_mcp_token(request),
                 stream=True,
             )
             async for event in iterator:

@@ -174,26 +174,23 @@ class AgentBridge:
         tools: list[str] | None = None,
         timeout: float | None = None,
         stream: bool = False,
+        mcp_token: str | None = None,
     ) -> ChatResult | AsyncIterator[Any]:
-        """将对话请求路由到所属会话对应的适配器。
-
-        在转发前会注入技能到系统提示词，并将工具名解析为 MCPTool 对象。
+        """Route chat to the adapter that owns this session.
 
         Args:
             session_id: 目标会话 ID。
             messages: 完整消息列表。
             model: 可选模型覆盖。
-            system_prompt: 基础系统提示词。
-            skills: 可选技能名称列表，会被拼接到系统提示词。
-            tools: 可选工具名称列表，会被解析为 MCPTool 对象。
+            system_prompt: 可选系统提示词。
+            skills: 可选 skill 名称列表(经白名单过滤后注入)。
+            tools: 可选 MCP 工具名称列表(经白名单过滤后下发)。
             timeout: 可选超时秒数。
-            stream: True 时走流式通道。
-
-        Returns:
-            非流式返回 ChatResult；流式返回 StreamEvent 异步迭代器。
-
-        Raises:
-            ValueError: 会话 ID 未知时。
+            stream: True 时返回 AsyncIterator[StreamEvent]。
+            mcp_token: per-request MCP 认证 token;由 routes._extract_mcp_token 从
+                chat header(X-MCP-Token / Authorization: Bearer)提取,
+                最终注入到 system_prompt 的 <runtime-context> 块让 LLM 自己填入
+                MCP 调用的 header。None = 当前请求无 token。
         """
         agent_name = self._session_to_agent.get(session_id)
         if not agent_name:
@@ -235,6 +232,7 @@ class AgentBridge:
                 tools=mcp_tools,
                 timeout=timeout,
                 stream=stream,
+                mcp_token=mcp_token,
             )
         except Exception as e:
             logger.error("chat_failed", session_id=session_id, agent_name=agent_name, error=str(e))
