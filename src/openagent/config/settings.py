@@ -71,6 +71,13 @@ class Settings(BaseSettings):
         default="json",
         description="日志格式: json 或 text",
     )
+    log_llm_payload: bool = Field(
+        default=True,
+        description=(
+            "是否把每次发往下层 LLM SDK 的完整请求体 (session/model/parts/system/tools) "
+            "以 llm_request 事件写入日志。关闭时 hot path 不会构造任何字符串。"
+        ),
+    )
 
     # CORS 配置
     cors_origins: list[str] = Field(
