@@ -29,8 +29,12 @@ class StreamEvent:
     data: dict = field(default_factory=dict)
 
     def to_sse(self) -> str:
-        """序列化为 ``data: <json>\\n\\n`` 形式的 SSE 字符串。"""
-        return f"data: {json.dumps(asdict(self))}\n\n"
+        """序列化为 ``data: <json>\\n\\n`` 形式的 SSE 字符串。
+
+        使用 ``ensure_ascii=False`` 让中文等内容直接以 UTF-8 字符出现在 SSE 流里，
+        而不是 ``\\u67e5\\u8be2...`` 这种 escape 序列 —— 否则终端和日志都读不懂。
+        """
+        return f"data: {json.dumps(asdict(self), ensure_ascii=False)}\n\n"
 
     @classmethod
     def scenario(

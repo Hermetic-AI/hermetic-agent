@@ -35,7 +35,34 @@ operation = sanic_openapi.operation
 
 
 def _configure_logging(settings: Settings) -> None:
-    """根据 settings 配置 structlog（JSON 或控制台渲染）。"""
+    """根据 settings 配置 structlog (JSON 或控制台渲染)。
+
+    三个连环坑一次性治:
+
+    1. ``LoggerFactory()`` 把日志转给 stdlib logger, 但 stdlib root 默认
+       无 handler → 日志被静默丢弃。这里强制装一个 ``StreamHandler``。
+    2. ``Settings.__init__`` 会在 ``get_settings()`` 时就触发 structlog
+       logger (``storage_backend_registered``), 比本函数跑得还早; 一旦
+       ``cache_logger_on_first_use=True``, 后续 ``structlog.configure``
+       改的处理器全失效 → 先 ``structlog.reset_defaults()`` 抹掉旧 cache。
+    3. stdlib root 默认 level=WARNING, INFO 全被过滤 → 按 settings 设。
+    """
+    import logging
+    import sys
+
+    log_level = getattr(logging, settings.log_level.upper(), logging.INFO)
+
+    root = logging.getLogger()
+    for h in list(root.handlers):
+        root.removeHandler(h)
+    handler = logging.StreamHandler(sys.stdout)
+    handler.setLevel(log_level)
+    handler.setFormatter(logging.Formatter("%(message)s"))
+    root.addHandler(handler)
+    root.setLevel(log_level)
+
+    # structlog 25.x 没有 force= 参数, 用 reset_defaults() 清掉旧 cache.
+    structlog.reset_defaults()
     structlog.configure(
         processors=[
             structlog.stdlib.filter_by_level,
@@ -46,7 +73,9 @@ def _configure_logging(settings: Settings) -> None:
             structlog.processors.StackInfoRenderer(),
             structlog.processors.format_exc_info,
             structlog.processors.UnicodeDecoder(),
-            structlog.processors.JSONRenderer()
+            # ensure_ascii=False 让中文等内容在 JSON 日志里直接以 UTF-8 字符出现，
+            # 而不是 查询... 这种 escape —— 终端、ELK、grep 中文都更友好。
+            structlog.processors.JSONRenderer(ensure_ascii=False)
             if settings.log_format == "json"
             else structlog.dev.ConsoleRenderer(),
         ],

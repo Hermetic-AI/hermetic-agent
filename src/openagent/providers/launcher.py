@@ -170,7 +170,9 @@ class EngineLauncher:
     def _write_temp_config(self, agent_name: str, config: dict) -> str:
         self._config_dir.mkdir(parents=True, exist_ok=True)
         config_path = self._config_dir / f"{agent_name}.json"
-        config_path.write_text(json.dumps(config, indent=2), encoding="utf-8")
+        config_path.write_text(
+            json.dumps(config, indent=2, ensure_ascii=False), encoding="utf-8"
+        )
         return str(config_path)
 
     def stop(self, handle: EngineHandle) -> None:

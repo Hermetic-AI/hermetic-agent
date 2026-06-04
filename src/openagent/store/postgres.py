@@ -167,7 +167,7 @@ class PostgresSessionRepository(SessionRepository):
                 session.agent_name,
                 session.created_at,
                 session.updated_at,
-                json.dumps(session.metadata),
+                json.dumps(session.metadata, ensure_ascii=False),
             )
         logger.debug("session_saved", session_id=session.session_id)
 
@@ -270,8 +270,8 @@ class PostgresSessionRepository(SessionRepository):
                 message.role,
                 message.content,
                 message.created_at,
-                json.dumps([p.to_dict() for p in message.parts]),
-                json.dumps(message.metadata),
+                json.dumps([p.to_dict() for p in message.parts], ensure_ascii=False),
+                json.dumps(message.metadata, ensure_ascii=False),
             )
             await conn.execute(
                 "UPDATE sessions SET updated_at = NOW() WHERE session_id = $1",
