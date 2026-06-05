@@ -43,6 +43,9 @@ class CardType(str, Enum):
     ORDER_CONFIRM = "ORDER_CONFIRM"
     ORDER_SUCCESS = "ORDER_SUCCESS"
     CANNOT_ORDER = "CANNOT_ORDER"
+    # P7: opencode 原生 question / todo 卡片 (透传用)
+    QUESTION = "QUESTION"
+    TODO_LIST = "TODO_LIST"
 
 
 CARD_TYPES_SET: set[str] = {c.value for c in CardType}

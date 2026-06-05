@@ -6,9 +6,11 @@ import type {
   CardView,
   ScenarioView,
   StateView,
+  QuestionView,
+  TodoView,
 } from '../../types';
 import { Button } from '../common';
-import { AUIRenderer } from '../aui';
+import { AUIRenderer, QuestionCard, TodoListCard } from '../aui';
 import './ChatBubble.css';
 
 interface ChatBubbleProps {
@@ -17,9 +19,28 @@ interface ChatBubbleProps {
   onAbort?: () => void;
   /** Called when the user submits an AUIP card form. */
   onCardSubmit?: (userInput: Record<string, unknown>, actionId?: string) => void;
+  /**
+   * P7: 用户在 QuestionCard 上点击"提交" — 父组件负责调
+   * ``questionService.reply(requestId, answers, sessionId)``。
+   * ``userInput`` 包含 ``request_id`` 和 ``session_id`` (由 QuestionCard 填),
+   * 但 ``answers`` 二维数组需要父组件自己从 QuestionCard 内部 state 收集
+   * — 因此这里改用专门的 handler: ``onQuestionReply`` 接收 question 对象 + 答案回调。
+   *
+   * 简化做法: QuestionCard 自己内部管 picked state, 提交时通过此 handler
+   * 把 (requestId, answers, sessionId) 一起送给父组件。
+   */
+  onQuestionReply?: (requestId: string, answers: string[][], sessionId: string) => void;
+  onQuestionReject?: (requestId: string, sessionId: string) => void;
 }
 
-export function ChatBubble({ message, onQuickReply, onAbort, onCardSubmit }: ChatBubbleProps) {
+export function ChatBubble({
+  message,
+  onQuickReply,
+  onAbort,
+  onCardSubmit,
+  onQuestionReply,
+  onQuestionReject,
+}: ChatBubbleProps) {
   const isUser = message.role === 'user';
   const status = message.status ?? 'done';
   const showSpinner = !isUser && (status === 'sending' || status === 'streaming' || status === 'resuming');
@@ -54,6 +75,35 @@ export function ChatBubble({ message, onQuickReply, onAbort, onCardSubmit }: Cha
             onSubmit={onCardSubmit}
             disabled={status === 'suspended' || status === 'aborted' || status === 'error'}
           />
+        )}
+        {/* P7: opencode 原生 question (HITL 独立流程, 不走 turnService) */}
+        {message.role !== 'user' && message.pendingQuestion && (
+          <QuestionBlock
+            question={message.pendingQuestion}
+            onReply={
+              onQuestionReply
+                ? (answers) =>
+                    onQuestionReply(
+                      message.pendingQuestion!.request_id,
+                      answers,
+                      message.pendingQuestion!.session_id,
+                    )
+                : undefined
+            }
+            onReject={
+              onQuestionReject
+                ? () =>
+                    onQuestionReject(
+                      message.pendingQuestion!.request_id,
+                      message.pendingQuestion!.session_id,
+                    )
+                : undefined
+            }
+          />
+        )}
+        {/* P7: opencode 原生 todo 任务清单 (只读展示) */}
+        {message.role !== 'user' && message.todoView && (
+          <TodoBlock view={message.todoView} />
         )}
         {message.status === 'error' && message.errorMessage && (
           <div className="chat-bubble-error" role="alert">
@@ -251,6 +301,65 @@ function CardsBlock({
           onSubmit={onSubmit}
         />
       ))}
+    </div>
+  );
+}
+
+interface QuestionBlockProps {
+  question: QuestionView;
+  /** 收集当前所有 question 的答案, 二维数组, 顺序与 questions[] 对应 */
+  onReply?: (answers: string[][]) => void;
+  onReject?: () => void;
+}
+
+// P7: opencode 原生 question 渲染
+// QuestionCard 内部用受控模式管每个 question 的答案, 提交时
+// 触发 onSubmit(answers, actionId) — ChatBubble 把答案转发给父组件
+// (ChatPage) 走 questionService.reply, 不走 turnService.resume。
+function QuestionBlock({ question, onReply, onReject }: QuestionBlockProps) {
+  if (question.questions.length === 0) return null;
+  const isDone = Boolean(question.submitted) || Boolean(question.rejected);
+  return (
+    <div className="chat-question">
+      <QuestionCard
+        card={{
+          card_id: `q-${question.request_id}`,
+          card_type: 'QUESTION',
+          schema_version: '1.0',
+          title: '需要您确认',
+          body: { questions: question.questions },
+        }}
+        suspended={isDone}
+        submitted={question.submitted ?? false}
+        questions={question.questions}
+        requestId={question.request_id}
+        sessionId={question.session_id}
+        onSubmit={onReply}
+        onReject={onReject}
+      />
+    </div>
+  );
+}
+
+interface TodoBlockProps {
+  view: TodoView;
+}
+
+// P7: opencode 原生 todo 列表 (只读展示)
+function TodoBlock({ view }: TodoBlockProps) {
+  if (view.todos.length === 0) return null;
+  return (
+    <div className="chat-todo">
+      <TodoListCard
+        card={{
+          card_id: `todo-${view.at}`,
+          card_type: 'TODO_LIST',
+          schema_version: '1.0',
+          title: '任务清单',
+          body: { todos: view.todos },
+        }}
+        todos={view.todos}
+      />
     </div>
   );
 }

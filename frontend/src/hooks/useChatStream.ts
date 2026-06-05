@@ -35,6 +35,10 @@ import type {
   StreamEvent,
   ToolEventView,
   ReasoningEventView,
+  QuestionView,
+  QuestionItem,
+  TodoView,
+  TodoItem,
 } from '../types';
 
 export type ChatStatus =
@@ -222,13 +226,20 @@ export function useChatStream(options: UseChatStreamOptions = {}): UseChatStream
 
       const opts = optionsRef.current;
       const reqSessionId = serverSessionId ?? opts.sessionId;
+      // 防御: agent_name 只在值是合法非空字符串时才发. 历史上曾因为
+      // ``Object.keys(agents)`` 错读成 ``["0"]`` 把 "0" 当 agent name 发出去,
+      // 后端 ``KeyError: "Agent '0' not registered"``. 这里再做一道闸门.
+      const safeAgentName =
+        typeof opts.agentName === 'string' && opts.agentName.trim().length > 0
+          ? opts.agentName.trim()
+          : undefined;
 
       chatService
         .sendStream(
           {
             message: trimmed,
             ...(reqSessionId ? { session_id: reqSessionId } : {}),
-            ...(opts.agentName ? { agent_name: opts.agentName } : {}),
+            ...(safeAgentName ? { agent_name: safeAgentName } : {}),
             ...(opts.model ? { model: opts.model } : {}),
             ...(opts.systemPrompt ? { system_prompt: opts.systemPrompt } : {}),
             ...(opts.timeout ? { timeout: opts.timeout } : {}),
@@ -499,6 +510,62 @@ export function useChatStream(options: UseChatStreamOptions = {}): UseChatStream
       case 'done':
         // Final state is set in `handleClose`.
         return;
+      // P7: opencode 原生 question 事件 ----
+      case 'question_asked': {
+        const data = event.data;
+        const requestId = String(data.request_id ?? '');
+        const questions = Array.isArray(data.questions)
+          ? (data.questions as QuestionItem[])
+          : [];
+        if (!requestId || questions.length === 0) {
+          // 防御: 空数据不挂
+          return;
+        }
+        const pending: QuestionView = {
+          request_id: requestId,
+          session_id: String(data.session_id ?? serverSessionId ?? ''),
+          questions,
+          received_at: new Date().toISOString(),
+        };
+        patchAssistant(assistantId, (m) => ({
+          ...m,
+          pendingQuestion: pending,
+        }));
+        return;
+      }
+      case 'question_replied': {
+        const data = event.data;
+        const requestId = String(data.request_id ?? '');
+        // Mark the matching pending question as submitted so the UI dims.
+        patchAssistant(assistantId, (m) =>
+          m.pendingQuestion?.request_id === requestId
+            ? { ...m, pendingQuestion: { ...m.pendingQuestion, submitted: true } }
+            : m,
+        );
+        return;
+      }
+      case 'question_rejected': {
+        const data = event.data;
+        const requestId = String(data.request_id ?? '');
+        patchAssistant(assistantId, (m) =>
+          m.pendingQuestion?.request_id === requestId
+            ? { ...m, pendingQuestion: { ...m.pendingQuestion, rejected: true } }
+            : m,
+        );
+        return;
+      }
+      // P7: opencode 原生 todo 事件 ----
+      case 'todo_updated': {
+        const data = event.data;
+        const todos = Array.isArray(data.todos) ? (data.todos as TodoItem[]) : [];
+        const view: TodoView = {
+          session_id: String(data.session_id ?? serverSessionId ?? ''),
+          todos,
+          at: new Date().toISOString(),
+        };
+        patchAssistant(assistantId, (m) => ({ ...m, todoView: view }));
+        return;
+      }
     }
   }
 

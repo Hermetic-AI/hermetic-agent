@@ -1,7 +1,8 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import type { ChatMessage } from '../../types';
 import { useChatStream, useChatSession, useHealth } from '../../hooks';
 import { MessageList, ChatInput, ChatBubble, WelcomeMessage } from '../chat';
+import { questionService } from '../../services';
 import { config } from '../../config';
 import './ChatPage.css';
 
@@ -101,6 +102,32 @@ export function ChatPage({
     void chat.cancelTurn();
   }, [chat]);
 
+  // P7: opencode 原生 question 提交 — 走 questionService.reply (不走 turnService.resume)
+  const handleQuestionReply = useCallback(
+    async (requestId: string, answers: string[][], sessionId: string) => {
+      try {
+        await questionService.reply(requestId, { session_id: sessionId, answers });
+      } catch (e) {
+        // 错误由 user-facing ChatPage error 兜底, 这里只 log
+        console.error('questionService.reply failed', e);
+        chat.reset();
+      }
+    },
+    [chat],
+  );
+
+  // P7: opencode 原生 question 忽略 — 走 questionService.reject
+  const handleQuestionReject = useCallback(
+    async (requestId: string, sessionId: string) => {
+      try {
+        await questionService.reject(requestId, sessionId);
+      } catch (e) {
+        console.error('questionService.reject failed', e);
+      }
+    },
+    [],
+  );
+
   // Aggregate the most recent state from any assistant message.
   const latestState = chat.messages
     .slice()
@@ -122,11 +149,13 @@ export function ChatPage({
         tokenConfigured={Boolean(config.mcpToken)}
       />
       {chat.messages.length === 0 ? (
-        <WelcomeMessage
-          onQuickReply={handleQuickReply}
-          backendReady={healthState === 'healthy'}
-          scenarioLabel={scenarioLabel}
-        />
+        <div className="chat-page-empty">
+          <WelcomeMessage
+            onQuickReply={handleQuickReply}
+            backendReady={healthState === 'healthy'}
+            scenarioLabel={scenarioLabel}
+          />
+        </div>
       ) : (
         <MessageList
           loading={isBusy}
@@ -144,6 +173,8 @@ export function ChatPage({
               onQuickReply={handleQuickReply}
               onAbort={handleAbort}
               onCardSubmit={handleCardSubmit}
+              onQuestionReply={handleQuestionReply}
+              onQuestionReject={handleQuestionReject}
             />
           ))}
         </MessageList>
@@ -178,8 +209,15 @@ export function ChatPage({
 
 function pickAgentName(ready: ReturnType<typeof useHealth>['ready']): string | undefined {
   if (!ready?.agents) return undefined;
+  // 后端 ``/ready`` 返回 ``agents: string[]`` (list of registered names).
+  // 之前按 dict 处理 (Object.keys) 会得到 ``["0"]`` 然后把 "0" 当 agent_name
+  // 发给后端, 报 ``KeyError: "Agent '0' not registered"`` —— 已修.
+  if (Array.isArray(ready.agents)) {
+    return ready.agents.find((n): n is string => typeof n === 'string' && n.length > 0);
+  }
+  // 兜底: 旧版本若返 dict (eg. {"opencode-core": {...}}) 也兼容
   const names = Object.keys(ready.agents);
-  return names[0];
+  return names.find((n) => n && typeof n === 'string');
 }
 
 function labelFor(info: { agent_name?: string; session_id?: string } | null): string {

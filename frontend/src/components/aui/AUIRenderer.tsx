@@ -8,6 +8,8 @@ import { OrderConfirmCard } from './cards/OrderConfirmCard';
 import { OrderSuccessCard } from './cards/OrderSuccessCard';
 import { CannotOrderCard } from './cards/CannotOrderCard';
 import { ChatFallbackCard } from './cards/ChatFallbackCard';
+import { QuestionCard } from './cards/QuestionCard';
+import { TodoListCard } from './cards/TodoListCard';
 import { CardShell } from './CardShell';
 
 export interface AUIRendererProps {
@@ -104,6 +106,26 @@ export function AUIRenderer({ card, suspended, submitted, onSubmit }: AUIRendere
           suspended={suspended}
           submitted={submitted}
           onSubmit={onSubmit}
+        />
+      );
+    // P7: opencode 原生 question / todo (一般不通过 AUIRenderer 走,
+    // 父组件从 ChatMessage.pendingQuestion/todoView 直接渲染; 这里
+    // 仅兜底 — 例如未来 ask_user 拦截器能直接产生 QUESTION card 时)
+    case 'QUESTION':
+      return (
+        <QuestionCard
+          card={card}
+          suspended={suspended}
+          submitted={submitted}
+          onSubmit={onSubmit}
+        />
+      );
+    case 'TODO_LIST':
+      return (
+        <TodoListCard
+          card={card}
+          suspended={suspended}
+          submitted={submitted}
         />
       );
     default:

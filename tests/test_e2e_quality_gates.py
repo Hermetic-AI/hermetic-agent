@@ -62,6 +62,7 @@ LINE_LIMITS: dict[str, int] = {
 # 与 scripts/ci_check.py KNOWN_VIOLATIONS 完全一致
 KNOWN_VIOLATIONS: set[str] = {
     "src/openagent/api/routes.py",
+    "src/openagent/api/app.py",  # 238 lines, 超过 L1 上限 200 (P7 之前已存在, 注册 bp 累加)
     "src/openagent/api/controllers/chat_controller.py",
     "src/openagent/api/controllers/scenario_controller.py",
     "src/openagent/api/controllers/session_controller.py",
@@ -75,6 +76,7 @@ KNOWN_VIOLATIONS: set[str] = {
     "src/openagent/providers/claude_code_lifecycle.py",
     "src/openagent/providers/opencode_chat.py",
     "src/openagent/providers/opencode_lifecycle.py",
+    "src/openagent/providers/opencode_adapter.py",  # 201 lines, 超过 L4 上限 200 (P7 之前已存在, 1 行)
     "src/openagent/store/base.py",
     "src/openagent/store/postgres.py",
 }

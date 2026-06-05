@@ -56,6 +56,10 @@ export interface ChatMessage {
   turnId?: string;
   /** Correlation id of the most recent pending ask_user card. */
   pendingCorrelationId?: string;
+  /** P7: opencode 原生 question request (来自 ``question_asked`` 事件) */
+  pendingQuestion?: QuestionView;
+  /** P7: opencode 原生 todo 列表 (来自 ``todo_updated`` 事件) */
+  todoView?: TodoView;
 }
 
 export interface ChatAttachment {
@@ -86,7 +90,12 @@ export type StreamEventType =
   | 'suspend'
   | 'resume'
   | 'done'
-  | 'error';
+  | 'error'
+  // P7: opencode 原生 question / todo 事件透传
+  | 'question_asked'
+  | 'question_replied'
+  | 'question_rejected'
+  | 'todo_updated';
 
 export interface ScenarioView {
   name: string;
@@ -140,6 +149,71 @@ export interface StreamEventPayloadMap {
   resume: { checkpoint_id: string; [k: string]: unknown };
   done: { stop_reason?: string; [k: string]: unknown };
   error: { message: string; code?: string; [k: string]: unknown };
+  // P7: opencode 原生 question / todo
+  question_asked: {
+    request_id: string;
+    session_id: string;
+    questions: QuestionItem[];
+    [k: string]: unknown;
+  };
+  question_replied: {
+    session_id: string;
+    request_id: string;
+    answers: string[][];
+    [k: string]: unknown;
+  };
+  question_rejected: {
+    session_id: string;
+    request_id: string;
+    [k: string]: unknown;
+  };
+  todo_updated: {
+    session_id: string;
+    todos: TodoItem[];
+    [k: string]: unknown;
+  };
+}
+
+// --- Question (opencode 原生) ---------------------------------------------
+
+export interface QuestionOption {
+  label: string;
+  description?: string;
+}
+
+export interface QuestionItem {
+  question: string;
+  header: string;
+  options: QuestionOption[];
+  multiple?: boolean;
+  custom?: boolean;
+}
+
+export interface QuestionView {
+  request_id: string;
+  session_id: string;
+  questions: QuestionItem[];
+  received_at: string;
+  /** True after the user submits or rejects this question request. */
+  submitted?: boolean;
+  rejected?: boolean;
+}
+
+// --- Todo (opencode 原生) --------------------------------------------------
+
+export type TodoStatus = 'pending' | 'in_progress' | 'completed' | 'cancelled' | string;
+export type TodoPriority = 'high' | 'medium' | 'low' | string;
+
+export interface TodoItem {
+  content: string;
+  status: TodoStatus;
+  priority: TodoPriority;
+}
+
+export interface TodoView {
+  session_id: string;
+  todos: TodoItem[];
+  at: string;
 }
 
 export interface StreamEvent<T extends StreamEventType = StreamEventType> {
@@ -178,6 +252,9 @@ export type CardType =
   | 'ORDER_CONFIRM'
   | 'ORDER_SUCCESS'
   | 'CANNOT_ORDER'
+  // P7: opencode 原生透传 (一般不通过 AUIP 走, 走 ChatMessage.pendingQuestion/todoView)
+  | 'QUESTION'
+  | 'TODO_LIST'
   | string;
 
 export interface CardAction {
@@ -391,7 +468,11 @@ export interface ReadyResponse {
   skill_registry: boolean;
   mcp_registry: boolean;
   reason?: string;
-  agents?: Record<string, AgentConfigView>;
+  // 后端 readiness.collect_readiness() 返回 ``list(bridge.list_agents().keys())``,
+  // 元素是已注册 Agent 的 name 字符串. 用 ``Record<string, AgentConfigView>`` 在
+  // 前端跑会触发 ``Object.keys(["opencode-core"])`` 返 ``["0"]``, 把 "0" 当 agent
+  // name 发出去; 必须按数组读.
+  agents?: string[];
   skills_count?: number;
   tools_count?: number;
 }

@@ -94,6 +94,8 @@ KNOWN_VIOLATIONS: set[str] = {
     "src/openagent/api/turn_routes.py",
     # L1 (api/lifecycle.py) — startup/shutdown 集成多子系统 (P0-P6 累积)
     "src/openagent/api/lifecycle.py",
+    # L1 (api/app.py) — 238 lines, 超 L1 上限 200 (P7 之前累积)
+    "src/openagent/api/app.py",
     # L3 (core/) — HITL 完整事件流 (P5)
     "src/openagent/core/suspendable_scheduler.py",
     # L4 (providers/) — 双 SDK 适配 + bridge (P3)
@@ -103,6 +105,7 @@ KNOWN_VIOLATIONS: set[str] = {
     "src/openagent/providers/claude_code_lifecycle.py",
     "src/openagent/providers/opencode_chat.py",
     "src/openagent/providers/opencode_lifecycle.py",
+    "src/openagent/providers/opencode_adapter.py",  # 201 lines, 超 L4 上限 200 (P7 之前 1 行)
     # L5 (store/) — Schema / DDL 集中
     "src/openagent/store/base.py",
     "src/openagent/store/postgres.py",

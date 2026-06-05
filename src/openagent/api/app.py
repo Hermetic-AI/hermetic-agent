@@ -18,9 +18,11 @@ from sanic_ext import openapi as sanic_openapi
 
 from openagent.api.controllers.chat_controller import chat_bp
 from openagent.api.controllers.pool_controller import pool_bp
+from openagent.api.controllers.question_controller import question_bp
 from openagent.api.controllers.registry_controller import registry_bp
 from openagent.api.controllers.scenario_controller import scenario_bp
 from openagent.api.controllers.session_controller import session_bp
+from openagent.api.controllers.todo_controller import todo_bp
 from openagent.api.lifecycle import shutdown, startup
 from openagent.api.readiness import build_ready_response
 from openagent.api.turn_routes import turn_bp
@@ -186,6 +188,9 @@ def create_app(settings: Settings | None = None) -> Sanic:
     app.blueprint(pool_bp)
     app.blueprint(turn_bp)  # F3: HITL turn 生命周期端点
     app.blueprint(scenario_bp)
+    # P7: opencode 原生 question / todo 端点 (代理 /question + /session/:id/todo)
+    app.blueprint(question_bp)
+    app.blueprint(todo_bp)
 
     _install_error_handler(app)
 

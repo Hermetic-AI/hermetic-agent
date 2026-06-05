@@ -23,3 +23,8 @@ export { skillsService } from './skills';
 export { toolsService } from './tools';
 export { poolService } from './pool';
 export { systemService } from './system';
+// P7: opencode 原生 question / todo
+export { questionService } from './question';
+export type { QuestionReplyRequest, QuestionListResponse } from './question';
+export { todoService } from './todo';
+export type { TodoListResponse } from './todo';

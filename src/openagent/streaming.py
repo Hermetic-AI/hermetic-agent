@@ -3,18 +3,76 @@
 为 OpenCode SDK 和 Claude Code SDK 提供统一的事件模型
 ``StreamEvent``，以及到 Server-Sent Events 字符串的转换辅助。
 """
-
-from dataclasses import dataclass, field, asdict
-from typing import Literal, Any
 import json
+from dataclasses import asdict, dataclass, field
+from typing import Any, Literal
 
 # Sentinel returned by map_opencode_event to signal stream termination.
 OPENCODE_STREAM_END = "__opencode_stream_end__"
 
 
+# ---------------------------------------------------------------------------
+# Internal helpers (private)
+# ---------------------------------------------------------------------------
+
+
+def _get(obj: Any, key: str, default: Any = None) -> Any:
+    """兼容 dict 和 Pydantic-like 对象的属性读取.
+
+    opencode-ai SDK 的事件 ``properties`` 可能是 Pydantic 模型或纯 dict
+    (取决于 SDK 版本或 mock). 这里统一处理, 避免 ``AttributeError``.
+    """
+    if obj is None:
+        return default
+    if isinstance(obj, dict):
+        return obj.get(key, default)
+    return getattr(obj, key, default)
+
+
+def _to_dict(obj: Any) -> dict:
+    """把 Pydantic-like / dict 对象递归转成 dict, 嵌套 list/dict/model 都会扁平化.
+
+    兼容 3 种输入:
+    - ``None``              -> ``{}``
+    - ``dict``              -> 递归 (嵌套值也转 dict)
+    - Pydantic v2 / 自定义 -> 调 ``.model_dump()`` 然后递归
+    - 其它                 -> 尽力 ``vars()`` 转 dict
+
+    不递归纯字符串/数字/布尔 — 这些原样返回.
+    """
+    if obj is None:
+        return {}
+    if isinstance(obj, dict):
+        return {k: _normalize(v) for k, v in obj.items()}
+    if hasattr(obj, "model_dump"):
+        d = obj.model_dump()
+        return {k: _normalize(v) for k, v in d.items()}
+    if hasattr(obj, "__dict__"):
+        d = {k: v for k, v in vars(obj).items() if not k.startswith("_")}
+        return {k: _normalize(v) for k, v in d.items()}
+    return {}
+
+
+def _normalize(v: Any) -> Any:
+    """递归展开嵌套结构 (dict / list / 模型对象), 标量原样返回."""
+    if v is None or isinstance(v, (str, int, float, bool)):
+        return v
+    if isinstance(v, dict):
+        return _to_dict(v)
+    if isinstance(v, (list, tuple)):
+        return [_normalize(x) for x in v]
+    if hasattr(v, "model_dump"):
+        return _to_dict(v)
+    if hasattr(v, "__dict__") and not isinstance(v, type):
+        return _to_dict(v)
+    return v
+
+
 StreamEventType = Literal[
     "scenario", "session", "text", "reasoning", "tool_use", "tool_result",
     "card", "state", "suspend", "resume", "done", "error",
+    # P7: opencode 原生 question / todo 事件 (透传, 前端按 opencode UI 渲染)
+    "question_asked", "question_replied", "question_rejected", "todo_updated",
 ]
 
 
@@ -158,6 +216,80 @@ class StreamEvent:
         """构造 resume 事件 (HITL 恢复)."""
         return cls(type="resume", data={"checkpoint_id": checkpoint_id, **kwargs})
 
+    @classmethod
+    def question_asked(
+        cls,
+        request_id: str,
+        session_id: str,
+        questions: list[dict],
+        **kwargs,
+    ) -> "StreamEvent":
+        """构造 ``question.asked`` 透传事件.
+
+        来自 opencode ``EventQuestionAsked``: LLM 调 question 工具时触发,
+        携带待回答问题列表(每项含 question/header/options/multiple/custom).
+        前端用 QuestionCard 渲染 (仿 opencode UI).
+        """
+        return cls(
+            type="question_asked",
+            data={
+                "request_id": request_id,
+                "session_id": session_id,
+                "questions": questions,
+                **kwargs,
+            },
+        )
+
+    @classmethod
+    def question_replied(
+        cls,
+        session_id: str,
+        request_id: str,
+        answers: list[list[str]],
+        **kwargs,
+    ) -> "StreamEvent":
+        """构造 ``question.replied`` 透传事件 (用户提交答案)."""
+        return cls(
+            type="question_replied",
+            data={
+                "session_id": session_id,
+                "request_id": request_id,
+                "answers": answers,
+                **kwargs,
+            },
+        )
+
+    @classmethod
+    def question_rejected(
+        cls,
+        session_id: str,
+        request_id: str,
+        **kwargs,
+    ) -> "StreamEvent":
+        """构造 ``question.rejected`` 透传事件 (用户忽略)."""
+        return cls(
+            type="question_rejected",
+            data={"session_id": session_id, "request_id": request_id, **kwargs},
+        )
+
+    @classmethod
+    def todo_updated(
+        cls,
+        session_id: str,
+        todos: list[dict],
+        **kwargs,
+    ) -> "StreamEvent":
+        """构造 ``todo.updated`` 透传事件.
+
+        来自 opencode ``EventTodoUpdated``: LLM 调 todowrite 工具时触发,
+        携带任务清单 (每项含 content/status/priority). 前端用 TodoListCard
+        按 status 分组渲染.
+        """
+        return cls(
+            type="todo_updated",
+            data={"session_id": session_id, "todos": todos, **kwargs},
+        )
+
 
 def map_opencode_part(part: dict) -> StreamEvent | None:
     """将 OpenCode part/delta 字典映射为 ``StreamEvent``。
@@ -236,39 +368,39 @@ def map_opencode_event(
     props = getattr(event, "properties", None)
 
     if etype == "message.updated":
-        info = getattr(props, "info", None) if props is not None else None
+        info = _get(props, "info")
         if info is not None:
-            role = getattr(info, "role", None)
-            msg_session_id = getattr(info, "session_id", None)
+            role = _get(info, "role")
+            msg_session_id = _get(info, "session_id")
             if role == "assistant" and msg_session_id == session_id:
-                msg_id = getattr(info, "id", "")
+                msg_id = _get(info, "id", "")
                 if msg_id:
                     assistant_message_ids.add(msg_id)
         return None
 
     if etype == "message.part.updated":
-        part = getattr(props, "part", None) if props is not None else None
+        part = _get(props, "part")
         if part is None:
             return None
-        if getattr(part, "session_id", None) != session_id:
+        if _get(part, "session_id") != session_id:
             return None
-        if getattr(part, "message_id", None) not in assistant_message_ids:
+        if _get(part, "message_id") not in assistant_message_ids:
             return None
-        ptype = getattr(part, "type", None)
+        ptype = _get(part, "type")
         if ptype == "text":
-            return StreamEvent.text(content=getattr(part, "text", "") or "")
+            return StreamEvent.text(content=_get(part, "text", "") or "")
         if ptype == "tool":
-            tool_name = getattr(part, "tool", "unknown")
-            state = getattr(part, "state", None)
-            status = getattr(state, "status", None) if state is not None else None
+            tool_name = _get(part, "tool", "unknown")
+            state = _get(part, "state")
+            status = _get(state, "status") if state is not None else None
             if status == "running":
-                inp = getattr(state, "input", None) if state is not None else None
+                inp = _get(state, "input") if state is not None else None
                 return StreamEvent.tool_use(
                     tool_name=tool_name,
                     input_data=inp if isinstance(inp, dict) else {},
                 )
             if status == "completed":
-                out = getattr(state, "output", "") if state is not None else ""
+                out = _get(state, "output", "") if state is not None else ""
                 return StreamEvent.tool_result(
                     tool_name=tool_name,
                     output=out,
@@ -276,16 +408,65 @@ def map_opencode_event(
         return None
 
     if etype == "session.idle":
-        if getattr(props, "session_id", None) == session_id:
+        if _get(props, "session_id") == session_id:
             return OPENCODE_STREAM_END
         return None
 
     if etype == "session.error":
-        if getattr(props, "session_id", None) == session_id:
-            err = getattr(props, "error", None) if props is not None else None
-            err_name = getattr(err, "name", "session.error") if err is not None else "session.error"
+        if _get(props, "session_id") == session_id:
+            err = _get(props, "error")
+            err_name = _get(err, "name", "session.error") if err is not None else "session.error"
             return StreamEvent.error(message=str(err_name))
         return None
+
+    # ---- P7: opencode 原生 question / todo 事件透传 ----
+
+    if etype == "question.asked":
+        if _get(props, "sessionID") != session_id:
+            return None
+        questions_raw = _get(props, "questions", []) or []
+        questions = [_to_dict(q) for q in questions_raw]
+        return StreamEvent.question_asked(
+            request_id=str(_get(props, "id", "")),
+            session_id=str(_get(props, "sessionID", "")),
+            questions=questions,
+        )
+
+    if etype == "question.replied":
+        if _get(props, "sessionID") != session_id:
+            return None
+        answers_raw = _get(props, "answers", []) or []
+        answers: list[list[str]] = []
+        for a in answers_raw:
+            if isinstance(a, (list, tuple)):
+                answers.append([str(x) for x in a])
+            elif isinstance(a, str):
+                answers.append([a])
+            else:
+                answers.append([])
+        return StreamEvent.question_replied(
+            session_id=str(_get(props, "sessionID", "")),
+            request_id=str(_get(props, "requestID", "")),
+            answers=answers,
+        )
+
+    if etype == "question.rejected":
+        if _get(props, "sessionID") != session_id:
+            return None
+        return StreamEvent.question_rejected(
+            session_id=str(_get(props, "sessionID", "")),
+            request_id=str(_get(props, "requestID", "")),
+        )
+
+    if etype == "todo.updated":
+        if _get(props, "sessionID") != session_id:
+            return None
+        todos_raw = _get(props, "todos", []) or []
+        todos = [_to_dict(t) for t in todos_raw]
+        return StreamEvent.todo_updated(
+            session_id=str(_get(props, "sessionID", "")),
+            todos=todos,
+        )
 
     return None
 

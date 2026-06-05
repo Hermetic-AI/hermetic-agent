@@ -16,17 +16,19 @@ from openagent.auip.errors import CardSchemaInvalid
 
 
 def test_card_type_enum_values_unique() -> None:
-    """CardType 12 个值互不重复 (v2.1.0 新增 FLIGHT_RESULT)."""
-    assert len(CardType) == 12
-    assert len(CARD_TYPES_SET) == 12
+    """CardType 14 个值互不重复 (P7 新增 QUESTION + TODO_LIST)."""
+    assert len(CardType) == 14
+    assert len(CARD_TYPES_SET) == 14
 
 
 def test_card_type_includes_required_business_cards() -> None:
-    """关键业务卡 (订票流程 + 机票查询) 必须存在."""
+    """关键业务卡 (订票流程 + 机票查询 + 原生 question/todo) 必须存在."""
     for ct in (
         "CHAT_FALLBACK", "OD_INPUT", "FLIGHT_RESULT", "FLIGHT_LIST", "CABIN_LIST",
         "PASSENGER_FORM", "OAT_BINDING", "PRICE_VERIFY", "POLICY_DECISION",
         "ORDER_CONFIRM", "ORDER_SUCCESS", "CANNOT_ORDER",
+        # P7
+        "QUESTION", "TODO_LIST",
     ):
         assert ct in CARD_TYPES_SET
 
