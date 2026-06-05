@@ -13,7 +13,6 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "asyncpg" },
-    { name = "claude-agent-sdk" },
     { name = "httpx" },
     { name = "opencode-ai" },
     { name = "pydantic" },
@@ -26,6 +25,9 @@ dependencies = [
 ]
 
 [package.optional-dependencies]
+claude = [
+    { name = "claude-agent-sdk" },
+]
 dev = [
     { name = "mypy" },
     { name = "pre-commit" },
@@ -38,7 +40,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "asyncpg", specifier = ">=0.29.0" },
-    { name = "claude-agent-sdk", git = "https://github.com/anthropics/claude-agent-sdk-python?rev=v0.2.87" },
+    { name = "claude-agent-sdk", marker = "extra == 'claude'", git = "https://github.com/anthropics/claude-agent-sdk-python?rev=v0.2.87" },
     { name = "httpx", specifier = ">=0.27.0" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.9.0" },
     { name = "opencode-ai", specifier = ">=0.1.0a0" },
@@ -55,7 +57,7 @@ requires-dist = [
     { name = "sanic-ext", specifier = ">=24.0.0" },
     { name = "structlog", specifier = ">=24.0.0" },
 ]
-provides-extras = ["dev"]
+provides-extras = ["claude", "dev"]
 
 [[package]]
 name = "aiofiles"

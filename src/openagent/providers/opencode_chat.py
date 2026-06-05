@@ -72,6 +72,34 @@ def get_client(adapter: "OpenCodeAdapter", agent_name: str, base_url: str) -> As
     return adapter._clients[key]
 
 
+def _resolve_tool_names(adapter: "OpenCodeAdapter", tools: Any) -> list[dict[str, Any]] | None:
+    """把 caller 传的 tools 列表 (str / MCPTool / 混合) 归一化为 opencode 格式.
+
+    历史 caller 直接传 ``list[str]`` (scenario ``injection.final_tools``);
+    也有传 ``MCPTool`` 对象 (历史 test 路径). 这里都兼容, 避免在
+    opencode chat 里 ``t.name`` 触发 ``AttributeError``.
+    """
+    if not tools:
+        return None
+    names: list[str] = []
+    for t in tools:
+        if isinstance(t, str):
+            names.append(t)
+        else:
+            name = getattr(t, "name", None)
+            if name:
+                names.append(str(name))
+    if not names:
+        return None
+    # opencode-ai SDK 的 chat() 收 tools: Dict[str, bool] (tool_name → 是否启用),
+    # 不是 list[ToolDefinition]. 见 site-packages/opencode_ai/resources/session.py:602.
+    # 走 Dict 是 opencode 故意为之: tool schema 走 opencode config (provider 段),
+    # chat 请求只声明"启用哪些", 跟自带 tool / MCP tool 解耦.
+    # 这里给的是 MCP 名, opencode 不认识会忽略, 但 LLM 还能用 system_prompt
+    # 教它的 bash+curl 调 MCP 端点 (这是 Phase 1 的 fallback).
+    return {name: True for name in names}
+
+
 def _workspace_query(session_info: SessionInfo) -> dict[str, Any]:
     """构造 opencode SDK 的 ``extra_query`` 参数,把会话工作区传给 server.
 
@@ -204,15 +232,18 @@ async def blocking_chat(
     import uuid
     parts = [{"type": "text", "text": last_content, "id": f"prt_{str(uuid.uuid4())[:20]}"}]
 
-    # Convert tools (callers pass MCPTool objects, not raw dicts)
-    tool_list = None
-    if tools:
-        tool_list = adapter._mcp_registry.to_opencode_format([t.name for t in tools])
+    # Convert tools (callers may pass strings or MCPTool objects)
+    tool_list = _resolve_tool_names(adapter, tools)
 
     opencode_payload_kwargs = dict(
         id=session_id,  # SDK param 名是 id,不是 session_id (Python kwarg 校验)
         model_id=model or session_info.model or "default",
-        provider_id="opencode",
+        # providerID 必须是 opencode config.json 里 "provider" 块声明的名字.
+        # 当前用 openai-compatible 接口 (OPENAI_BASE_URL 指向 minimax),
+        # render_config.py 渲染出来的 config 里 provider 名是 "openai".
+        # 早期这里误写成 "opencode" (opencode 自己的 brand), 会被 opencode server
+        # 当成查不到的 provider → 400 Bad Request.
+        provider_id="openai",
         parts=parts,
         system=_build_runtime_context(system_prompt, mcp_token),
         tools=tool_list,
@@ -345,9 +376,7 @@ async def stream_chat(
     import uuid
     parts = [{"type": "text", "text": last_content, "id": f"prt_{str(uuid.uuid4())[:20]}"}]
 
-    tool_list = None
-    if tools:
-        tool_list = adapter._mcp_registry.to_opencode_format([t.name for t in tools])
+    tool_list = _resolve_tool_names(adapter, tools)
 
     yield StreamEvent.session(session_id=session_id, agent_name=agent_name)
 
@@ -359,7 +388,12 @@ async def stream_chat(
     opencode_payload_kwargs = dict(
         id=session_id,  # SDK param 名是 id,不是 session_id (Python kwarg 校验)
         model_id=model or session_info.model or "default",
-        provider_id="opencode",
+        # providerID 必须是 opencode config.json 里 "provider" 块声明的名字.
+        # 当前用 openai-compatible 接口 (OPENAI_BASE_URL 指向 minimax),
+        # render_config.py 渲染出来的 config 里 provider 名是 "openai".
+        # 早期这里误写成 "opencode" (opencode 自己的 brand), 会被 opencode server
+        # 当成查不到的 provider → 400 Bad Request.
+        provider_id="openai",
         parts=parts,
         system=_build_runtime_context(system_prompt, mcp_token),
         tools=tool_list,

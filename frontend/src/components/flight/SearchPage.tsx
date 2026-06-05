@@ -88,7 +88,7 @@ const mockFlights: Flight[] = [
 
 type CabinClass = 'economy' | 'business' | 'first' | 'all';
 
-export function SearchPage({ onAskAI }: { onAskAI?: (prompt: string) => void } = {}) {
+export function SearchPage({ onAskAI, hintScenario }: { onAskAI?: (prompt: string, hintScenario?: string) => void; hintScenario?: string } = {}) {
   const [loading, setLoading] = useState(false);
   const [selectedCabin, setSelectedCabin] = useState<CabinClass>('economy');
   const [searchParams, setSearchParams] = useState({
@@ -106,12 +106,18 @@ export function SearchPage({ onAskAI }: { onAskAI?: (prompt: string) => void } =
   };
 
   const handleSelect = (flight: Flight) => {
-    onAskAI?.(`帮我预订 ${flight.flightNumber}，${flight.departure.city}→${flight.arrival.city}，${flight.departure.date} ${flight.departure.time} 出发。`);
+    onAskAI?.(
+      `帮我预订 ${flight.flightNumber}，${flight.departure.city}→${flight.arrival.city}，${flight.departure.date} ${flight.departure.time} 出发。`,
+      'flight_booking',
+    );
   };
 
   const handleAskAI = () => {
     const { departure, arrival, date, passengers } = searchParams;
-    onAskAI?.(`帮我查 ${date} 从 ${departure} 到 ${arrival} 的机票，${passengers} 人。`);
+    onAskAI?.(
+      `帮我查 ${date} 从 ${departure} 到 ${arrival} 的机票，${passengers} 人。请用中文城市名查询, 不要使用三字码。`,
+      hintScenario ?? 'flight_query',
+    );
   };
 
   const filteredFlights = selectedCabin === 'all'

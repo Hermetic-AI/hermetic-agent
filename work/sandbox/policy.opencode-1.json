@@ -1,0 +1,14 @@
+{
+  "_comment": "Phase 1 静态 policy 文件, Hub 启动时 ro bind 进 opencode-1 容器. Phase 2 由 Hub 动态生成. 字段说明见 docker/render_config.py.",
+  "policy_version": "v1",
+  "scenario": "_default",
+  "agent": {
+    "name": "opencode",
+    "model": "openai/MiniMax-M3"
+  },
+  "skills": [],
+  "workspace_mode": "direct",
+  "tool_level": "full",
+  "max_turns": 30,
+  "max_budget_usd": 2.0
+}

@@ -1,0 +1,184 @@
+# ============================================================
+# 飞鹤机票查询 — v3 (opencode 原生 MCP 工具调用)
+# 与 flight_query.scenario.yaml 的关系: v3 = v2 + Skill/MCP 解耦
+#   - v2: Skill 教 LLM 调 curl, MCP 服务器配置在 skill 里
+#   - v3: Skill 只教业务规则, MCP 服务器配置在 work/mcp/servers.json
+#         opencode 启动时加载 MCP server, 把工具暴露成原生工具给 LLM 调
+# 用 single orchestration + a2ui 让 LLM 调 ask_user 推 FLIGHT_RESULT 卡片
+# ============================================================
+name: flight_query_v3
+version: "1.0.0"
+description: |
+  飞鹤机票查询场景 — v3 全新设计。
+  User 提需求 → 调 flight-query-v3 skill 的业务规则 + opencode 原生 MCP 工具
+  → 整理成 FLIGHT_RESULT 卡片(按"最快/最便宜/直飞首选"3 方案分组)推回前端
+  FlightResultCard 渲染。
+
+  v3 关键变化:
+  - MCP server 配置在 work/mcp/servers.json (不在 skill 里)
+  - opencode 启动时加载, 把 queryFlightBasic/filterFlightList 暴露成原生工具
+  - LLM 不需要学 curl / JSON-RPC / header / token 透传
+  - Skill 只教"什么时候调、改条件重调、结果怎么渲染"
+enabled: true
+tags: [travel, query, auip, mcp-native, v3]
+owner: openagent-core
+tier: silver
+
+# ============================================================
+# 路由: 关键词命中 (priority 100, 比 _default/_generic 优先)
+# ============================================================
+routing:
+  trigger_keywords: [查机票v3, 查航班v3, flight query v3, v3机票, v3查票]
+  trigger_intent: null
+  url_path: null
+  priority: 100
+
+# ============================================================
+# 执行: system_prompt + skills + tools
+#   - skills: 引用 v3 skill (纯业务, 不教协议)
+#   - tools: 来自 opencode 加载的 MCP server (work/mcp/servers.json)
+#           名字必须与 feihe-travel MCP server 的 tools/list 响应严格一致
+# ============================================================
+execution:
+  system_prompt: |
+    你是飞鹤差旅 AI 助手 — 机票查询专责 (v3)。
+    当用户问"明天北京到上海的航班"时,严格遵循 [flight-query-v3] skill 的工作流:
+    1. 解析用户需求(出发/到达/日期/舱等/筛选)
+    2. 缺信息就追问(出发/到达/日期/回程必问)
+    3. 调 opencode 原生 MCP 工具 queryFlightBasic
+       (opencode 启动时已从 work/mcp/servers.json 加载 feihe-travel MCP server,
+       工具 schema 已自动注入你的 context;**不**需要用 Bash+curl)
+    4. **必须** 按 skill §5 把结果整理成 FLIGHT_RESULT 卡片
+       (调 ask_user 工具, card_type=FLIGHT_RESULT, body.plans[] 分方案)
+    5. 在 text 事件里**只**发一句简短总结(例: "按你需求筛出 3 个方案, 详见下方卡片")
+
+    严禁:
+    - 编造航班号、价格、政策
+    - 在用户没确认前执行任何写操作
+    - 调用白名单以外的工具
+    - 用 Bash / curl 调 MCP(那是 v2 的做法,v3 用 opencode 原生工具)
+    - 在 chat text 里发整张 Markdown 表(改用 FLIGHT_RESULT 卡片)
+  skills:
+    - flight-query-v3                              # 核心层(必读):业务规则 + 工具清单 + 卡片规范
+    - flight-query-v3.iata_icao_codes              # on-demand: IATA/ICAO 翻译辅助
+  tools: [queryFlightBasic, filterFlightList]      # 来自 MCP server, opencode 启动时加载
+  orchestration: single                            # 单步聊天, 不用 HITL / parallel / chain
+
+# ============================================================
+# 安全: safe 档 — v3 不需要 Bash 工具 (opencode 调原生 MCP 工具)
+# ============================================================
+security:
+  tool_level: safe
+  allowed_tools: [Read, Grep, Glob]
+  denied_tools: [Write, Edit, Bash, WebFetch, WebSearch]   # v2 还需要 Bash 调 curl, v3 不用
+  allowed_commands: []
+  denied_commands: [rm -rf, sudo, dd, mkfs, "chmod 777", ":(){:|:&};:"]
+  network: local
+  max_turns: 10
+  max_budget_usd: 0.3
+  require_approval_for_writes: true
+
+# ============================================================
+# 工作区 — 这里是 per-session 透传给 opencode 的根
+# ${PROJECT_DIR} 在 scenario_lifecycle._build_placeholder_ctx 中解析为
+# work/tenants/tenant-A/projects/project-1
+# ============================================================
+workspace:
+  strategy: project_relative
+  workspace_dirs:
+    - ${PROJECT_DIR}
+  readonly_dirs:
+    - ${WORK_SHARED}/docs
+    - ${WORK_SHARED}/skills
+    - ${WORK_SHARED}/mcp                      # v3 新增: opencode 读这里加载 MCP server
+  deny_dirs:
+    - /etc
+    - ~/.ssh
+    - ~/.aws
+    - ~/.config/gcloud
+    - ${HOME}
+  deny_path_patterns:
+    - "**/.env"
+    - "**/.env.*"
+    - "**/id_rsa"
+    - "**/id_ed25519"
+    - "**/*.pem"
+    - "**/*.key"
+    - "**/secrets/**"
+  launcher:
+    prefer_engine: opencode
+    fallback_engine: claude_code
+    engine_config:
+      opencode:
+        config_template: standard
+        # v3 NOTE: launcher 需在启动 opencode serve 时把 ${WORK_SHARED}/mcp/servers.json
+        #          合并进 opencode 的 --config 里的 mcpServers 段。
+        #          本 v3 demo 不强制依赖此选项 (v2 已部署环境会 fallback 到 LLM 走 curl),
+        #          留作生产部署时的"是否启用原生 MCP 工具"开关。
+        mcp_servers_config: ${WORK_SHARED}/mcp/servers.json
+
+# ============================================================
+# A2UI — 启用 + FLIGHT_RESULT 卡片
+# ============================================================
+a2ui:
+  enabled: true
+  protocol: auip
+  card_schemas:
+    - FLIGHT_RESULT
+    - CANNOT_ORDER
+    - CHAT_FALLBACK
+  ask_user:
+    tool_name: ask_user
+    schema: ${SCENARIO_DIR}/ask_user.schema.json
+  renderer_hint: react_aui_v1
+  progressive_loading: true
+
+# ============================================================
+# 渐进 SKILL: 一次性全量加载 (v3 skill 内容不长, 4K budget 够用)
+# ============================================================
+progressive_skill:
+  strategy: all
+  budget_tokens: 4000
+  budget_policy: warn
+  initial_skills: []
+  load_on_state: {}
+
+# ============================================================
+# 资源目录
+#   skills 根目录: ${WORK_SHARED}/skills — loader 会校验
+#     <root>/<skill_name>/SKILL.md 必须存在
+#   mcp_servers: ${WORK_SHARED}/mcp — opencode 读这里加载 MCP server
+# ============================================================
+resource_dirs:
+  prompts: ${WORK_SHARED}/prompts/flight_query_v3
+  skills: ${WORK_SHARED}/skills
+  mcp_servers: ${WORK_SHARED}/mcp
+  shared_skills: ${WORK_SHARED}/skills
+  tools: ${SCENARIO_DIR}/tools
+  cards: ${SCENARIO_DIR}/cards
+
+# ============================================================
+# 资源
+# ============================================================
+resources:
+  agent: opencode-default          # 对应 launcher.py 注册的 agent 名称
+  model: MiniMax-M3
+  timeout: 120
+
+# ============================================================
+# 业务元数据
+# ============================================================
+metadata:
+  cost_center: T-1001
+  ab_group: control
+  sla_tier: silver
+  dashboard_url: null
+  # v3 元信息
+  architecture: skill-mcp-decoupled
+  parent_scenario: flight_query
+  replaces: flight_query@1.x
+  mcp_servers:
+    - name: feihe-travel
+      source: ${WORK_SHARED}/mcp/servers.json
+      tool_count: 15
+      tools_used_by_this_scenario: [queryFlightBasic, filterFlightList]

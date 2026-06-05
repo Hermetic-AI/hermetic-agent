@@ -137,6 +137,10 @@ class A2UIConfig(_Strict):
     ask_user: AskUserConfig | None = None
     renderer_hint: str = "react_aui_v1"
     progressive_loading: bool = False
+    # 白名单: LLM 调 ask_user 时, 入参的 card_type 必须在该列表内
+    # 用于: a2ui 协议层约束 (区别于 execution.hitl.card_schemas)
+    # 例如 flight_query 启用 a2ui + 限定 card_type: [FLIGHT_RESULT, CANNOT_ORDER]
+    card_schemas: list[str] = Field(default_factory=list)
 
 
 class InitialSkillConfig(_Strict):

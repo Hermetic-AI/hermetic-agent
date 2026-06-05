@@ -199,3 +199,106 @@
   0%, 100% { transform: scale(1); opacity: 0.85; }
   50% { transform: scale(1.25); opacity: 1; }
 }
+
+.sidebar-scenario {
+  position: relative;
+  margin: 12px 12px 0;
+  z-index: 5;
+}
+
+.sidebar-scenario-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 12px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  color: #fff;
+  cursor: pointer;
+  font-size: 12px;
+  transition: background 0.2s;
+}
+.sidebar-scenario-toggle:hover {
+  background: rgba(255, 255, 255, 0.14);
+}
+.sidebar-scenario.is-open .sidebar-scenario-toggle {
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.sidebar-scenario-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #5DD469;
+  box-shadow: 0 0 6px #5DD46999;
+  flex-shrink: 0;
+}
+
+.sidebar-scenario-label {
+  flex: 1;
+  text-align: left;
+  font-family: ui-monospace, "SFMono-Regular", Menlo, monospace;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sidebar-scenario-caret {
+  font-size: 10px;
+  opacity: 0.6;
+  transition: transform 0.2s;
+}
+.sidebar-scenario.is-open .sidebar-scenario-caret {
+  transform: rotate(180deg);
+}
+
+.sidebar-scenario-list {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  list-style: none;
+  margin: 0;
+  padding: 4px;
+  background: #003D7A;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 8px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.sidebar-scenario-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  padding: 8px 10px;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  color: rgba(255, 255, 255, 0.8);
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.sidebar-scenario-item:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+}
+.sidebar-scenario-item.is-active {
+  background: rgba(93, 212, 105, 0.15);
+  color: #fff;
+}
+.sidebar-scenario-item-name {
+  font-size: 13px;
+  font-weight: 600;
+  font-family: ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+.sidebar-scenario-item-hint {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.55);
+}

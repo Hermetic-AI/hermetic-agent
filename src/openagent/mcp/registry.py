@@ -118,6 +118,36 @@ class MCPRegistry:
         logger.debug("tool_registered", name=name, has_handler=handler is not None, is_remote=remote_url is not None)
         return tool
 
+    def register_synthetic_tool(
+        self,
+        name: str,
+        description: str,
+        input_schema: dict[str, Any],
+    ) -> MCPTool:
+        """注册一个"合成"工具 — 仅出现在 LLM 的工具列表中, 实际执行由框架拦截.
+
+        用途: LLM 调 ``ask_user`` 推 UI 卡片时, OpenCode 不会真正执行它,
+        框架在 chat_controller 的 streaming_fn 里看到 ``tool_use(name=ask_user)``
+        就把它转成 ``card`` SSE 事件并抑制对应的 ``tool_result``.
+
+        这里的 handler 是 no-op (返回 success 占位), 保证 ``to_opencode_format``
+        能把它正确导出, 不会因为缺 handler 报错.
+        """
+        async def _noop_handler(**kwargs: Any) -> dict[str, Any]:
+            """Synthetic tool no-op. 框架会在 stream 中拦截并替代真实响应."""
+            return {
+                "synthetic": True,
+                "tool": name,
+                "received": kwargs,
+                "ack": "framework_will_handle_card_emission",
+            }
+        return self.register(
+            name=name,
+            description=description,
+            input_schema=input_schema,
+            handler=_noop_handler,
+        )
+
     def register_handler(self, name: str, handler: ToolHandler) -> None:
         """为已存在的工具绑定本地 handler。
 

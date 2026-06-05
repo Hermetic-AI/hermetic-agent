@@ -1,77 +1,36 @@
-// useHealth — polls the backend's /health and /ready endpoints.
+// useHealth — consumer hook for the HealthContext singleton.
+//
+// The polling loop is owned by `<HealthProvider>` in App.tsx.  This hook is
+// a thin context reader; the `intervalMs` argument is ignored (left in the
+// signature for backward compatibility with callers that pre-date the
+// singleton refactor — they'll be migrated in a follow-up).
 
-import { useEffect, useState } from 'react';
-import { systemService, ApiError } from '../services';
-import type { ReadyResponse } from '../types';
+import { useContext } from 'react';
+import {
+  HealthContext,
+  type HealthState,
+  type UseHealthResult,
+} from '../contexts/healthContextValue';
 
-export type HealthState = 'unknown' | 'healthy' | 'degraded' | 'unreachable';
+export type { HealthState, UseHealthResult };
 
-export interface UseHealthResult {
-  state: HealthState;
-  detail: string | null;
-  ready: ReadyResponse | null;
-  /** Force a re-check. */
-  refresh: () => void;
-}
-
-const DEFAULT_INTERVAL = 15_000;
-
-export function useHealth(
-  intervalMs: number = DEFAULT_INTERVAL,
-): UseHealthResult {
-  const [state, setState] = useState<HealthState>('unknown');
-  const [detail, setDetail] = useState<string | null>(null);
-  const [ready, setReady] = useState<ReadyResponse | null>(null);
-  const [tick, setTick] = useState(0);
-
-  useEffect(() => {
-    let alive = true;
-    const ctrl = new AbortController();
-
-    async function check() {
-      try {
-        await systemService.health(ctrl.signal);
-        if (!alive) return;
-        try {
-          const r = await systemService.ready(ctrl.signal);
-          if (!alive) return;
-          setReady(r);
-          if (r.status === 'ready') {
-            setState('healthy');
-            setDetail(null);
-          } else {
-            setState('degraded');
-            setDetail(r.reason ?? 'Backend reports not_ready');
-          }
-        } catch (inner) {
-          if (!alive) return;
-          setReady(null);
-          setState('degraded');
-          setDetail(inner instanceof Error ? inner.message : 'Ready check failed');
-        }
-      } catch (e) {
-        if (!alive) return;
-        setState('unreachable');
-        setDetail(
-          e instanceof ApiError
-            ? e.message
-            : e instanceof Error
-              ? e.message
-              : 'Network error',
-        );
-        setReady(null);
-      }
-    }
-
-    void check();
-    const id = window.setInterval(check, intervalMs);
-
-    return () => {
-      alive = false;
-      ctrl.abort();
-      window.clearInterval(id);
-    };
-  }, [intervalMs, tick]);
-
-  return { state, detail, ready, refresh: () => setTick((t) => t + 1) };
+/**
+ * Read the shared health state.  Must be called inside `<HealthProvider>`.
+ *
+ * @deprecated Pass `intervalMs` to `<HealthProvider intervalMs={...} />`
+ * instead.  This hook is now a thin context reader; the polling loop is a
+ * singleton owned by the provider.  The argument is ignored.
+ */
+export function useHealth(_intervalMs?: number): UseHealthResult {
+  const ctx = useContext(HealthContext);
+  if (!ctx) {
+    throw new Error(
+      'useHealth() must be called inside <HealthProvider>. ' +
+        'Wrap your app with <HealthProvider> in App.tsx.',
+    );
+  }
+  // `paused` is internal — don't leak it through the consumer-facing hook.
+  const { paused: _paused, ...rest } = ctx;
+  void _paused;
+  return rest;
 }

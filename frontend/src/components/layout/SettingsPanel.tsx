@@ -13,7 +13,7 @@ type Tab = 'overview' | 'skills' | 'tools' | 'agents';
 
 export function SettingsPanel({ open, onClose }: SettingsPanelProps) {
   const [tab, setTab] = useState<Tab>('overview');
-  const { state, detail, ready } = useHealth(0); // passive, no polling
+  const { state, detail, ready } = useHealth();
   return (
     <Modal open={open} onClose={onClose} title="设置" size="large">
       <div className="settings-panel">

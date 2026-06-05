@@ -1,7 +1,7 @@
 ---
 name: flight-query.iata_icao_codes
 description: IATA 3 字码 / ICAO 4 字码 / 机场名 → 中文城市名翻译对照表。MCP `queryFlightBasic` 的 `departureCity` / `arrivalCity` 接受**用户原话**(中文优先,详见 skill 内 `tools/flight-mcp.json` 的字段说明)。本 skill 作为「用户说 IATA/ICAO/机场名 → LLM 翻成用户原话」的翻译辅助。父 skill `flight-query` 调用本子 skill 做翻译。
-version: 1.5.0
+version: 2.0.0
 allowed-tools: []
 ---
 
@@ -10,12 +10,9 @@ allowed-tools: []
 > **加载时机**:父 skill `flight-query` 提示"详见 `flight-query:iata_icao_codes`"时;
 > 或 LLM 遇到未识别城市 / 用户说 IATA/ICAO 码要翻译成中文时。
 >
-> **本文档不重复**:endpoint / 协议 / token 契约(见父 skill `flight-query` §1 §2)。
+> **本文档不重复**:endpoint / 协议 / token 契约(见父 skill `flight-query` §1 §3 §4 §5)。
 >
-> **v1.5.0 变更**:IATA / ICAO 都不是 MCP `queryFlightBasic` 接受的入参(该接口要"用户原话"中文)。
-> 本表是「用户原话 IATA/ICAO/机场名 → LLM 翻成中文」再发的翻译辅助。
-> **v1.4.0 描述"v1.4.0 角色变更 / MCP 改要中文"是错描述** — 实际从最初 MCP 就接受中文,
-> 一直不需要传 IATA,本 skill 从一开始就是翻译辅助,未变更角色。撤回。
+> **v2.0.0**:本表对齐父 skill 2.0.0 — 强调**先看父 skill §3 速查**(常用 11 城)**+ 命中再看本表全量**,避免 LLM 一上来就 load 整个表。
 
 ---
 
@@ -30,6 +27,13 @@ allowed-tools: []
 | **MCP `queryFlightBasic` 接受** | ❌ **不**接受(要中文) | ❌ **不**接受(要中文) |
 
 > **铁律**:**MCP 接口要"用户原话"中文**(如 `北京` `上海`),IATA/ICAO/机场名都需要先翻译成中文。
+>
+> **常见场景**:
+> - 用户说"北京" → 直接 `北京`
+> - 用户说"BJS" → 翻译成 `北京`(LLM 不区分 PEK/PKX — 城市码含全部机场)
+> - 用户说"PEK"/"首都" → 翻译成 `北京`(同上)
+> - 用户说"PVG"/"浦东" → 翻译成 `上海`
+> - 用户说"虹桥" → 翻译成 `上海`(默认 SHA 城市码;如要 PVG 显式说"浦东")
 
 ---
 
@@ -130,3 +134,13 @@ allowed-tools: []
 ## 5. 缓存建议(对调用方)
 
 如果同一个会话内会查多个航班,**缓存**已查到的 IATA/ICAO 映射(写到 session 上下文),避免重复查表或问用户。
+
+---
+
+## 6. 版本与变更记录
+
+| 版本 | 日期 | 变更 |
+|---|---|---|
+| 1.4.0 | 2026-06-03 | 初版 |
+| 1.5.0 | 2026-06-04 | 撤回"角色变更"错描述 — 本 skill 一直是翻译辅助 |
+| **2.0.0** | 2026-06-04 | 对齐父 skill 2.0.0;§1 新增"常见场景"决策表(中文/IATA/机场名各对应什么);强调"先看父 skill §3 速查,再 load 本表全量" |

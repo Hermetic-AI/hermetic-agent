@@ -1,0 +1,44 @@
+# OpenAgent Hub 镜像 (Phase 1 — 合并 deps + runtime)
+#
+# 简化为单 Dockerfile, 装依赖 + 复制源码 一次完成.
+# 改代码 → 镜像重建, 命中 .dockerignore 缓存的 pip 层 (前提: pyproject.toml 没改).
+#
+# 想拆 deps + runtime 两层缓存: 改回 v0.4 双 Dockerfile 设计, 但需要处理
+# setuptools build 需要 src/ 的问题. Phase 1 先用单文件.
+#
+# 构建: docker build -f docker/Dockerfile.openagent -t openagent:dev .
+#
+# 镜像源: Daocloud (免认证, 国内通用)
+# 想换回官方 Docker Hub: 去掉 docker.m.daocloud.io/ 前缀即可
+
+FROM docker.m.daocloud.io/library/python:3.11-slim
+
+WORKDIR /app
+
+# 系统工具: git (claude-agent-sdk 是 git+https 依赖)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# 升级 pip + setuptools
+RUN pip install --no-cache-dir -U pip setuptools wheel
+
+# 复制整个项目 (用 .dockerignore 排除 work/tests/.venv 等)
+COPY . /app
+
+# 装项目本身 + 所有依赖
+# 这一层在 pyproject.toml 不变时命中缓存, 代码改也重装 (Phase 1 接受)
+RUN pip install --no-cache-dir .
+
+# 让容器内日志立刻刷出来
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_NO_CACHE_DIR=1
+
+# Sanic 默认监听 0.0.0.0:8000
+EXPOSE 8000
+
+# 默认启动命令 (compose 可覆盖)
+# 开发模式可改成: python -m openagent.main --reload
+CMD ["python", "-m", "openagent.main"]

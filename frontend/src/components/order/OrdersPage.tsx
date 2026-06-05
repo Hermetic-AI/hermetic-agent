@@ -92,7 +92,7 @@ const tabs = [
   { id: 'all', label: '全部' }
 ];
 
-export function OrdersPage({ onAskAI }: { onAskAI?: (prompt: string) => void } = {}) {
+export function OrdersPage({ onAskAI, hintScenario }: { onAskAI?: (prompt: string, hintScenario?: string) => void; hintScenario?: string } = {}) {
   const [activeTab, setActiveTab] = useState('pending');
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [showDetail, setShowDetail] = useState(false);
@@ -103,8 +103,10 @@ export function OrdersPage({ onAskAI }: { onAskAI?: (prompt: string) => void } =
     : mockOrders.filter((o) => o.status === activeTab);
 
   const handlePay = (order: Order) => {
-    // 后端尚未提供 pay 接口；通过 AI 助手发起支付意图。
-    onAskAI?.(`帮我支付订单 ${order.orderNo}`);
+    onAskAI?.(
+      `帮我支付订单 ${order.orderNo}`,
+      hintScenario ?? 'flight_booking',
+    );
   };
 
   const handleCancel = (order: Order) => {
@@ -118,8 +120,10 @@ export function OrdersPage({ onAskAI }: { onAskAI?: (prompt: string) => void } =
 
   const confirmCancel = () => {
     if (cancelOrder) {
-      // 后端尚未提供 cancel 接口；通过 AI 助手发起取消意图。
-      onAskAI?.(`帮我取消订单 ${cancelOrder.orderNo}`);
+      onAskAI?.(
+        `帮我取消订单 ${cancelOrder.orderNo}`,
+        hintScenario ?? 'flight_booking',
+      );
       setCancelOrder(null);
     }
   };
@@ -154,7 +158,10 @@ export function OrdersPage({ onAskAI }: { onAskAI?: (prompt: string) => void } =
               description={getEmptyDescription(activeTab)}
               action={
                 onAskAI
-                  ? { label: '问问 AI 助手', onClick: () => onAskAI('我想预订机票') }
+                  ? {
+                      label: '问问 AI 助手',
+                      onClick: () => onAskAI('我想预订机票', hintScenario ?? 'flight_booking'),
+                    }
                   : undefined
               }
             />

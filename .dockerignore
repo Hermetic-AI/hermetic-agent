@@ -1,0 +1,61 @@
+# Docker 构建排除 (加速 build + 避免无关文件进镜像)
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+
+# Node (frontend/) — pnpm 路径里带 + 和 @, 触发 docker build context
+# 的特殊字符处理, 必须排除. 另: 前端不进 Hub 镜像.
+frontend/node_modules/
+frontend/dist/
+frontend/.next/
+
+# Virtual env
+.venv/
+venv/
+env/
+
+# 测试
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+.DS_Store
+
+# Git
+.git/
+.gitignore
+
+# 文档 (不进镜像, 给维护者看的)
+docs/
+README.md
+*.md
+LICENSE
+
+# 本地配置 / 数据
+.env
+.env.local
+# work/ 不能直接 exclude, Docker 会把里面所有子目录都屏蔽, 后面的 !work/xxx/ 救不回
+# 改用逐个 exclude Hub 镜像不需要的部分
+work/cache/             # 缓存不进
+work/logs/              # 日志不进
+work/shared/            # skill 源在 sandbox 容器里 (compose mount), Hub 用自带 src/openagent/.skills/
+work/tenants/           # 租户 workspace 在 sandbox 容器里
+work/tenant-A/          # 同上
+work/mcp/               # Hub 端 MCP 配置走 AGENT_SCHEDULER_MCP_TOOLS_CONFIG, 不进镜像
+# work/sandbox/ 和 work/scenarios/ 保留 (Hub 需要 scenarios 路由, sandbox policy 备用)
+
+# 日志 / 缓存
+*.log

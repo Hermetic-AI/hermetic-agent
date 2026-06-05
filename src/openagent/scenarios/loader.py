@@ -159,15 +159,26 @@ def _validate_resources(cfg: ScenarioConfig) -> None:
 def _check_workspace(cfg: ScenarioConfig) -> list[str]:
     """校验 workspace 路径.
 
-    - ``workspace_dirs`` (可写目录): 必须存在 — 缺失直接阻断场景加载.
+    - ``workspace_dirs`` (可写目录): **可选** — 缺失只打 warning, 场景照常加载.
+      docker compose 部署时, Hub 跟 sandbox 在不同容器, Hub 端没有 workspace
+      mount (workspace 走 sandbox 自己的 bind mount). 强校验会让 scenario
+      在 Hub 启动时直接 fail, 但运行时实际有 — 没必要.
     - ``readonly_dirs`` (可读目录): **可选** — 缺失只打 warning, 场景照常加载;
       目录不存在 agent 读不到东西, 跟场景能不能跑没关系, 不该让整个
       scenario 被 reject.
     """
     out: list[str] = []
     for ws in cfg.workspace.workspace_dirs:
-        if not Path(ws).exists():
-            out.append(f"workspace_dir not found: {ws}")
+        if ws and not Path(ws).exists():
+            logger.warning(
+                "scenario_workspace_dir_missing",
+                scenario=cfg.name,
+                workspace_dir=ws,
+                note=(
+                    "docker compose: workspace 在 sandbox 容器里, Hub 看不到, "
+                    "正常"
+                ),
+            )
     for ro in cfg.workspace.readonly_dirs:
         if ro and not Path(ro).exists():
             logger.warning(
@@ -203,16 +214,36 @@ def _check_a2ui(cfg: ScenarioConfig) -> list[str]:
 
 
 def _check_skills(cfg: ScenarioConfig) -> list[str]:
+    """校验 skill 路径 — 跟 workspace 一样改成 warning.
+
+    SKILL.md 源在 sandbox 容器 (`/work/shared/skills/`), Hub 用自带的
+    ``src/openagent/.skills/`` 副本 (Dockerfile build 时 COPY 进去).
+    路径不同 (sandbox 那边是 work/shared, Hub 这边是 src/openagent/.skills),
+    在 Hub 端用 ``${WORK_SHARED}/skills`` 校验会永远 miss.
+    实际运行由 SkillRegistry (从 src/openagent/.skills/ 加载) 处理.
+    """
     if not cfg.execution.skills:
         return []
     root = cfg.resource_dirs.get("skills")
     if not root:
-        return ["resource_dirs.skills is empty but execution.skills is non-empty"]
-    return [
-        f"skill SKILL.md not found: {Path(root) / sk / 'SKILL.md'}"
-        for sk in cfg.execution.skills
-        if not (Path(root) / sk / "SKILL.md").exists()
-    ]
+        logger.warning(
+            "scenario_skills_root_empty",
+            scenario=cfg.name,
+            note="resource_dirs.skills is empty but execution.skills is non-empty; "
+                 "Hub will use bundled src/openagent/.skills/ instead",
+        )
+        return []
+    for sk in cfg.execution.skills:
+        skill_md = Path(root) / sk / "SKILL.md"
+        if not skill_md.exists():
+            logger.warning(
+                "scenario_skill_md_missing",
+                scenario=cfg.name,
+                skill=sk,
+                path=str(skill_md),
+                note="Hub 端 skill 源在 src/openagent/.skills/, sandbox 端在 ${WORK_SHARED}/skills",
+            )
+    return []
 
 
 __all__ = ["resolve_placeholders", "load_scenario"]

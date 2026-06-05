@@ -89,17 +89,9 @@ async def init_scenarios(app: Sanic, settings: Any) -> None:
         app.ctx.scenario_router = router
         app.ctx.scenario_injector = injector
 
-        # 注册 middleware (idempotent — 重复 register 会被 Sanic 抛错, 用 try 兜底)
-        if not getattr(app.ctx, "scenario_middleware_registered", False):
-            try:
-                # 注意: register_middleware 需要 callable (instance), 不是 class
-                app.register_middleware(ScenarioMiddleware(app), "request")
-                app.ctx.scenario_middleware_registered = True
-            except Exception as e:  # noqa: BLE001
-                logger.warning(
-                    "scenario_middleware_register_failed",
-                    error=str(e),
-                )
+        # 注意: middleware 在 app.py:create_app 阶段就已经注册了 (早于
+        # Sanic finalize_middleware), 这里只挂 ctx 引用, 不再 register.
+        # 详见 app.py 注释.
 
         logger.info(
             "scenarios_initialized",

@@ -1,15 +1,16 @@
 # ============================================================
-# 飞鹤机票查询 — 演示用最简场景
+# 飞鹤机票查询 — AUIP 卡片化输出场景 (v2.1.0)
 # 与 flight_booking.scenario.yaml 的关系: 这只是查票,不订票
-# 用 single orchestration,不接 HITL,纯查询
+# 用 single orchestration, 但启用 a2ui 让 LLM 调 ask_user 推 FLIGHT_RESULT 卡片
 # ============================================================
 name: flight_query
-version: "1.0.0"
+version: "1.1.0"
 description: |
-  飞鹤机票查询场景。User 提需求 → 调 flight-query skill + MCP 工具
-  → 整理成表格返回。不下订,不接 HITL,纯查询。
+  飞鹤机票查询场景。User 提需求 → 调 flight-query skill + MCP queryFlightBasic
+  → 整理成 FLIGHT_RESULT 卡片(按"最快/最便宜/直飞首选"3 方案分组)推回前端
+  FlightResultCard 渲染。下订/选舱走 flight_booking skill, 本场景纯查询。
 enabled: true
-tags: [travel, query]
+tags: [travel, query, auip]
 owner: openagent-core
 tier: silver
 
@@ -17,7 +18,7 @@ tier: silver
 # 路由: 关键词命中 (priority 100, 比 _default/_generic 优先)
 # ============================================================
 routing:
-  trigger_keywords: [查机票, 查航班, flight query, 航班查询, query flight]
+  trigger_keywords: [查机票, 查航班, flight query, 航班查询, query flight, 机票]
   trigger_intent: null
   url_path: null
   priority: 100
@@ -32,14 +33,17 @@ execution:
     1. 解析用户需求(出发/到达/日期/舱等/筛选)
     2. 缺信息就追问(出发/到达/日期/回程必问)
     3. 调 queryFlightBasic 工具
-    4. 按"输出格式"小节整理成 Markdown 表格
+    4. **必须** 按 skill §5.1 把结果整理成 FLIGHT_RESULT 卡片
+       (调 ask_user 工具, card_type=FLIGHT_RESULT, body.plans[] 分方案)
+    5. 在 text 事件里**只**发一句简短总结(例: "按你需求筛出 3 个方案, 详见下方卡片")
 
     严禁:
     - 编造航班号、价格、政策
     - 在用户没确认前执行任何写操作
     - 调用白名单以外的工具
+    - 在 chat text 里发整张 Markdown 表(改用 FLIGHT_RESULT 卡片)
   skills:
-    - flight-query                    # 核心层(必读):契约 + 协议 + 工具列表 + 速查 + 铁律
+    - flight-query                    # 核心层(必读):契约 + 协议 + 工具列表 + 速查 + 铁律 + §5.1 卡片规范
     - flight-query.query_flight_basic # on-demand: query_flight_basic 完整 schema + NL 映射 + 错误码 + 模板
     - flight-query.iata_icao_codes     # on-demand: IATA/ICAO 速查 + 模糊处理
   tools: [queryFlightBasic, filterFlightList]   # 来自 MCP, scenarios/injector.py 过滤后下发;名字必须与 flight-query/tools/flight-mcp.json 严格一致
@@ -92,11 +96,23 @@ workspace:
         config_template: standard
 
 # ============================================================
-# A2UI (本次示例不用, 关掉)
+# A2UI — 启用 + FLIGHT_RESULT 卡片 (v2.1 强制)
 # ============================================================
 a2ui:
-  enabled: false
+  enabled: true
   protocol: auip
+  # 允许 LLM 通过 ask_user 工具发的 card_type 白名单
+  # 前端 FlightResultCard 已实现 FLIGHT_RESULT; 其余走兜底
+  card_schemas:
+    - FLIGHT_RESULT
+    - CANNOT_ORDER
+    - CHAT_FALLBACK
+  ask_user:
+    tool_name: ask_user
+    # LLM 调 ask_user 时, 入参的 card_type 必须在上方白名单
+    schema: ${SCENARIO_DIR}/ask_user.schema.json
+  renderer_hint: react_aui_v1
+  progressive_loading: true
 
 # ============================================================
 # 渐进 SKILL: 一次性全量加载 (skill 内容不长, 4K budget 够用)

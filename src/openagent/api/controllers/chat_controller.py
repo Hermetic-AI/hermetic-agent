@@ -1,4 +1,4 @@
-"""ChatController — POST /chat and POST /chat/stream.
+"""ChatController - POST /chat and POST /chat/stream.
 
 P6/F2 改造: 真正接入 scenario + injection.
 - ``request.ctx.scenario`` 由 ScenarioMiddleware 注入
@@ -6,6 +6,8 @@ P6/F2 改造: 真正接入 scenario + injection.
 - ``request.ctx.scenario_error`` 在路由失败时设置, controller 优先检查
 - HITL 场景: 转交 SuspendableScheduler, 把 TurnEvent 翻译为 SSE 事件
 - 普通场景: 用 injection.final_* 调 bridge.chat, 流开头 emit scenario 事件
+- AUIP 卡片: single 场景下, 把 LLM 调 ask_user 合成工具的 tool_use
+  拦截为 card SSE 事件 (HITL 由 SuspendableScheduler 负责)
 """
 from __future__ import annotations
 
@@ -31,6 +33,7 @@ from openagent.api.schemas import (
 from openagent.providers.base import ChatMessage
 from openagent.streaming import StreamEvent
 from openagent.api.routes import _extract_mcp_token
+from openagent.auip.cards import CARD_TYPES_SET
 
 logger = structlog.get_logger(__name__)
 
@@ -88,7 +91,7 @@ def _build_scenario_dict(ctx_scenario: Any, routing_ctx: Any) -> dict:
     return out
 
 
-def _resolve_injection(request: Request, body: ChatRequest) -> tuple[Optional[Any], Optional[Any], Optional[JSONResponse]]:
+def _resolve_injection(request: Request, body: ChatRequest) -> tuple:
     """从 request.ctx 拿到 scenario + injection (middleware 已设置).
 
     任何 scenario 错误都已挂在 ctx.scenario_error, 直接返回.
@@ -101,7 +104,11 @@ def _resolve_injection(request: Request, body: ChatRequest) -> tuple[Optional[An
     routing_ctx = getattr(request.ctx, "routing_context", None)
     if scenario is None or injection is None:
         # middleware 没跑 (例如直接 unit test), 兜底用 raw body
-        logger.warning("scenario_ctx_missing_falling_back", has_scenario=scenario is not None, has_injection=injection is not None)
+        logger.warning(
+            "scenario_ctx_missing_falling_back",
+            has_scenario=scenario is not None,
+            has_injection=injection is not None,
+        )
     return scenario, injection, None
 
 
@@ -120,7 +127,7 @@ def _effective_params(body: ChatRequest, injection: Any) -> dict:
     }
 
 
-async def _resolve_or_create_session(bridge, body: ChatRequest) -> tuple[Optional[str], Optional[str], Optional[JSONResponse]]:
+async def _resolve_or_create_session(bridge, body: ChatRequest) -> tuple:
     if body.session_id:
         agent_name = bridge.get_agent_for_session(body.session_id)
         if agent_name is None:
@@ -147,7 +154,13 @@ async def _resolve_or_create_session(bridge, body: ChatRequest) -> tuple[Optiona
     return session_info.session_id, agent_name, None
 
 
-def _build_chat_response(result, agent_name: str, fallback_session_id: str, scenario_dict: Optional[dict] = None, injection: Any = None) -> ChatResponse:
+def _build_chat_response(
+    result,
+    agent_name: str,
+    fallback_session_id: str,
+    scenario_dict: Optional[dict] = None,
+    injection: Any = None,
+) -> ChatResponse:
     resp = ChatResponse(
         success=result.success,
         session_id=result.session_id or fallback_session_id,
@@ -182,7 +195,7 @@ def _build_chat_response(result, agent_name: str, fallback_session_id: str, scen
 
 
 # ---------------------------------------------------------------------------
-# HITL 桥接: SuspendableScheduler TurnEvent → SSE StreamEvent
+# HITL bridge: SuspendableScheduler TurnEvent -> SSE StreamEvent
 # ---------------------------------------------------------------------------
 
 
@@ -234,8 +247,107 @@ def _turn_event_to_sse(turn_event) -> StreamEvent:
         return StreamEvent.done(stop_reason=d.get("stop_reason", "end_turn"))
     if t == TurnEventType.ERROR:
         return StreamEvent.error(message=d.get("message", "unknown"), code=d.get("code", ""))
-    # 兜底
+    # fallback
     return StreamEvent(text=str(d))
+
+
+# ---------------------------------------------------------------------------
+# AUIP ask_user interception (single-mode streaming)
+# ---------------------------------------------------------------------------
+
+
+def _ask_user_to_card(
+    event: StreamEvent,
+    *,
+    allowed_card_types: Optional[set],
+) -> StreamEvent:
+    """把 tool_use(ask_user) 转成 card 事件. 其它事件原样返回.
+
+    Args:
+        event: 来自 bridge 的 StreamEvent.
+        allowed_card_types: scenario.a2ui.card_schemas 白名单; None 表示
+            不校验 (CARD_TYPES_SET 全部允许).
+
+    Returns:
+        转换后的 card 事件; 非 ask_user 事件原样返回, 非法 card_type 返回 error.
+    """
+    if event.type != "tool_use":
+        return event
+    data = event.data or {}
+    tool_name = data.get("name") or data.get("tool_name")
+    if tool_name != "ask_user":
+        return event
+
+    inp = data.get("input") or {}
+    card_type = str(inp.get("card_type") or "CHAT_FALLBACK")
+    if card_type not in CARD_TYPES_SET:
+        return StreamEvent.error(
+            message=(
+                f"LLM called ask_user with unknown card_type: {card_type!r}. "
+                f"Valid: {sorted(CARD_TYPES_SET)}"
+            ),
+            code="CARD_TYPE_INVALID",
+        )
+    if allowed_card_types is not None and card_type not in allowed_card_types:
+        return StreamEvent.error(
+            message=(
+                f"Current scenario does not allow card_type={card_type!r}; "
+                f"whitelist: {sorted(allowed_card_types)}"
+            ),
+            code="CARD_TYPE_NOT_ALLOWED",
+        )
+
+    correlation_id = str(data.get("id") or inp.get("correlation_id") or "")
+    card_id = str(inp.get("card_id") or f"card-{uuid4().hex[:8]}")
+    body = inp.get("body")
+    if body is None:
+        # compatibility: LLM flat-fields everything into ask_user input
+        body = {k: v for k, v in inp.items() if k not in {"card_type", "title"}}
+    card_payload: dict = {
+        "card_id": card_id,
+        "card_type": card_type,
+        "schema_version": str(inp.get("schema_version") or "1.0"),
+        "title": str(inp.get("title") or ""),
+        "body": body if isinstance(body, dict) else {},
+        "fields": inp.get("fields") or [],
+        "options": inp.get("options") or [],
+        "actions": inp.get("actions") or inp.get("decision_buttons") or [],
+        "decision_buttons": inp.get("decision_buttons") or [],
+        "metadata": inp.get("metadata") or {},
+        "dismissible": bool(inp.get("dismissible", False)),
+    }
+    return StreamEvent.card(
+        card_id=card_id,
+        card_type=card_type,
+        card=card_payload,
+        correlation_id=correlation_id,
+    )
+
+
+async def _stream_with_ask_user_intercept(iterator, *, allowed_card_types: Optional[set]):
+    """Wrap bridge event iterator: convert ask_user tool_use to card, suppress tool_result.
+
+    Yields:
+        Transformed events. Suppresses tool_result(name=ask_user) - the LLM does
+        not need to see its own tool result because the card itself is the ack.
+    """
+    last_ask_user_id: Optional[str] = None
+    async for event in iterator:
+        if event.type == "tool_use":
+            data = event.data or {}
+            tool_name = data.get("name") or data.get("tool_name")
+            if tool_name == "ask_user":
+                last_ask_user_id = str(data.get("id") or "")
+                yield _ask_user_to_card(event, allowed_card_types=allowed_card_types)
+                continue
+        if event.type == "tool_result" and last_ask_user_id is not None:
+            data = event.data or {}
+            tool_name = data.get("name") or data.get("tool_name")
+            tool_id = str(data.get("id") or "")
+            if tool_name == "ask_user" and (not last_ask_user_id or tool_id == last_ask_user_id):
+                last_ask_user_id = None
+                continue
+        yield event
 
 
 # ---------------------------------------------------------------------------
@@ -244,22 +356,21 @@ def _turn_event_to_sse(turn_event) -> StreamEvent:
 
 
 @chat_bp.post("/chat")
-@doc_summary("发送消息并获取回复")
+@doc_summary("Send a message and get a synchronous reply")
 @doc_description(
-    "向 Agent 发送一条用户消息并同步等待完整回复。\n\n"
-    "如果提供 `X-Scenario` header 或 body.scenario, 走对应 scenario;\n"
-    "否则由 ScenarioRouter 按 keyword 自动匹配。\n"
-    "scenario 的 skills/tools 白名单会过滤 caller 的请求。"
+    "Send a user message to the agent and wait for the full reply.\n\n"
+    "If `X-Scenario` header or body.scenario is provided, route to that scenario;\n"
+    "otherwise let ScenarioRouter match by keyword.\n"
+    "Scenario skills/tools whitelist filters the caller's request."
 )
 @doc_tag("Chat")
 @operation("agentChat")
 @body(ChatRequest)
-@response(200, ChatResponse, description="成功返回 Agent 回复")
-@response(400, ErrorResponse, description="参数错误或无可用 Agent")
-@response(500, ErrorResponse, description="服务器内部错误")
+@response(200, ChatResponse, description="Successful agent reply")
+@response(400, ErrorResponse, description="Bad request or no available agent")
+@response(500, ErrorResponse, description="Server error")
 async def chat(request: Request) -> JSONResponse:
-    """处理 POST /agent/chat：发送消息并同步返回 Agent 回复。"""
-    # F2: scenario_error 早期检查 (middleware 失败时直接返回, 不进 bridge)
+    """Handle POST /agent/chat: send a message and return the synchronous agent reply."""
     scen_err = getattr(request.ctx, "scenario_error", None)
     if scen_err is not None:
         return _scenario_error_response(scen_err)
@@ -273,7 +384,6 @@ async def chat(request: Request) -> JSONResponse:
             status=400,
         )
 
-    # F2: 解析 scenario + injection
     scenario, injection, err = _resolve_injection(request, json_body)
     if err is not None:
         return err
@@ -283,7 +393,11 @@ async def chat(request: Request) -> JSONResponse:
     logger.info(
         "chat_request",
         scenario=scenario.name if scenario else None,
-        matched_by=(getattr(request.ctx, "routing_context", None).matched_by if getattr(request.ctx, "routing_context", None) else None),
+        matched_by=(
+            getattr(request.ctx, "routing_context", None).matched_by
+            if getattr(request.ctx, "routing_context", None)
+            else None
+        ),
         session_id=json_body.session_id,
         agent_name=json_body.agent_name,
         model=json_body.model,
@@ -314,8 +428,11 @@ async def chat(request: Request) -> JSONResponse:
         )
         return JSONResponse(
             _build_chat_response(
-                result, agent_name, json_body.session_id or "",
-                scenario_dict=scenario_dict, injection=injection,
+                result,
+                agent_name,
+                json_body.session_id or "",
+                scenario_dict=scenario_dict,
+                injection=injection,
             ).model_dump()
         )
     except Exception as e:
@@ -323,40 +440,39 @@ async def chat(request: Request) -> JSONResponse:
 
 
 @chat_bp.post("/chat/stream")
-@doc_summary("发送消息并获取流式回复 (SSE)")
+@doc_summary("Send a message and get a streaming reply (SSE)")
 @doc_description(
-    "向 Agent 发送一条用户消息并以 Server-Sent Events 形式流式返回响应。\n\n"
-    "**事件序列**:\n"
-    "1. `scenario` 事件 (matched_by / scenario_name / version)\n"
-    "2. `session` 事件 (session_id)\n"
-    "3. 业务事件 (text / reasoning / tool_use / tool_result / state)\n"
-    "4. 若 orchestration=hitl: `card` + `suspend` 事件后停流\n"
-    "5. `done` 事件结束\n\n"
-    "若 scenario 不可用或路由失败, 第一个事件是 `error`。"
+    "Send a user message to the agent and stream the response via Server-Sent Events.\n\n"
+    "**Event sequence**:\n"
+    "1. `scenario` event (matched_by / scenario_name / version)\n"
+    "2. `session` event (session_id)\n"
+    "3. Business events (text / reasoning / tool_use / tool_result / state)\n"
+    "4. If orchestration=hitl: `card` + `suspend` then stop the stream\n"
+    "5. If LLM calls `ask_user`: `card` event (single mode only, no suspend)\n"
+    "6. `done` event to end the stream\n\n"
+    "If the scenario is unavailable or routing fails, the first event is `error`."
 )
 @doc_tag("Chat")
 @operation("agentChatStream")
 @body(ChatRequest)
 async def chat_stream(request: Request) -> ResponseStream:
-    """处理 POST /agent/chat/stream：发送消息并以 SSE 形式流式返回。
+    """Handle POST /agent/chat/stream: send a message and stream the response.
 
-    F2 改造:
-    - 读 request.ctx.scenario + injection
-    - 开头 emit `scenario` 事件
-    - HITL 场景: 转交 SuspendableScheduler, 翻译 TurnEvent → SSE
-    - 普通场景: 用 injection.final_* 调 bridge.chat(stream=True)
+    F2 changes:
+    - Read request.ctx.scenario + injection
+    - Emit `scenario` event at the start
+    - HITL scenarios: hand off to SuspendableScheduler, translate TurnEvent to SSE
+    - Normal scenarios: use injection.final_* and call bridge.chat(stream=True)
+    - AUIP: intercept LLM's ask_user synthetic-tool tool_use as a card event
     """
     bridge = get_bridge(request)
     scen_err = getattr(request.ctx, "scenario_error", None)
     if scen_err is not None:
-        # 校验失败: 推一个 error 事件就结束
         code = getattr(scen_err, "code", "ROUTING_FAILED")
         err_msg = f"[{code}] {scen_err}"
 
         async def _scenario_err(resp: ResponseStream) -> None:
-            await resp.write(
-                StreamEvent.error(message=err_msg, code=code).to_sse()
-            )
+            await resp.write(StreamEvent.error(message=err_msg, code=code).to_sse())
             await resp.eof()
 
         return ResponseStream(
@@ -383,10 +499,8 @@ async def chat_stream(request: Request) -> ResponseStream:
             headers={"Cache-Control": "no-cache", "Connection": "keep-alive"},
         )
 
-    # F2: 解析 scenario + injection
     scenario, injection, err = _resolve_injection(request, json_body)
     if err is not None:
-        # middleware 失败但没设 scenario_error, 退回错误
         async def _err(resp: ResponseStream):
             await resp.write(StreamEvent.error(message="scenario setup failed").to_sse())
             await resp.eof()
@@ -422,7 +536,7 @@ async def chat_stream(request: Request) -> ResponseStream:
                 )
                 return
 
-            # 1. 开头 emit scenario 事件
+            # 1. Emit scenario event at the start
             await resp.write(
                 StreamEvent.scenario(
                     name=scenario.name if scenario else "_unknown",
@@ -431,10 +545,10 @@ async def chat_stream(request: Request) -> ResponseStream:
                     orchestration=scenario.execution.orchestration if scenario else "single",
                 ).to_sse()
             )
-            # 2. session 事件
+            # 2. Session event
             await resp.write(StreamEvent.session(session_id=session_id).to_sse())
 
-            # 3. 分支: HITL 走 SuspendableScheduler
+            # 3. Branch: HITL goes through SuspendableScheduler
             if is_hitl and turn_store is not None and hitl_factory is not None:
                 turn_id = f"turn-{uuid4().hex[:12]}"
                 await turn_store.create_turn(
@@ -444,7 +558,6 @@ async def chat_stream(request: Request) -> ResponseStream:
                 )
                 scheduler = hitl_factory(scenario)
 
-                # 拼 system_prompt (用 PromptBuilder 在 L3 实现, P5 简化版用 base)
                 augmented_prompt = (
                     f"[Scenario: {scenario.name} v{scenario.version}]\n"
                     f"[Allowed skills: {params['skills']}]\n"
@@ -460,7 +573,7 @@ async def chat_stream(request: Request) -> ResponseStream:
                 ):
                     await resp.write(_turn_event_to_sse(turn_evt).to_sse())
                     if turn_evt.type.value == "suspend":
-                        # HITL: 推完 suspend 事件后停流
+                        # HITL: stop the stream after the suspend event
                         break
                 logger.info(
                     "chat_stream_hitl_suspended",
@@ -469,19 +582,31 @@ async def chat_stream(request: Request) -> ResponseStream:
                 )
                 return
 
-            # 4. 普通场景: 走 bridge.chat(stream=True), 注入 scenario
+            # 4. Normal scenario: bridge.chat(stream=True)
+            # Auto-append ask_user synthetic tool so LLM can emit AUIP cards.
+            scenario_tools = list(params["tools"] or [])
+            if "ask_user" not in scenario_tools:
+                scenario_tools.append("ask_user")
+            # Card-type whitelist: prefer scenario.a2ui.card_schemas; default open.
+            card_schemas = (
+                set(scenario.a2ui.card_schemas)
+                if scenario and scenario.a2ui.card_schemas
+                else None
+            )
             iterator = await bridge.chat(
                 session_id=session_id,
                 messages=[ChatMessage(role="user", content=json_body.message)],
                 model=json_body.model,
                 system_prompt=params["system_prompt"],
                 skills=params["skills"],
-                tools=params["tools"],
+                tools=scenario_tools,
                 timeout=json_body.timeout,
                 mcp_token=_extract_mcp_token(request),
                 stream=True,
             )
-            async for event in iterator:
+            async for event in _stream_with_ask_user_intercept(
+                iterator, allowed_card_types=card_schemas,
+            ):
                 await resp.write(event.to_sse())
             await resp.write(StreamEvent.done().to_sse())
             logger.info(

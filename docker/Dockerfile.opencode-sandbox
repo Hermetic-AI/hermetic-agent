@@ -1,0 +1,56 @@
+# opencode-sandbox 镜像 (Phase 1)
+#
+# 1 个容器 = 1 个 long-running opencode serve 进程.
+# 容器内:
+#   - entrypoint.sh: 读 /opt/sandbox/policy.json → 渲染 opencode config → 启 opencode serve
+#   - health_server.py: 周期 /healthz (供 Hub 探活)
+#
+# 构建: docker build -f docker/Dockerfile.opencode-sandbox -t opencode-sandbox:dev .
+#
+# 升级到 Node 24+ (v0.4): opencode-ai 最新版要求 Node >= 20, 用 24 拿最新特性
+
+# 镜像源: Daocloud (免认证, 国内通用)
+# 想换回官方 Docker Hub: 去掉 docker.m.daocloud.io/ 前缀即可
+FROM docker.m.daocloud.io/library/node:24-slim
+
+# 必要工具: curl (healthcheck), python3 (health_server / render_config)
+# Node:24-slim 默认不装 Python, 我们要跑 health_server + render_config
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    ca-certificates \
+    python3 \
+    python3-requests \
+    && rm -rf /var/lib/apt/lists/* \
+    && python3 --version
+
+# opencode CLI (全局, 这样 entrypoint 能直接调)
+RUN npm install -g opencode-ai@latest \
+    && opencode --version
+
+# sandbox 内部件
+RUN mkdir -p /opt/sandbox
+COPY docker/entrypoint.sh    /opt/sandbox/entrypoint.sh
+COPY docker/health_server.py /opt/sandbox/health_server.py
+COPY docker/render_config.py /opt/sandbox/render_config.py
+RUN chmod +x /opt/sandbox/entrypoint.sh /opt/sandbox/health_server.py /opt/sandbox/render_config.py
+
+# 容器根 FS 是 --read-only, 容器层有 /opt/sandbox (entrypoint 要写 health log),
+# 跟 /tmp (tmpfs) 一样运行时写. 容器层目录在 --read-only 下需要 --read-only=false
+# 或显式声明可写. 实际 compose 里我们设 read_only=true + tmpfs 挂 /tmp;
+# 容器层目录: /opt/sandbox, /root/.config, /root/.local 会被 opencode serve 写,
+# 必须在 Dockerfile 里开成可写 (chmod 不够, read_only 模式下整个 FS 锁).
+# 解法: opencode 配置写到一个 tmpfs 子路径 (/opt/sandbox/config), 跟 health log 同位置.
+
+# opencode serve 端口 (跟 entrypoint.sh / docker-compose / runtime.py 保持一致)
+#  - 14096 = opencode serve (供 Hub 调 SDK, 用项目专属号避免跟 host 上 8080 冲突)
+#  - 7777  = health_server (供 Hub 探活)
+# 想覆盖: docker run -e OPENCODE_PORT=<port> 或 compose environment
+ENV OPENCODE_PORT=14096
+EXPOSE 7777 14096
+
+# 健康检查 (走 health_server.py 起的 7777, 不是 opencode 自己的)
+HEALTHCHECK --interval=5s --timeout=2s --start-period=10s --retries=3 \
+    CMD curl -fsS http://127.0.0.1:7777/healthz || exit 1
+
+# 入口
+ENTRYPOINT ["/opt/sandbox/entrypoint.sh"]

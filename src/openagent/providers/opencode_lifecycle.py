@@ -197,7 +197,14 @@ async def get_session(
 
 
 async def health_check(base_url: str) -> bool:
-    """探测 opencode serve 的 ``/health`` 端点。
+    """探测 opencode serve 的 ``/global/health`` 端点.
+
+    跟 opencode 上游 server.mdx 对齐:
+        GET /global/health → {"healthy": true, "version": "..."}
+
+    旧版本用 ``/health`` 跟 opencode 内置 healthz 撞名 (那个是 health_server
+    启的, 监听 7777), 实际测 :14096/health 永远 404. 改成
+    ``/global/health`` 才打到 opencode 真正的 readiness 端点.
 
     Args:
         base_url: opencode serve 的 HTTP 入口。
@@ -208,7 +215,7 @@ async def health_check(base_url: str) -> bool:
     try:
         import httpx
         async with httpx.AsyncClient(timeout=5.0) as http:
-            resp = await http.get(f"{base_url}/health")
+            resp = await http.get(f"{base_url}/global/health")
             ok = resp.status_code == 200
             if ok:
                 logger.info("opencode_health_check_ok", url=base_url)

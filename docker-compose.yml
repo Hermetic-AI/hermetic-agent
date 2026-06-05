@@ -1,0 +1,123 @@
+# OpenAgent 容器化部署 (Phase 1)
+#
+# 启动: docker compose build && docker compose up -d
+# 验证: curl http://localhost:8000/ready
+# 聊天: curl -X POST http://localhost:8000/agent/chat -H "Content-Type: application/json" \
+#         -d '{"message":"你好"}'
+#
+# 架构:
+#   openagent-hub  (L1~L3)  :8000
+#       ↓ 调 SDK
+#   opencode-1      (L4 sandbox 容器)  :7777 (health) / :14096 (opencode serve)
+#
+# 关键点 (跟 agent-sandbox-overview.md §5 一致):
+#   - 凭证走 env 挂载, 不引入 egress 代理
+#   - workspace bind mount 到 host 绝对路径 (不是 /workspace)
+#   - skill 走 ro bind mount 到 workspace/.skills/<name>/
+#   - 容器根 FS --read-only, tmpfs 给 /tmp
+#   - 1 hub + 1 opencode 节点 (要加就复制 service 块)
+
+version: '3.8'
+
+services:
+  # ============================================================
+  # 1. OpenAgent Hub (主服务, L1~L3, Sanic + scenarios + skills)
+  # ============================================================
+  openagent-hub:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.openagent
+    image: openagent:dev
+    container_name: openagent-hub
+    restart: unless-stopped
+    # 把 .env 整个读进容器 (pydantic-settings 用)
+    env_file: .env
+    ports:
+      - "18000:8000"
+    environment:
+      # ---- LLM 凭证 (model 字符串决定用哪个 provider, 见 §5.8) ----
+      # Anthropic (用 anthropic/* 时填)
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      # OpenAI 兼容 (用 openai/* 时填, 推荐 — DeepSeek/Qwen/GLM/Ollama/自建)
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - OPENAI_BASE_URL=${OPENAI_BASE_URL:-}
+      # ---- skill 业务 API ----
+      - FLIGHT_API_KEY=${FLIGHT_API_KEY:-}
+      # ---- 内部: opencode 节点位置 ----
+      - OPENCODE_NODES=http://opencode-1:14096
+      - ROUTING_STRATEGY=sticky_session
+      # ---- 日志 ----
+      - PYTHONUNBUFFERED=1
+      - AGENT_SCHEDULER_LOG_LEVEL=${AGENT_SCHEDULER_LOG_LEVEL:-INFO}
+      - AGENT_SCHEDULER_LOG_FORMAT=${AGENT_SCHEDULER_LOG_FORMAT:-json}
+      - AGENT_SCHEDULER_LOG_LLM_PAYLOAD=${AGENT_SCHEDULER_LOG_LLM_PAYLOAD:-true}
+    depends_on:
+      opencode-1:
+        condition: service_healthy
+    networks: [sandbox-net]
+    # 开发模式 (挂源码 + 开 Sanic reload) 用 docker-compose.override.yml 覆盖
+    # volumes:
+    #   - ./:/app
+    # command: ["python", "-m", "openagent.main", "--reload"]
+
+  # ============================================================
+  # 2. opencode 节点 (L4 sandbox 容器, 1 个 — 要加就复制)
+  # ============================================================
+  opencode-1:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.opencode-sandbox
+    image: opencode-sandbox:dev
+    container_name: opencode-1
+    hostname: opencode-1
+    restart: unless-stopped
+    # 容器安全加固
+    read_only: true
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges
+    # 资源限制
+    mem_limit: 2g
+    cpus: "2.0"
+    pids_limit: 128
+    # 临时目录 (容器根 FS 是 --read-only, 需要可写的都走 tmpfs)
+    # 注意: 镜像里 COPY 的 entrypoint.sh 等在 /opt/sandbox, **不能** tmpfs 覆盖 (会丢失文件)
+    tmpfs:
+      - /tmp:size=200m,mode=1777
+      # opencode 自己的运行时目录 (config.json + session-db 等)
+      - /root/.config:size=50m,mode=0755
+      - /root/.local:size=100m,mode=0755
+    # LLM 凭证 (跟 hub 同源, opencode serve 容器内自己读)
+    environment:
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - OPENAI_BASE_URL=${OPENAI_BASE_URL:-}
+      - FLIGHT_API_KEY=${FLIGHT_API_KEY:-}
+      # opencode 工作目录 (host 上 workspace 绝对路径, 容器内同样路径)
+      - WORKSPACE_CWD=${WORKSPACE_HOST_PATH:-/work/tenant-A/project-1}
+      - OPENCODE_PORT=14096
+      - OPENCODE_HOST=0.0.0.0
+      - HEALTH_PORT=7777
+    # bind mount
+    volumes:
+      # 主 workspace (rw) — host 绝对路径 bind 到容器同路径
+      # agent 看到 /work/tenant-A/project-1, host 上也是这个路径
+      - ${WORKSPACE_HOST_PATH:-./work/tenant-A/project-1}:${WORKSPACE_HOST_PATH:-/work/tenant-A/project-1}
+      # skill 源 (ro, 中心服务的 skill 目录)
+      - ${SKILLS_SHARED_DIR:-./work/shared/skills}:/work/shared/skills:ro
+      # 容器内 policy.json 写入点 (Hub 启动时生成, ro bind 进容器)
+      # Phase 2 由 Hub 写, Phase 1 先用静态文件
+      - ${POLICY_FILE:-./work/sandbox/policy.opencode-1.json}:/opt/sandbox/policy.json:ro
+    networks: [sandbox-net]
+    # 调试期: 暴露 opencode serve 到 host, 方便用浏览器/OpenAPI UI 排查
+    # 路径: http://localhost:14096/doc   (OpenAPI 3.1 Swagger UI)
+    #       http://localhost:14096/global/health
+    #       POST http://localhost:14096/session  (建会话)
+    # 生产环境删掉这段, sandbox 不应直接对外
+    ports:
+      - "14096:14096"
+
+networks:
+  sandbox-net:
+    driver: bridge
+    name: openagent-sandbox-net

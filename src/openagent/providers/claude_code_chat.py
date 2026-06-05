@@ -129,6 +129,25 @@ async def get_or_create_client(
     return adapter._clients[config.name]
 
 
+def _resolve_claude_tool_names(tools: Any) -> list[str] | None:
+    """归一化 caller 传的 tools (str / MCPTool / 混合) -> list[str] / None.
+
+    历史 caller 直接传 ``list[str]`` (scenario ``injection.final_tools``),
+    也有传 ``MCPTool`` 对象. 这里都兼容, 避免 ``t.name`` 在 str 上 AttributeError.
+    """
+    if not tools:
+        return None
+    names: list[str] = []
+    for t in tools:
+        if isinstance(t, str):
+            names.append(t)
+        else:
+            name = getattr(t, "name", None)
+            if name:
+                names.append(str(name))
+    return names or None
+
+
 def extract_text(content: Any) -> str:
     """从 SDK 内容块列表/对象中提取纯文本。
 
@@ -204,7 +223,7 @@ async def blocking_chat(
             break
 
     # Build options
-    tool_names = [t.name for t in tools] if tools else None
+    tool_names = _resolve_claude_tool_names(tools)
     opts = build_options(
         adapter,
         config,

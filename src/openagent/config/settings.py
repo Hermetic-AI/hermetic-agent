@@ -9,7 +9,16 @@ from functools import lru_cache
 from typing import Optional
 
 from pydantic import Field
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import (
+    BaseSettings,
+    PydanticBaseSettingsSource,
+    SettingsConfigDict,
+)
+
+from openagent.config.env_sources import (
+    PathAwareDotEnvSource,
+    PathAwareEnvSource,
+)
 
 
 class Settings(BaseSettings):
@@ -27,6 +36,23 @@ class Settings(BaseSettings):
         case_sensitive=False,
         extra="ignore",
     )
+
+    @classmethod
+    def settings_customise_sources(
+        cls,
+        settings_cls: type[BaseSettings],
+        init_settings: PydanticBaseSettingsSource,
+        env_settings: PydanticBaseSettingsSource,
+        dotenv_settings: PydanticBaseSettingsSource,
+        file_secret_settings: PydanticBaseSettingsSource,
+    ) -> tuple[PydanticBaseSettingsSource, ...]:
+        """Plug in env sources that resolve file-path values for complex fields."""
+        return (
+            init_settings,
+            PathAwareEnvSource(settings_cls),
+            PathAwareDotEnvSource(settings_cls),
+            file_secret_settings,
+        )
 
     # OpenCode 连接配置
     opencode_base_url: str = Field(
@@ -112,7 +138,10 @@ class Settings(BaseSettings):
     # MCP Tools 配置
     mcp_tools_config: list[dict] = Field(
         default=[],
-        description="MCP Tools 配置列表",
+        description=(
+            "MCP Tools 配置列表; 值可以是 inline JSON (例如 [{\"name\":...}]) "
+            "或指向 JSON 文件的路径 (例如 /app/work/mcp/mcp.json)"
+        ),
     )
 
     # Agent 默认注册（启动时自动注册一组默认 Agent，省去手动调 /agent/pool/register）
@@ -125,6 +154,7 @@ class Settings(BaseSettings):
         description=(
             "可选：覆盖默认 Agent 列表。每项含 name/base_url/sdk_type(default='opencode')/"
             "default_model。留空则只注册一个 opencode-core 指向 opencode_base_url。"
+            "值可以是 inline JSON 或 JSON 文件路径。"
         ),
     )
 

@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from 'react';
 import type { ChatMessage } from '../../types';
 import { useChatStream, useChatSession, useHealth } from '../../hooks';
 import { MessageList, ChatInput, ChatBubble, WelcomeMessage } from '../chat';
+import { config } from '../../config';
 import './ChatPage.css';
 
 interface ChatPageProps {
@@ -10,20 +11,27 @@ interface ChatPageProps {
   pendingPrompt?: string | null;
   /** Cleared once the prompt has been consumed. */
   onPendingPromptConsumed?: () => void;
+  /** Scenario routing hint (X-Scenario + body.scenario). */
+  scenario?: string;
+  /** Optional override of the displayed scenario name in welcome. */
+  scenarioLabel?: string;
 }
 
 export function ChatPage({
   onQuickReply,
   pendingPrompt,
   onPendingPromptConsumed,
+  scenario,
+  scenarioLabel,
 }: ChatPageProps) {
   const session = useChatSession();
-  const { state: healthState, ready } = useHealth(20_000);
+  const { state: healthState, ready } = useHealth();
   const agentName = pickAgentName(ready);
   const chat = useChatStream({
     sessionId: session.sessionId ?? undefined,
     onSessionChange: (id) => session.setSessionId(id),
     agentName,
+    scenario,
   });
 
   // Pull existing history once when we know the session id.
@@ -38,36 +46,31 @@ export function ChatPage({
     let cancelled = false;
     session
       .loadHistory(session.sessionId)
-      .then((items) => {
+      .then(() => {
         if (cancelled) return;
-        if (items.length > 0) {
-          chat.reset();
-          // Stash the items via a fresh send? Easier: expose history on
-          // useChatStream.  Since we don't want to overhaul the hook now,
-          // we instead simply skip auto-restoring and require explicit
-          // "load history" UX in a later iteration.
-        }
         setHistoryLoaded(true);
       })
       .catch(() => setHistoryLoaded(true));
     return () => {
       cancelled = true;
     };
-    // We intentionally do not depend on `chat` to avoid re-trigger loops.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session.sessionId]);
 
-  // Surface the active status for the welcome / input row.
-  const isBusy = chat.status === 'sending' || chat.status === 'streaming';
+  const isBusy =
+    chat.status === 'sending' ||
+    chat.status === 'streaming' ||
+    chat.status === 'resuming';
 
   // Inject prompt from outside (e.g. Search/Orders "Ask AI" button).
   useEffect(() => {
     if (!pendingPrompt) return;
-    if (isBusy) return;
+    if (isBusy || chat.isSuspended) return;
     chat.send(pendingPrompt);
     onPendingPromptConsumed?.();
     onQuickReply?.(pendingPrompt);
-  }, [pendingPrompt, isBusy, chat, onPendingPromptConsumed, onQuickReply]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingPrompt, isBusy, chat.isSuspended]);
 
   const handleSend = useCallback(
     (content: string) => {
@@ -87,19 +90,60 @@ export function ChatPage({
     chat.abort();
   }, [chat]);
 
+  const handleCardSubmit = useCallback(
+    (userInput: Record<string, unknown>, actionId?: string) => {
+      chat.resumeTurn(userInput, actionId);
+    },
+    [chat],
+  );
+
+  const handleCancelTurn = useCallback(() => {
+    void chat.cancelTurn();
+  }, [chat]);
+
+  // Aggregate the most recent state from any assistant message.
+  const latestState = chat.messages
+    .slice()
+    .reverse()
+    .flatMap((m) => m.stateEvents ?? [])
+    .pop();
+  const currentState = chat.currentState ?? latestState?.state ?? null;
+  const stateEvents = chat.messages
+    .flatMap((m) => m.stateEvents ?? [])
+    .filter((s) => s.state === currentState || s.state !== chat.currentState);
+  const scenarioView = chat.scenario;
+
   return (
     <div className="chat-page">
-      <HealthBanner state={healthState} sessionLabel={labelFor(session.info)} />
+      <HealthBanner
+        state={healthState}
+        sessionLabel={labelFor(session.info)}
+        scenarioLabel={scenarioLabel}
+        tokenConfigured={Boolean(config.mcpToken)}
+      />
       {chat.messages.length === 0 ? (
-        <WelcomeMessage onQuickReply={handleQuickReply} backendReady={healthState === 'healthy'} />
+        <WelcomeMessage
+          onQuickReply={handleQuickReply}
+          backendReady={healthState === 'healthy'}
+          scenarioLabel={scenarioLabel}
+        />
       ) : (
-        <MessageList loading={isBusy}>
+        <MessageList
+          loading={isBusy}
+          scenario={scenarioView}
+          currentState={currentState}
+          stateEvents={stateEvents}
+          turnId={chat.serverTurnId}
+          isSuspended={chat.isSuspended}
+          onCancelTurn={handleCancelTurn}
+        >
           {chat.messages.map((msg: ChatMessage) => (
             <ChatBubble
               key={msg.id}
               message={msg}
               onQuickReply={handleQuickReply}
               onAbort={handleAbort}
+              onCardSubmit={handleCardSubmit}
             />
           ))}
         </MessageList>
@@ -117,7 +161,17 @@ export function ChatPage({
           </button>
         </div>
       )}
-      <ChatInput onSend={handleSend} disabled={isBusy} />
+      <ChatInput
+        onSend={handleSend}
+        disabled={isBusy || chat.isSuspended}
+        placeholder={
+          chat.isSuspended
+            ? '请在上方卡片中填写信息以继续…'
+            : scenarioLabel
+              ? `向 ${scenarioLabel} 提问…`
+              : '输入消息…'
+        }
+      />
     </div>
   );
 }
@@ -137,15 +191,21 @@ function labelFor(info: { agent_name?: string; session_id?: string } | null): st
 function HealthBanner({
   state,
   sessionLabel,
+  scenarioLabel,
+  tokenConfigured,
 }: {
   state: ReturnType<typeof useHealth>['state'];
   sessionLabel: string;
+  scenarioLabel?: string;
+  tokenConfigured: boolean;
 }) {
   let text = '';
   let cls = 'chat-health-banner';
   switch (state) {
     case 'healthy':
-      text = `已连接 · ${sessionLabel}`;
+      text = scenarioLabel
+        ? `已连接 · ${scenarioLabel} · ${sessionLabel}`
+        : `已连接 · ${sessionLabel}`;
       cls += ' is-healthy';
       break;
     case 'degraded':
@@ -161,5 +221,14 @@ function HealthBanner({
       text = '正在连接后端…';
       break;
   }
-  return <div className={cls}>{text}</div>;
+  return (
+    <div className={cls}>
+      <span>{text}</span>
+      {!tokenConfigured && (
+        <span className="chat-health-banner-warn" title="未配置 VITE_MCP_TOKEN，部分 MCP 工具可能 401">
+          ⚠ 未配置 MCP Token
+        </span>
+      )}
+    </div>
+  );
 }

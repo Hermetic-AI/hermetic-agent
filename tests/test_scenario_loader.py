@@ -141,8 +141,16 @@ progressive_skill: {{strategy: none}}
     assert f"{p_str}/missing_ro" in cfg.workspace.readonly_dirs
 
 
-def test_load_missing_workspace_dir_still_raises(tmp_path: Path):
-    """workspace_dirs 缺失仍是硬错 (agent 没地方写就废了)."""
+def test_load_missing_workspace_dir_warns_not_raises(tmp_path: Path):
+    """workspace_dirs 缺失 → 软警告而非硬错.
+
+    docker compose 部署时 Hub 跟 sandbox 在不同容器, workspace 走
+    sandbox 自己的 bind mount, Hub 端校验一定 miss. 强制硬错会让
+    所有 scenario 在 Hub 启动时直接被 reject, 整个路由空了.
+
+    实际"workspace 不存在就废了"由 sandbox 端 launcher 兜底 (创建
+    workspace / 报 workspace 路径不对), Hub 端只负责路由.
+    """
     p_str = tmp_path.as_posix()
     yaml_text = f"""
 name: t_no_ws
@@ -152,11 +160,11 @@ execution: {{orchestration: single, skills: []}}
 workspace: {{workspace_dirs: ["{p_str}/missing_ws"]}}
 progressive_skill: {{strategy: none}}
 """
-    p = tmp_path / "bad.scenario.yaml"
+    p = tmp_path / "ok.scenario.yaml"
     p.write_text(yaml_text, encoding="utf-8")
-    with pytest.raises(ScenarioResourceError) as ei:
-        load_scenario(p, {})
-    assert "missing_ws" in str(ei.value)
+    cfg = load_scenario(p, {})  # 不抛错
+    assert cfg.name == "t_no_ws"
+    assert f"{p_str}/missing_ws" in cfg.workspace.workspace_dirs
 
 
 def test_load_invalid_yaml(tmp_path: Path):
@@ -211,7 +219,18 @@ progressive_skill: {{strategy: none}}
     assert "state_machine" in str(ei.value)
 
 
-def test_load_skill_md_missing(tmp_path: Path):
+def test_load_skill_md_missing_warns_not_raises(tmp_path: Path):
+    """SKILL.md 缺失 → 软警告而非硬错.
+
+    跟 workspace_dirs 同理: Hub 端 ``resource_dirs.skills`` 指向
+    ``${WORK_SHARED}/skills`` (= ``work/shared/skills``), 在 docker compose
+    下 Hub 容器不挂这个目录. 实际 skill 加载由 Hub 的 SkillRegistry 从
+    自带 ``src/openagent/.skills/`` (Dockerfile build COPY) 读取, 跟
+    scenario 里的 ``${WORK_SHARED}/skills`` 不是同一份.
+
+    Hub 端只负责"场景声明了 skill X"这个**意图**, 真实 skill 文件由
+    Hub 端的 SkillRegistry 兜底.
+    """
     p_str = tmp_path.as_posix()
     yaml_text = f"""
 name: needs_skill
@@ -222,12 +241,10 @@ workspace: {{workspace_dirs: ["{p_str}"]}}
 resource_dirs: {{skills: "{p_str}"}}
 progressive_skill: {{strategy: none}}
 """
-    p = tmp_path / "bad.scenario.yaml"
+    p = tmp_path / "ok.scenario.yaml"
     p.write_text(yaml_text, encoding="utf-8")
-    with pytest.raises(ScenarioResourceError) as ei:
-        load_scenario(p, {})
-    assert "SKILL.md" in str(ei.value)
-    assert any("SKILL.md" in m for m in ei.value.missing)
+    cfg = load_scenario(p, {})  # 不抛错
+    assert "nonexistent_skill" in cfg.execution.skills
 
 
 def test_load_with_real_skill(tmp_path: Path):
@@ -259,12 +276,12 @@ progressive_skill: {{strategy: none}}
 # ----------------------------------------------------------------------
 
 
-def test_reload_work_scenarios_loads_all_seven() -> None:
-    """盯住用户工单: reload 必须返回 7 个 scenario, 即使 ``work/shared/docs`` 不存在.
+def test_reload_work_scenarios_loads_all() -> None:
+    """盯住用户工单: reload 必须返回全部 scenario, 即使 ``work/shared/docs`` 不存在.
 
-    work/scenarios/ 里 7 个 yaml 都引用 ${WORK_SHARED}/docs (软资源),
+    work/scenarios/ 里 8 个 yaml 都引用 ${WORK_SHARED}/docs (软资源),
     之前 _check_workspace 把 readonly_dir 缺失当硬错 → reload 返回 0.
-    修完后 7 个都该加载.
+    修完后 8 个都该加载 (v3 新增 flight_query_v3).
     """
     from openagent.api.scenario_lifecycle import _build_placeholder_ctx, find_project_root
     from openagent.config.settings import Settings
@@ -284,7 +301,7 @@ def test_reload_work_scenarios_loads_all_seven() -> None:
     loaded = reg.reload(scenarios_dir)
 
     names = sorted(cfg.name for cfg in loaded)
-    assert len(loaded) == 7, f"expected 7 scenarios, got {len(loaded)}: {names}"
+    assert len(loaded) == 8, f"expected 8 scenarios, got {len(loaded)}: {names}"
     # 关键: 软警告 (readonly_dir / cards_dir 缺失) 不该阻断任何场景
     for expected in (
         "_default",
@@ -294,5 +311,6 @@ def test_reload_work_scenarios_loads_all_seven() -> None:
         "expense_audit",
         "flight_booking",
         "flight_query",
+        "flight_query_v3",
     ):
         assert expected in names, f"missing scenario: {expected}"

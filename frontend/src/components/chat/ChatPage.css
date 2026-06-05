@@ -13,6 +13,18 @@
   background: #F8F9FA;
   color: #6C6C70;
   border-bottom: 1px solid #E5E5EA;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.chat-health-banner-warn {
+  font-size: 11px;
+  background: #FEF3C7;
+  color: #92400E;
+  padding: 2px 8px;
+  border-radius: 999px;
 }
 
 .chat-health-banner.is-healthy {

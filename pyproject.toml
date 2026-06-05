@@ -32,11 +32,15 @@ dependencies = [
     "structlog>=24.0.0",
     "opencode-ai>=0.1.0a0",
     "asyncpg>=0.29.0",
-    "claude-agent-sdk @ git+https://github.com/anthropics/claude-agent-sdk-python@v0.2.87",
     "sanic-ext>=24.0.0",
 ]
 
 [project.optional-dependencies]
+# claude_agent_sdk 是 git+https 依赖, build 容器可能拉不到 GitHub (国内网络)
+# Phase 1 默认不装; 需要用 claude_code provider 时显式: pip install ".[claude]"
+claude = [
+    "claude-agent-sdk @ git+https://github.com/anthropics/claude-agent-sdk-python@v0.2.87",
+]
 dev = [
     "pytest>=8.0.0",
     "pytest-asyncio>=0.23.0",

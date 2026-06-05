@@ -77,6 +77,16 @@ class ScenarioInjector:
         """白名单过滤 + system_prompt 拼接.
 
         永远不抛错 — 被丢弃的项记录在 rejected_*, 由调用方审计/告警.
+
+        skills / tools 解析规则 (caller vs scenario 谁说了算):
+          - caller 没传 (None 或 ``[]``) → 用 scenario 自己的白名单全部
+            (场景路由命中后, scenario.execution.skills 是这个场景**默认要用的**)
+          - caller 传了 (非空 list) → 用 caller 的, 但**逐项**过 scenario 白名单
+            (caller 可以限制范围, 但不能注入 scenario 没声明的 skill/tool)
+          - ``rejected_*`` 记录 caller 传了但被白名单拒的项
+
+        跟设计文档 (scenario-skill-walkthrough.md §5) 一致:
+          "场景对话的 skill 列表**只来自 scenario 自己的 execution.skills 白名单**"
         """
         caller_skills = caller_skills or []
         caller_tools = caller_tools or []
@@ -84,8 +94,19 @@ class ScenarioInjector:
         allowed_skills = set(scenario.execution.skills)
         allowed_tools = set(scenario.execution.tools)
 
-        final_skills = [s for s in caller_skills if s in allowed_skills]
-        final_tools = [t for t in caller_tools if t in allowed_tools]
+        if not caller_skills:
+            # caller 没传 → 用 scenario 自己的白名单 (场景路由命中的默认行为)
+            final_skills = list(scenario.execution.skills)
+        else:
+            # caller 传了 → 取交集, caller 越权的被拒
+            final_skills = [s for s in caller_skills if s in allowed_skills]
+
+        if not caller_tools:
+            final_tools = list(scenario.execution.tools)
+        else:
+            final_tools = [t for t in caller_tools if t in allowed_tools]
+
+        # rejected 只看 caller 传了的 (空 caller 没东西可拒)
         rejected_skills = [s for s in caller_skills if s not in allowed_skills]
         rejected_tools = [t for t in caller_tools if t not in allowed_tools]
 

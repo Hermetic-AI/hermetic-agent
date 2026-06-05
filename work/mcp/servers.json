@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "feihe-travel": {
+      "type": "http",
+      "url": "https://traveldev.feiheair.com/api/mcp",
+      "headers": {
+        "Accept": "application/json,text/event-stream"
+      },
+      "disabled": false
+    }
+  }
+}

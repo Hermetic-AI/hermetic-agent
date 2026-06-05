@@ -121,6 +121,43 @@ async def startup(app: Sanic, settings: Any) -> None:
         raise
     logger.info("mcp_registry_ready", tools_count=len(mcp_registry.list_all()))
 
+    # AUIP: 注册合成工具 ask_user (LLM 用它推 UI 卡片, 框架在 stream 中拦截)
+    # 必须放在 mcp_registry 初始化之后, 所有 scenario 共享
+    from openagent.auip.cards import CARD_TYPES_SET
+    ask_user_schema = {
+        "type": "object",
+        "required": ["card_type"],
+        "properties": {
+            "card_type": {
+                "type": "string",
+                "enum": sorted(CARD_TYPES_SET),
+                "description": (
+                    "Which kind of UI card to show the user. "
+                    "Frontend (FlightResultCard / SelectionListCard / etc.) renders by card_type."
+                ),
+            },
+            "title": {"type": "string"},
+            "body": {"type": "object", "description": "Card body (free-form dict)."},
+            "options": {"type": "array"},
+            "decision_buttons": {"type": "array", "description": "Alias for actions."},
+            "actions": {"type": "array"},
+            "fields": {"type": "array", "description": "Form fields (OD_INPUT / PASSENGER_FORM)."},
+            "metadata": {"type": "object"},
+        },
+    }
+    mcp_registry.register_synthetic_tool(
+        name="ask_user",
+        description=(
+            "Emit a structured UI card to the user. The framework intercepts "
+            "this call and converts it to a `card` SSE event. DO NOT call this "
+            "in HITL mode (use CHAT_FALLBACK with `_text` body instead). "
+            "For data presentation, use card_type=FLIGHT_RESULT and put the "
+            "structured flight data in body.{summary, plans}."
+        ),
+        input_schema=ask_user_schema,
+    )
+    logger.info("auip_ask_user_tool_registered", card_types=sorted(CARD_TYPES_SET))
+
     bridge = AgentBridge(
         skill_registry=skill_registry,
         mcp_registry=mcp_registry,

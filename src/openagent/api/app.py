@@ -189,6 +189,15 @@ def create_app(settings: Settings | None = None) -> Sanic:
 
     _install_error_handler(app)
 
+    # 注册 scenario middleware — **必须在 finalize_middleware 之前**,
+    # 否则 Sanic 25 的 startup 顺序下, 启动后注册的 middleware 会被
+    # 已经 finalize 的列表覆盖, 永远不调用. 把它放 create_app 阶段
+    # (跟路由注册同一时机) 解决. middleware 内部从 app.ctx 读
+    # router/injector, 所以注册早于 scenarios 加载也 OK.
+    from openagent.scenarios.middleware import ScenarioMiddleware
+
+    app.register_middleware(ScenarioMiddleware(app), "request")
+
     @app.get("/health")
     @doc_summary("健康检查")
     @doc_description("用于负载均衡 / 探针，返回 200 表示进程存活。")

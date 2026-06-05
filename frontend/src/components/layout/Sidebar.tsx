@@ -1,5 +1,5 @@
-import type { ReactNode } from 'react';
-import { useHealth } from '../../hooks';
+import { useState, type ReactNode } from 'react';
+import { useHealth, useScenarios } from '../../hooks';
 import './Sidebar.css';
 
 type NavItem = {
@@ -12,6 +12,8 @@ interface SidebarProps {
   activeId: string;
   onNavChange: (id: string) => void;
   onOpenSettings?: () => void;
+  scenario?: string;
+  onScenarioChange?: (scenario: string | undefined) => void;
 }
 
 const navItems: NavItem[] = [
@@ -21,14 +23,85 @@ const navItems: NavItem[] = [
   { id: 'rules', label: '差旅规则', icon: <RulesIcon /> },
 ];
 
-export function Sidebar({ activeId, onNavChange, onOpenSettings }: SidebarProps) {
-  const { state } = useHealth(20_000);
+// Subset of scenarios safe to expose to the chat entry.  Internal/hidden
+// ones (`_default`, `_generic`) are kept out of the picker.
+const USER_PICKABLE_DEFAULT: string[] = ['flight_query', 'flight_booking'];
+
+export function Sidebar({
+  activeId,
+  onNavChange,
+  onOpenSettings,
+  scenario,
+  onScenarioChange,
+}: SidebarProps) {
+  const { state } = useHealth();
+  const { scenarios } = useScenarios();
+  const [open, setOpen] = useState(false);
+
+  const pickable = scenarios.filter(
+    (s) => s.enabled !== false && USER_PICKABLE_DEFAULT.includes(s.name),
+  );
+  const hasMore = pickable.length > 1;
+
   return (
     <aside className="sidebar">
       <div className="sidebar-logo">
         <span className="logo-text">OpenAgent</span>
         <span className="sidebar-tagline">差旅 AI 调度中心</span>
       </div>
+
+      {onScenarioChange && hasMore && (
+        <div className={`sidebar-scenario ${open ? 'is-open' : ''}`}>
+          <button
+            type="button"
+            className="sidebar-scenario-toggle"
+            onClick={() => setOpen((v) => !v)}
+            aria-expanded={open}
+            title={`当前场景: ${scenario ?? '自动'}`}
+          >
+            <span className="sidebar-scenario-dot" />
+            <span className="sidebar-scenario-label">
+              {scenario ?? '自动路由'}
+            </span>
+            <span className="sidebar-scenario-caret">▾</span>
+          </button>
+          {open && (
+            <ul className="sidebar-scenario-list" role="menu">
+              <li>
+                <button
+                  type="button"
+                  className={`sidebar-scenario-item ${!scenario ? 'is-active' : ''}`}
+                  onClick={() => {
+                    onScenarioChange(undefined);
+                    setOpen(false);
+                  }}
+                >
+                  <span className="sidebar-scenario-item-name">自动路由</span>
+                  <span className="sidebar-scenario-item-hint">由后端按 keyword 推断</span>
+                </button>
+              </li>
+              {pickable.map((s) => (
+                <li key={s.name}>
+                  <button
+                    type="button"
+                    className={`sidebar-scenario-item ${scenario === s.name ? 'is-active' : ''}`}
+                    onClick={() => {
+                      onScenarioChange(s.name);
+                      setOpen(false);
+                    }}
+                  >
+                    <span className="sidebar-scenario-item-name">{s.name}</span>
+                    {s.description && (
+                      <span className="sidebar-scenario-item-hint">{s.description}</span>
+                    )}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+
       <nav className="sidebar-nav">
         {navItems.map((item) => (
           <button

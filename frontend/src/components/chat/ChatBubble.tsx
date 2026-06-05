@@ -1,18 +1,28 @@
 import { useState } from 'react';
-import type { ChatMessage as ChatMessageType, ToolEventView, ReasoningEventView } from '../../types';
+import type {
+  ChatMessage as ChatMessageType,
+  ToolEventView,
+  ReasoningEventView,
+  CardView,
+  ScenarioView,
+  StateView,
+} from '../../types';
 import { Button } from '../common';
+import { AUIRenderer } from '../aui';
 import './ChatBubble.css';
 
 interface ChatBubbleProps {
   message: ChatMessageType;
   onQuickReply?: (value: string) => void;
   onAbort?: () => void;
+  /** Called when the user submits an AUIP card form. */
+  onCardSubmit?: (userInput: Record<string, unknown>, actionId?: string) => void;
 }
 
-export function ChatBubble({ message, onQuickReply, onAbort }: ChatBubbleProps) {
+export function ChatBubble({ message, onQuickReply, onAbort, onCardSubmit }: ChatBubbleProps) {
   const isUser = message.role === 'user';
   const status = message.status ?? 'done';
-  const showSpinner = !isUser && (status === 'sending' || status === 'streaming');
+  const showSpinner = !isUser && (status === 'sending' || status === 'streaming' || status === 'resuming');
 
   return (
     <div className={`chat-bubble ${isUser ? 'chat-bubble-user' : 'chat-bubble-assistant'}`}>
@@ -22,6 +32,10 @@ export function ChatBubble({ message, onQuickReply, onAbort }: ChatBubbleProps) 
         </div>
       )}
       <div className="chat-bubble-content">
+        {!isUser && message.scenario && <ScenarioPill scenario={message.scenario} />}
+        {!isUser && message.stateEvents && message.stateEvents.length > 0 && (
+          <StatePill items={message.stateEvents} current={message.status} />
+        )}
         {message.role !== 'user' && (message.reasoningEvents?.length ?? 0) > 0 && (
           <ReasoningBlock items={message.reasoningEvents!} />
         )}
@@ -33,6 +47,13 @@ export function ChatBubble({ message, onQuickReply, onAbort }: ChatBubbleProps) 
         )}
         {message.role !== 'user' && (message.toolEvents?.length ?? 0) > 0 && (
           <ToolBlock items={message.toolEvents!} />
+        )}
+        {message.role !== 'user' && (message.cards?.length ?? 0) > 0 && onCardSubmit && (
+          <CardsBlock
+            items={message.cards!}
+            onSubmit={onCardSubmit}
+            disabled={status === 'suspended' || status === 'aborted' || status === 'error'}
+          />
         )}
         {message.status === 'error' && message.errorMessage && (
           <div className="chat-bubble-error" role="alert">
@@ -58,8 +79,13 @@ export function ChatBubble({ message, onQuickReply, onAbort }: ChatBubbleProps) 
           <span className="chat-bubble-time">
             {formatTime(message.timestamp)}
             {statusBadge(status)}
+            {message.turnId && (
+              <span className="chat-bubble-turn" title={`turn: ${message.turnId}`}>
+                · turn {message.turnId.slice(0, 6)}
+              </span>
+            )}
           </span>
-          {status === 'streaming' && onAbort && (
+          {(status === 'streaming' || status === 'sending' || status === 'resuming') && onAbort && (
             <button
               type="button"
               className="chat-bubble-abort"
@@ -92,6 +118,10 @@ function statusBadge(status: NonNullable<ChatMessageType['status']>): string | n
       return ' · 已停止';
     case 'error':
       return ' · 失败';
+    case 'suspended':
+      return ' · 等待您输入';
+    case 'resuming':
+      return ' · 正在恢复';
     case 'done':
     default:
       return null;
@@ -104,6 +134,30 @@ function formatTime(iso: string): string {
   } catch {
     return iso;
   }
+}
+
+function ScenarioPill({ scenario }: { scenario: ScenarioView }) {
+  return (
+    <div className="chat-scenario-pill" title={`Scenario: ${scenario.name} v${scenario.version ?? '?'} via ${scenario.matched_by ?? '?'}`}>
+      <span className="chat-scenario-icon">⚙</span>
+      <span className="chat-scenario-name">{scenario.name}</span>
+      {scenario.orchestration && (
+        <span className="chat-scenario-orch">{scenario.orchestration}</span>
+      )}
+    </div>
+  );
+}
+
+function StatePill({ items }: { items: StateView[]; current?: string }) {
+  const last = items[items.length - 1];
+  if (!last) return null;
+  return (
+    <div className="chat-state-pill" title={`State: ${items.map((s) => s.state).join(' → ')}`}>
+      <span className="chat-state-dot" />
+      <span className="chat-state-label">业务状态</span>
+      <code className="chat-state-code">{last.state}</code>
+    </div>
+  );
 }
 
 function ReasoningBlock({ items }: { items: ReasoningEventView[] }) {
@@ -172,6 +226,31 @@ function ToolBlock({ items }: { items: ToolEventView[] }) {
           ))}
         </ol>
       )}
+    </div>
+  );
+}
+
+function CardsBlock({
+  items,
+  onSubmit,
+  disabled,
+}: {
+  items: CardView[];
+  onSubmit: (userInput: Record<string, unknown>, actionId?: string) => void;
+  disabled: boolean;
+}) {
+  if (items.length === 0) return null;
+  return (
+    <div className="chat-cards">
+      {items.map((c) => (
+        <AUIRenderer
+          key={c.card_id}
+          card={c.card}
+          suspended={Boolean(c.suspended) || disabled}
+          submitted={Boolean(c.submitted)}
+          onSubmit={onSubmit}
+        />
+      ))}
     </div>
   );
 }

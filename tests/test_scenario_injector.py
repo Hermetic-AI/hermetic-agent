@@ -100,8 +100,29 @@ def test_inject_no_rejection_when_all_allowed(injector: ScenarioInjector):
     assert r.rejected_tools == []
 
 
-def test_inject_no_rejection_when_caller_empty(injector: ScenarioInjector):
-    s = _scenario(skills=["a"], tools=["t1"])
+def test_inject_default_to_scenario_when_caller_empty(injector: ScenarioInjector):
+    """caller 没传 skills/tools → 默认用 scenario 自己的白名单.
+
+    跟设计文档 (scenario-skill-walkthrough.md §5) 一致: 场景路由命中后,
+    scenario.execution.skills 就是这个场景**默认要用的** — caller 不传
+    不应该是空, 应该是 scenario 的白名单全部.
+
+    旧实现 (filter 模式) 把 caller_skills=[] 解释成 "我不要任何 skill",
+    导致 LLM 看不到任何 skill 描述, 这是 user-facing bug.
+    """
+    s = _scenario(skills=["a", "b"], tools=["t1", "t2"])
+    r = injector.inject(s)
+    # scenario 自己的白名单全部进来
+    assert sorted(r.final_skills) == ["a", "b"]
+    assert sorted(r.final_tools) == ["t1", "t2"]
+    # caller 没传东西, 没东西可拒
+    assert r.rejected_skills == []
+    assert r.rejected_tools == []
+
+
+def test_inject_no_rejection_when_caller_empty_whitelists_also_empty(injector: ScenarioInjector):
+    """caller 空 + scenario 白名单也空 → 全部空 (例如 _generic 兜底场景)."""
+    s = _scenario(skills=[], tools=[])
     r = injector.inject(s)
     assert r.final_skills == []
     assert r.final_tools == []

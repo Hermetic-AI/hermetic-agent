@@ -1,22 +1,22 @@
 ---
 name: flight-query.query_flight_basic
-description: "`queryFlightBasic` 工具的深度规范 — 完整 input schema、所有 enum 值、输出字段说明、NL→param 映射、use case。schema 摘录自 skill 内 `tools/flight-mcp.json`(MCP `tools/list` 真实响应)。**冲突时以源 JSON 为准**。"
-version: 1.5.0
+description: "`queryFlightBasic` 工具的深度规范 — 完整 input schema、所有 enum 值、**真实输出字段(从 4 份真实样本提炼)**、NL→param 映射、use case。**本版基于 2026-06-04 用真实 token 抓的 4 份响应**,输出 schema 不再靠"等 MCP 端补"。冲突时以 `tools/flight-mcp.json` 为准(工具定义)+ `tools/samples/` 为准(输出结构)。"
+version: 2.0.0
 allowed-tools:
   - Bash
+  - Read
 ---
 
 # queryFlightBasic 深度规范 (On-Demand)
 
 > **加载时机**:父 skill `flight-query` 提示"详见 `flight-query:query_flight_basic`"时;
-> 或 LLM 主动判断需要完整 schema 时。
+> 或 LLM 主动判断需要完整 schema / 真实输出结构时。
 >
-> **本文档不重复**:endpoint / 协议 / token 契约(见父 skill `flight-query` §1 §2)。
+> **本文档不重复**:endpoint / 协议 / token 契约(见父 skill `flight-query` §1 §3 §4 §5)。
 >
-> **schema 源**:skill 根 `tools/flight-mcp.json` →
-> `result.tools[?(@.name=="queryFlightBasic")].inputSchema`
->
-> **本文件是源 JSON 的可读摘录 + 使用说明**,不是独立来源。
+> **数据源**:
+> - 工具 schema → 父 skill 根 `tools/flight-mcp.json` → `result.tools[?(@.name=="queryFlightBasic")]`
+> - 输出结构 → 父 skill 根 `tools/samples/queryFlightBasic.*.json`(4 份真实响应)
 
 ---
 
@@ -27,8 +27,8 @@ allowed-tools:
 | 名称 | `queryFlightBasic` | `tools/flight-mcp.json` |
 | 描述(原文) | 【TMS 查询】调 TMS 查航班。支持舱等/行李/退改/差标/航司/限价/直飞/时段/含餐/排序。首次查询时把用户所有条件一次性传入。改出发/到达/日期/舱等 → 必须重调本工具。不支持:飞机大小、飞行时长 → 查完后用 `filterFlightList` 或 LLM 自行筛选。模糊偏好("哪个最划算""帮我推荐") → LLM 直接分析返回的航班列表,不调工具。 | `tools/flight-mcp.json` |
 | 类别 | TMS 查询(调上游);首次查 / 改条件查 | 描述推论 |
-| 配套 | 同会话内可用 `filterFlightList` 在结果上做内存筛选(planeSize / maxDuration) | 父 skill §3 |
-| 幂等 | 纯查询;`sessionId` 由 MCP 端管(在本工具的返回里给) | 描述 |
+| 配套 | 同会话内可用 `filterFlightList` 在结果上做内存筛选(planeSize / maxDuration) | 父 skill §2 |
+| 幂等 | 纯查询;`sessionId` 由 MCP 端管理(在本工具的 `serialNumber` 字段给) | 真实响应 |
 
 ---
 
@@ -55,7 +55,7 @@ allowed-tools:
 
 | 字段 | 类型 | 说明 |
 |---|---|---|
-| `cheapest` | boolean | 是否只返回最低价航班(1 条)。`true`=最便宜 1 条,`false` 或不传=返回多条 |
+| `cheapest` | boolean | 是否只返回最低价航班(1 条)。`true`=最便宜 1 条,`false` 或不传=返回多条。用户说"最便宜/最低价/最划算"时设 `true`;说"看看有哪些/帮我查一下"时不传或 `false`。**真实样本验证**:传 `true` 后服务端会把 `searchType` 字段自动推成 `经济舱最低价` |
 | `maxPrice` | int | 最高价(元),如 `800`。超出此价格的航班不返回 |
 | `sortBy` | enum `PRICE` \| `ARRIVAL_TIME` \| `DURATION` \| `REFUND_FLEXIBILITY` | 排序方式。PRICE=最低价(默认),ARRIVAL_TIME=最快到达,DURATION=飞行最短,REFUND_FLEXIBILITY=退改最灵活 |
 
@@ -95,17 +95,19 @@ allowed-tools:
 
 | 字段 | 类型 | 说明 |
 |---|---|---|
-| `searchType` | enum (15 个中文值) | 查询意图标签,**仅供日志展示,不参与筛选排序逻辑**。可选值见 §2.3。**建议:优先填好 `cheapest` / `cabinClass` / `baggage` 等驱动参数,`searchType` 选填即可** |
+| `searchType` | enum(17 个中文值) | 查询意图标签,**仅供日志展示,不参与筛选排序逻辑**。可选值见 §2.3。**建议:优先填好 `cheapest` / `cabinClass` / `baggage` 等驱动参数,`searchType` 选填即可**;服务端会用驱动参数自动推导 |
 
-### 2.3 `searchType` enum(15 个值,摘自 `tools/flight-mcp.json`)
+### 2.3 `searchType` enum(17 个值,摘自 `tools/flight-mcp.json`)
 
-> ⚠️ v1.4.0 SKILL.md 声称"已 MCP Inspector 确认 `全量查询`"是**错的** — 没有真实抓包。
-> 本枚举是直接抄源 JSON 的 `enum` 字段,**未实测**各个值是否生效。
+> **真实样本验证**:
+> - 全量查询(不传驱动参数)→ 服务端推 `searchType: "全量查询"` ✓
+> - `cheapest: true` → 服务端推 `searchType: "经济舱最低价"` ✓
+> - 其他 15 个值**未实测**,建议**默认不传**
 
 | 值 | 含义(原文 / 推论) |
 |---|---|
-| `全量查询` | 默认,无特殊筛选 |
-| `经济舱最低价` | 推论:经济舱 1 条最低价 |
+| `全量查询` | **已实测**:默认,无特殊筛选 |
+| `经济舱最低价` | **已实测**:由 `cheapest: true` 推导 |
 | `经济舱带行李最低价` | 推论:经济舱 + 含行李 1 条最低价 |
 | `经济舱有正餐最低价` | 推论:经济舱 + 含正餐 1 条最低价 |
 | `全价经济最低价` | 推论:FULL_ECONOMY 1 条最低价 |
@@ -122,12 +124,165 @@ allowed-tools:
 | `时间最短` | 推论:配合 `sortBy: DURATION` 用 |
 | `差标以内退改费最低` | 推论:差标 + 退改组合 |
 
-> **未实测**:哪些值会被服务端真识别,需要服务端确认。
-> **建议**:**默认不传** `searchType`,优先用 §2.2 的驱动参数(更明确)。需要时再补。
+---
+
+## 3. 输出结构(基于 4 份真实样本提炼)
+
+> **真实样本**:`tools/samples/queryFlightBasic.*.json`(4 份,2026-06-04 用真实 token 抓)。
+> **响应路径**:`.result.content[0].text` → JSON 字符串 → **二次 `JSON.parse`** 得下面结构。
+> **顶层 error 标记**:`.result.isError === true` 时,`text` 字段是**业务级错误消息**(如"请求航信超时"),**没有** `serialNumber`/`flightList` 等结构。
+
+### 3.1 顶层 envelope
+
+```jsonc
+{
+  "serialNumber":  "260604160455A00000001",   // 流水号(选航班后回传)
+  "searchType":    "全量查询" | "经济舱最低价", // 服务端推导
+  "roundTrip":     false,                     // 是否往返
+  "flightCount":   193,                       // TMS 全量
+  "filteredCount": 193 | 1 | 0,               // 经筛选条件后
+  "flightList":    [ /* 见 §3.2 */ ],
+  "citys":         [ /* 见 §3.4 字典 */ ],
+  "airways":       [ /* 见 §3.4 字典 */ ],
+  "types":         [ /* 见 §3.4 字典 */ ],
+  "cityWeatherList": [ /* 见 §3.5 天气 */ ],
+  "notIncluded":   [                          // 服务端明示"以下字段不在本接口,要走其他工具"
+    "cabinList(舱位列表,选航班后用 chooseFlight 获取)",
+    "refundRules(退改规则详情,用航班详情 Tool 补查)",
+    "baggageWeight(行李额,用航班详情 Tool 补查)",
+    "passengerInfo(乘机人信息,选舱后用 queryPassenger 获取)",
+    "validationResult(校验结果,信息齐后用 validateBookingInfo 校验)",
+    "orderPreview(订单预览,校验通过后用 buildOrderPreview 生成)"
+  ]
+}
+```
+
+### 3.2 `flightList[]` — 航班条目(从真实样本提炼)
+
+```jsonc
+{
+  "serialNo":              1,                  // 1-based 序号
+  "flightId":              "MF8561",           // = flightNo(主航段航班号)
+  "outboundFlightId":      "MF8561",
+  "flightNo":              "MF8561",
+  "airId":                 "MF",               // 航司代码 → airways[].companyNo
+  "tripType":              "ONE_WAY",          // ONE_WAY | ROUND_TRIP
+  "lowestPrice":           400,                // 该航班最便宜的舱位价(含税)
+  "lowestCabinName":       "经济舱",            // 最低价舱位名
+  "lowestCabinId":         null,               // ⚠️ null — 选航班后才有
+  "fullPrice":             1630,               // Y 舱全价(差标用)
+  "depCityName":           "北京",
+  "arrCityName":           "上海",
+  "depDate":               "2026-06-05",       // 出发日期
+  "totalDuration":         "1h55m",            // 总飞行时长
+  "transferCount":         0,                  // 中转次数
+  "totalMile":             1178 | null,
+  "depAirportCode":        "PKX",              // 出发机场 IATA
+  "arrAirportCode":        "PVG",              // 到达机场 IATA
+  "outboundDepDate":       "2026-06-05",       // ⚠️ 只是 date,时分秒在 legs[]
+  "outboundArrDate":       "2026-06-05",       // 跨天时会 +1(如 2026-06-06)
+  "stopCount":             0,                  // 经停次数
+  "durationMin":           150 | null,
+  "meal":                  null,               // ⚠️ 顶层 null,meal 信息在 legs[].meal
+  "planeSize":             "",                 // ⚠️ 顶层空字符串,机型信息在 legs[].aircraftName
+  "totalPrice":            570,
+  "legs":                  [ /* 见 §3.3 */ ]
+}
+```
+
+### 3.3 `legs[]` — 航段(单程=1,往返=2)
+
+```jsonc
+{
+  "direction":        "GO",                    // GO=去程 / RETURN=回程
+  "flightId":         "9C7555",
+  "flightIndex":      0,                       // 段索引
+  "flightNo":         "9C7555",
+  "airlineName":      "春秋航空",                // ⚠️ 已含中文航司名(在 legs 里有)
+  "depDate":          "2026-06-05",            // 出发 date
+  "depTime":          "23:00",                 // ⚠️ HH:mm(顶层 outboundDepDate 没有时分秒)
+  "arrTime":          "01:30",                 // HH:mm
+  "arrDate":          "2026-06-06",            // 到达 date(跨天会 +1)
+  "depAirportName":   "浦东机场",
+  "depTerminal":      "T1",
+  "arrAirportName":   "宝安机场",
+  "arrTerminal":      "T3",
+  "duration":         "2h30m",
+  "mile":             null,
+  "aircraftName":     "空客320(中)",           // ⚠️ 含 (大)/(中)/(小) 后缀 — 解析飞机大小
+  "onTime":           null,
+  "meal":             null,                    // 是否含餐
+  "shareFlight":      false,                   // 是否共享航班
+  "shareId":          null,                    // 共享主航班号(空=非共享)
+  "stops":            [],                      // 经停列表
+  "transferWait":     null,
+  "previewCabinCount": 1                       // 该航段可选舱位数(选航班后用 chooseFlight 取)
+}
+```
+
+### 3.4 字典(反查用)
+
+```jsonc
+citys[] = {
+  "cityCode":      "PEK",      // 机场 IATA
+  "city":          "BJS",      // 城市码
+  "cityCodeName":  "北京首都",  // 机场中文名
+  "cityName":      "北京",     // 城市中文名
+  "airPortEn":     "",         // 机场英文名(常空)
+  "airPortName":   "首都机场",
+  "unifiedCityId": "110000"    // 行政区划代码
+}
+
+airways[] = {
+  "companyNo":      "MF",
+  "companyName":    "厦门航空",
+  "fullCompanyName":"厦航"
+}
+
+types[] = {
+  "type":   "320",
+  "airCom": "空客",
+  "size":   "中",                 // 大 | 中 | 小
+  "name":   "空客320"
+}
+```
+
+### 3.5 `cityWeatherList[]`(免费赠)
+
+```jsonc
+{
+  "cityName":  "上海市",
+  "date":      "2026-06-05",
+  "week":      "5",
+  "dayWeather":"阴",
+  "dayTemp":   "29",
+  "nightTemp": "21",
+  "dayWind":   "东北",
+  "dayPower":  "1-3"               // 风力等级
+}
+```
+
+### 3.6 业务级错误
+
+```jsonc
+// isError=true,顶层结构是:
+{
+  "isError": true,
+  "content": [{
+    "type": "text",
+    "text": "请求航信超时"          // 直接是错误消息字符串,不是 JSON
+  }]
+}
+```
+
+> 真实样本见 `tools/samples/queryFlightBasic.北京-上海.roundtrip.recommended.json`。
+> 处置:按 `errorMsg` 提示用户(见父 skill §4)。
 
 ---
 
-## 3. JSON-RPC envelope 模板
+## 4. JSON-RPC envelope + curl 模板
+
+### 4.1 envelope
 
 ```json
 {
@@ -136,43 +291,43 @@ allowed-tools:
   "method": "tools/call",
   "params": {
     "name": "queryFlightBasic",
-    "arguments": { ... }
+    "arguments": { /* §2 字段 */ }
   }
 }
 ```
 
-完整 curl 模板见父 skill `flight-query` §1.5(本 skill 不重复)。
+### 4.2 curl(完整)
 
----
+```bash
+curl -s --location --request POST 'https://traveldev.feiheair.com/api/mcp' \
+  --header 'Accept: application/json,text/event-stream' \
+  --header 'Authorization: Bearer ${MCP_TOKEN}' \
+  --header 'Content-Type: application/json' \
+  --data-raw '{
+      "jsonrpc": "2.0",
+      "id": 1,
+      "method": "tools/call",
+      "params": {
+        "name": "queryFlightBasic",
+        "arguments": {
+          "departureCity": "北京",
+          "arrivalCity":   "上海",
+          "departureDate": "2026-06-05"
+        }
+      }
+  }'
+```
 
-## 4. 输出结构(精简)
-
-> ⚠️ 源 JSON 的 `outputSchema` 是空 `{}`,**没有**定义输出 schema。
-> v1.4.0 列的 `flightList` / `cabins` / `serialNumber` 等结构是**历史 v1.4.0 编的**,**本版撤回**。
-> 实际返回结构以 MCP 服务端实际响应为准 — **未实测**。
-
-调用方应:
-
-1. 读 `.result.content[0].text` — 是 JSON 字符串,需二次 `JSON.parse`
-2. 按服务端实际返回字段渲染;**不要**依赖本文件历史版本列的字段
-3. 如需稳定 schema,等 MCP 端补 `outputSchema`
+> 更多场景见父 skill 根 `examples/01-oneway-full.sh` ~ `04-roundtrip-recommended.sh`。
 
 ---
 
 ## 5. NL → 参数映射
 
-### 5.1 城市
+### 5.1 城市(同父 skill §3)
 
-| 用户原话 | 转换 | 最终 `departureCity` / `arrivalCity` |
-|---|---|---|
-| 北京 | (已经是中文) | `北京` |
-| BJS / PEK / PKX / 首都 / 大兴 | 查父 skill §4.2 → `北京` | `北京` |
-| 上海 | (已经是中文) | `上海` |
-| SHA / PVG / 虹桥 / 浦东 | 查父 skill §4.2 → `上海` | `上海` |
-| (其他) | 加载 `flight-query:iata_icao_codes` 子 skill | 表里没有 → 主动问用户 |
-
-> **歧义**: 用户说"虹桥/浦东/首都/大兴"等具体机场 → 翻译成"上海"/"北京"等城市名,
-> 在结果展示时备注"按 XX 机场搜索"。
+> 用户说 IATA/ICAO/机场名 → 加载 `flight-query:iata_icao_codes` 子 skill。
+> 中文 → 直接用。
 
 ### 5.2 日期
 
@@ -222,7 +377,7 @@ allowed-tools:
 
 | 用户原话 | 字段 |
 |---|---|
-| "最便宜/最低价" | `cheapest: true` |
+| "最便宜/最低价" | `cheapest: true`(服务端会推 searchType=经济舱最低价) |
 | "要直飞/不经停" | `nonStop: true` |
 | "含行李/有托运" | `baggage: true` |
 | "含餐/有餐食" | `requireMeal: true` |
@@ -234,48 +389,66 @@ allowed-tools:
 
 ---
 
-## 6. use case(只给 `arguments` 字段)
+## 6. use case + 输出渲染模板
 
-### 6.1 单程 · 全量(默认)
+> 6 个 use case 对应父 skill 根 `examples/01~05.sh`。
+> **输出模板**:服务端返回后,本 skill **只渲染** `flightList[]` 顶层的可读字段;舱位/退改/行李走 `flight-booking` skill。
 
-```json
+### 6.1 单程 · 全量
+
+```jsonc
+// arguments
 {
-  "departureCity": "深圳",
-  "arrivalCity":   "成都",
+  "departureCity": "北京",
+  "arrivalCity":   "上海",
   "departureDate": "2026-06-05"
 }
 ```
 
+**渲染**(精简到 5 字段,实际样本 193 条):
+
+```markdown
+| # | 航班号 | 航司 | 出发 | 到达 | 飞行时长 | 最低价 | 舱位 | 直飞 |
+|---|---|---|---|---|---|---|---|---|
+| 1 | MF8561 | 厦门航空(MF) | PKX 06:55 | PVG 10:10 | 1h55m | ¥400 | 经济舱 | ✓ |
+| 2 | 9C7555 | 春秋航空(9C) | PVG 23:00 | SZX 01:30+1 | 2h30m | ¥570 | 经济舱 | ✓ |
+| ...(按 lowestPrice 升序,默认排序)|
+```
+
 ### 6.2 单程 · 最便宜
 
-```json
+```jsonc
 {
-  "departureCity": "北京",
-  "arrivalCity":   "上海",
-  "departureDate": "2026-06-04",
+  "departureCity": "上海",
+  "arrivalCity":   "深圳",
+  "departureDate": "2026-06-05",
   "cheapest":      true
 }
 ```
 
-### 6.3 单程 · 筛选(舱等 + 行李 + 直飞 + 限价 + 航司 + 排序)
+> 服务端会把 `searchType` 推成 `经济舱最低价`,`filteredCount=1`。
+> 真实样本:春秋航空 9C7555,¥570,经济舱。
 
-```json
+### 6.3 单程 · 多维筛选(舱等+行李+航司+时段+排序)
+
+```jsonc
 {
-  "departureCity":   "上海",
-  "arrivalCity":     "深圳",
-  "departureDate":   "2026-06-04",
+  "departureCity":   "北京",
+  "arrivalCity":     "上海",
+  "departureDate":   "2026-06-05",
   "cabinClass":      "ECONOMY",
   "baggage":         true,
-  "nonStop":         true,
-  "maxPrice":        1500,
   "airlineName":     "东航",
+  "departureDayPart":"MORNING",
   "sortBy":          "PRICE"
 }
 ```
 
-### 6.4 往返 · 打包推荐(默认)
+> 真实样本:filteredCount=0,flightList=[]。处置:提示放宽。
 
-```json
+### 6.4 往返 · 推荐(RECOMMENDED)
+
+```jsonc
 {
   "departureCity": "北京",
   "arrivalCity":   "上海",
@@ -284,15 +457,17 @@ allowed-tools:
 }
 ```
 
-### 6.5 往返 · 自由组合(分段订)
+> 真实样本:可能返 `请求航信超时`(`isError=true`)。处置:告知用户稍后重试。
 
-```json
+### 6.5 往返 · 自由组合(FREE)
+
+```jsonc
 {
-  "departureCity":      "北京",
-  "arrivalCity":        "上海",
-  "departureDate":      "2026-06-08",
-  "returnDate":         "2026-06-13",
-  "roundTripListMode":  "FREE"
+  "departureCity":     "北京",
+  "arrivalCity":       "上海",
+  "departureDate":     "2026-06-08",
+  "returnDate":        "2026-06-13",
+  "roundTripListMode": "FREE"
 }
 ```
 
@@ -308,4 +483,5 @@ allowed-tools:
 | 版本 | 日期 | 变更 |
 |---|---|---|
 | 1.4.0 | 2026-06-03 | 初版 — 含大量**编造**的输出 schema(`flightList` / `cabins` / `serialNumber` / `airLine: "SZXPKX"` 等)和一个**不实**的"已 MCP Inspector 验证"声明。**全部撤回** |
-| **1.5.0** | 2026-06-04 | **本版** — 按用户要求:<br>1. schema 来源标注为 skill 内 `tools/flight-mcp.json`(源快照归档在 `docs/api/mcp-response-0604.json`,仅作历史,不直接引用),**不**独立编<br>2. §2 输入参数**逐字段**从源 JSON 摘录,带原文说明<br>3. §4 输出结构:撤回所有字段(源 JSON `outputSchema` 为 `{}`,无可信结构),**等 MCP 端补**<br>4. §5 NL 映射仅基于字段 schema 推论,不引申<br>5. 仍保留"未实测"标记 |
+| 1.5.0 | 2026-06-04 | 撤回所有字段,源 JSON `outputSchema` 为 `{}`,无可信结构,等 MCP 端补 |
+| **2.0.0** | 2026-06-04 | **本版 — 基于真实样本**:<br>1. §3 输出结构从 4 份真实响应提炼(`tools/samples/`),**不再靠"等 MCP 端补"**<br>2. 关键修正:顶层 `outboundDepDate` 只有 date 无时分秒 → 时分秒在 `legs[].depTime/arrTime`;`planeSize=""` / `meal=null` 在顶层是空,真实信息在 `legs[]`;`lowestCabinId=null` — 选航班后才有<br>3. §3.4 新增 `citys` / `airways` / `types` 字典反查说明<br>4. §3.6 新增业务级错误结构(`isError=true`,`text="请求航信超时"`)<br>5. §2.3 `searchType` 标"已实测"(`全量查询` / `经济舱最低价`)vs"未实测"<br>6. §3.1 新增 `notIncluded` 字段 — 服务端明示"舱位/退改/行李/乘机人/校验/预览要走其他工具"<br>7. §6.1 输出模板精简到 5 字段(航司/航班号/出发到达/时长/最低价),舱位细节走 `flight-booking` |
