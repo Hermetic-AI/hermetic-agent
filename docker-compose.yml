@@ -17,8 +17,6 @@
 #   - 容器根 FS --read-only, tmpfs 给 /tmp
 #   - 1 hub + 1 opencode 节点 (要加就复制 service 块)
 
-version: '3.8'
-
 services:
   # ============================================================
   # 1. OpenAgent Hub (主服务, L1~L3, Sanic + scenarios + skills)
@@ -105,9 +103,11 @@ services:
       - ${WORKSPACE_HOST_PATH:-./work/tenant-A/project-1}:${WORKSPACE_HOST_PATH:-/work/tenant-A/project-1}
       # skill 源 (ro, 中心服务的 skill 目录)
       - ${SKILLS_SHARED_DIR:-./work/shared/skills}:/work/shared/skills:ro
-      # 容器内 policy.json 写入点 (Hub 启动时生成, ro bind 进容器)
-      # Phase 2 由 Hub 写, Phase 1 先用静态文件
-      - ${POLICY_FILE:-./work/sandbox/policy.opencode-1.json}:/opt/sandbox/policy.json:ro
+      # policy.json 走镜像 bake (Dockerfile COPY), 不再 bind mount:
+      #   原因 — Docker Desktop + WSL2 9P 文件系统会看到 host 跟 daemon 视图不一致
+      #   (host: file 684B, daemon: directory 1024B), bind mount 永远把目标当目录.
+      #   改 policy 后: docker build -f docker/Dockerfile.opencode-sandbox + force-recreate.
+      # workspace/skills 仍是 bind mount (目录, 9P 没事, 仅 file 受影响).
     networks: [sandbox-net]
     # 调试期: 暴露 opencode serve 到 host, 方便用浏览器/OpenAPI UI 排查
     # 路径: http://localhost:14096/doc   (OpenAPI 3.1 Swagger UI)

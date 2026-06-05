@@ -9,6 +9,7 @@ from __future__ import annotations
 import os
 from typing import Any, Literal
 
+import structlog
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 # 类型别名
@@ -154,6 +155,9 @@ class ProgressiveSkillConfig(_Strict):
     budget_policy: BudgetPolicy = "error"
     initial_skills: list[InitialSkillConfig] = Field(default_factory=list)
     load_on_state: dict[str, list[str]] = Field(default_factory=dict)
+    # P1-4: explicit 模式的静态声明. 仅在 strategy="explicit" 生效.
+    # 形如 ``["flight-query:summary", "book-flight:state-s02"]``.
+    explicit_skills: list[str] = Field(default_factory=list)
 
 
 class ResourcesConfig(_Strict):
@@ -207,6 +211,27 @@ class ScenarioConfig(_Strict):
             raise ValueError(
                 f"Scenario {self.name}: workspace.workspace_dirs[0] = {first!r} "
                 f"is forbidden."
+            )
+        # 4. P2-6: on_demand 必须配 HITL 状态机 (state 在 S02+ 才有意义).
+        #    非 HITL scenario (single / delegate / parallel / chain) 配 on_demand
+        #    会退化成"永远只加载 initial_skills", 浪费 budget. 给硬警告
+        #    (而非 error, 避免破坏已有配置; 想硬拒绝改成 raise).
+        if (
+            self.progressive_skill.strategy == "on_demand"
+            and self.execution.orchestration != "hitl"
+        ):
+            structlog.get_logger(__name__).warning(
+                "progressive_on_demand_without_hitl",
+                scenario=self.name,
+                orchestration=self.execution.orchestration,
+                load_on_state_keys=list(
+                    self.progressive_skill.load_on_state.keys()
+                ),
+                hint=(
+                    "non-HITL scenarios have no state machine; on_demand's "
+                    "load_on_state entries other than initial_skills are "
+                    "unreachable. Consider strategy='all' for non-HITL."
+                ),
             )
         return self
 

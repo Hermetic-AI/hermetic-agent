@@ -48,9 +48,10 @@ execution:
     3. 调 opencode 原生 MCP 工具 queryFlightBasic
        (opencode 启动时已从 work/mcp/servers.json 加载 feihe-travel MCP server,
        工具 schema 已自动注入你的 context;**不**需要用 Bash+curl)
-    4. **必须** 按 skill §5 把结果整理成 FLIGHT_RESULT 卡片
-       (调 ask_user 工具, card_type=FLIGHT_RESULT, body.plans[] 分方案)
-    5. 在 text 事件里**只**发一句简短总结(例: "按你需求筛出 3 个方案, 详见下方卡片")
+    4. **必须** 调 `ask_user` 工具发 FLIGHT_RESULT 卡片 (card_type=FLIGHT_RESULT, body.plans[] 分方案).
+       ⚠️ 铁律: **永远不要** 把航班列表塞到 text 事件里. text 只发一句简短总结 (≤ 30 字),
+       真正的数据通过 ask_user 卡片推前端渲染. 把 ask_user 调成 CHAT_FALLBACK 才能用 text.
+    5. 调完 ask_user 后, **不要** 继续调其他工具或再发 text. 等待用户回复即可.
 
     严禁:
     - 编造航班号、价格、政策

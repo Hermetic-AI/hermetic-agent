@@ -1,5 +1,7 @@
 import type { Flight } from '../../types';
 import { Button, Badge } from '../common';
+import { checkCompliance } from '../../lib';
+import '../../lib/compliance.css';
 import './FlightCard.css';
 
 interface FlightCardProps {
@@ -9,6 +11,7 @@ interface FlightCardProps {
 }
 
 export function FlightCard({ flight, onSelect, selected = false }: FlightCardProps) {
+  const compliance = checkCompliance(flight.price, flight.cabinClass);
   return (
     <div className={`flight-card ${selected ? 'flight-card-selected' : ''}`}>
       <div className="flight-card-header">
@@ -17,9 +20,12 @@ export function FlightCard({ flight, onSelect, selected = false }: FlightCardPro
           <span className="airline-name">{flight.airline}</span>
           <Badge variant="default">{flight.flightNumber}</Badge>
         </div>
-        <div className="flight-price">
-          <span className="price-symbol">¥</span>
-          <span className="price-value">{flight.price}</span>
+        <div className="flight-header-right">
+          <ComplianceBadge compliance={compliance} />
+          <div className="flight-price">
+            <span className="price-symbol">¥</span>
+            <span className="price-value">{flight.price}</span>
+          </div>
         </div>
       </div>
 
@@ -60,6 +66,17 @@ export function FlightCard({ flight, onSelect, selected = false }: FlightCardPro
         )}
       </div>
     </div>
+  );
+}
+
+function ComplianceBadge({ compliance }: { compliance: ReturnType<typeof checkCompliance> }) {
+  return (
+    <span
+      className={`compliance-badge compliance-${compliance.level}`}
+      title={compliance.tooltip}
+    >
+      {compliance.label}
+    </span>
   );
 }
 

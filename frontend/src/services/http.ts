@@ -89,6 +89,9 @@ export async function request<T = unknown>({
 
   const finalHeaders: Record<string, string> = {
     Accept: 'application/json',
+    // 读取"最新"的 CRM token, 不是模块加载时的快照.
+    // 用户在设置面板修改 token 后, 下一次请求立刻生效.
+    ...(config.getCrmToken() ? { 'X-CRM-Token': config.getCrmToken() } : {}),
     ...(headers as Record<string, string> | undefined),
   };
   let payload: BodyInit | undefined;

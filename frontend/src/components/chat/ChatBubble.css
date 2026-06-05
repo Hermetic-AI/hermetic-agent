@@ -65,12 +65,28 @@
 }
 
 .chat-bubble-text {
-  padding: 14px 18px;
-  border-radius: 18px;
   font-size: 14px;
-  line-height: 1.6;
+  line-height: 1.7;
+  color: inherit;
+  word-wrap: break-word;
+}
+
+.chat-bubble-plain {
+  /* 用户消息: 纯文本, 保留换行, 不走 markdown 解析. */
   white-space: pre-wrap;
-  transition: box-shadow 0.2s ease, transform 0.2s ease;
+  word-break: break-word;
+}
+
+.chat-bubble-cursor {
+  display: inline-block;
+  margin-left: 2px;
+  animation: bubbleBlink 1s steps(1) infinite;
+  font-weight: 100;
+}
+
+@keyframes bubbleBlink {
+  0%, 50% { opacity: 1; }
+  51%, 100% { opacity: 0; }
 }
 
 .chat-bubble-assistant .chat-bubble-text {

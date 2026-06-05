@@ -114,6 +114,20 @@ async def startup(app: Sanic, settings: Any) -> None:
         skill_paths=list(settings.skill_paths or []),
     )
 
+    # P0-1: 渐进式 SKILL 加载器. PromptBuilder 持有 FragmentLoader, 由
+    # chat_controller 透传给 bridge.chat, 让 scenario.progressive_skill
+    # 真正生效 (之前 bridge.chat 走的是 skills/registry.py 全量内联路径,
+    # progressive_skill 配了等于没配).
+    from openagent.skill_runtime import FragmentLoader, PromptBuilder
+
+    fragment_loader = FragmentLoader(skill_registry, budget=4000, policy="error")
+    prompt_builder = PromptBuilder(fragment_loader=fragment_loader)
+    logger.info(
+        "prompt_builder_ready",
+        budget_tokens=fragment_loader.budget,
+        policy=fragment_loader.policy,
+    )
+
     try:
         mcp_registry = MCPRegistry.from_config(settings.mcp_tools_config)
     except Exception as e:
@@ -158,6 +172,103 @@ async def startup(app: Sanic, settings: Any) -> None:
     )
     logger.info("auip_ask_user_tool_registered", card_types=sorted(CARD_TYPES_SET))
 
+    # P0-2: read_skill 工具 — 渐进式 SKILL 加载的 LLM 入口.
+    # Anthropic Skills 协议要求 LLM 能"按需加载"子 skill 片段, 否则
+    # 全部 skill 内容塞进 system prompt 会爆 context window.
+    # 实现: 接受 ``{"name": "<skill>", "fragment": "<frag_id>"}``;
+    # 找到 SkillRegistry 里注册的 skill, 返回它的 SKILL.md 全文
+    # 或 ``fragments/<frag_id>.md`` 子片段. 找不到抛 4xx 让 LLM 知道.
+    read_skill_schema = {
+        "type": "object",
+        "required": ["name"],
+        "properties": {
+            "name": {
+                "type": "string",
+                "description": "Skill name (matches SKILL.md frontmatter name).",
+            },
+            "fragment": {
+                "type": "string",
+                "description": (
+                    "Optional fragment id. If omitted, returns the full SKILL.md body. "
+                    "If set, looks up <skill_dir>/fragments/<fragment>.md."
+                ),
+            },
+        },
+    }
+
+    async def _read_skill_handler(name: str, fragment: str | None = None, **_: Any) -> dict:
+        """read_skill tool handler — 读 SKILL.md 或 fragments/<id>.md."""
+        skill = skill_registry.get(name)
+        if skill is None:
+            return {
+                "ok": False,
+                "error_code": "SKILL_NOT_FOUND",
+                "name": name,
+                "available": [s.name for s in skill_registry.list_all()],
+            }
+        # 1. fragment 路径: <skill.source dir>/fragments/<fragment>.md
+        if fragment:
+            if not skill.source:
+                return {
+                    "ok": False,
+                    "error_code": "FRAGMENT_NOT_FOUND",
+                    "name": name,
+                    "fragment": fragment,
+                    "reason": "skill has no source file",
+                }
+            from pathlib import Path
+            skill_dir = Path(skill.source).parent
+            frag_path = skill_dir / "fragments" / f"{fragment}.md"
+            if not frag_path.exists():
+                return {
+                    "ok": False,
+                    "error_code": "FRAGMENT_NOT_FOUND",
+                    "name": name,
+                    "fragment": fragment,
+                    "expected_path": str(frag_path),
+                }
+            text = frag_path.read_text(encoding="utf-8")
+            return {
+                "ok": True,
+                "name": name,
+                "version": skill.version,
+                "fragment": fragment,
+                "content": text,
+            }
+        # 2. 全文: 优先从 skill.source 读, 退到 prompt_template
+        from pathlib import Path
+        if skill.source:
+            p = Path(skill.source)
+            if p.is_file() and p.exists():
+                text = p.read_text(encoding="utf-8")
+                return {
+                    "ok": True,
+                    "name": name,
+                    "version": skill.version,
+                    "description": skill.description,
+                    "content": text,
+                }
+        return {
+            "ok": True,
+            "name": name,
+            "version": skill.version,
+            "description": skill.description,
+            "content": skill.prompt_template or "",
+        }
+
+    mcp_registry.register(
+        name="read_skill",
+        description=(
+            "Load a SKILL.md (or a fragments/<id>.md) on demand. "
+            "Use this when the system prompt only advertised the skill's name "
+            "and you need the full instructions. Anthropic Skills progressive "
+            "loading protocol."
+        ),
+        input_schema=read_skill_schema,
+        handler=_read_skill_handler,
+    )
+    logger.info("read_skill_tool_registered", skills_count=len(skill_registry.list_all()))
+
     bridge = AgentBridge(
         skill_registry=skill_registry,
         mcp_registry=mcp_registry,
@@ -190,6 +301,7 @@ async def startup(app: Sanic, settings: Any) -> None:
     app.ctx.mcp_registry = mcp_registry
     app.ctx.scheduler = scheduler
     app.ctx.settings = settings  # P6: 让 controller 能取到 settings
+    app.ctx.prompt_builder = prompt_builder  # P0-1: 渐进式 SKILL 加载
 
     # P6: 初始化 Scenario 子系统 (registry / router / injector / middleware)
     from openagent.api.scenario_lifecycle import init_scenarios

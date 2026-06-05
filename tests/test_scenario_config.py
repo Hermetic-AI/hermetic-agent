@@ -224,6 +224,92 @@ def test_strategy_all_does_not_require_load_on_state():
 
 
 # ----------------------------------------------------------------------
+# P2-6: 非 HITL scenario 配 on_demand → 警告 (不抛错)
+# ----------------------------------------------------------------------
+
+
+def test_on_demand_non_hitl_warns(monkeypatch: pytest.MonkeyPatch) -> None:
+    """P2-6: non-HITL (single) + on_demand + load_on_state 非空
+    → 仍然能加载, 但打 warning 提示 load_on_state 永远到不了."""
+    import structlog
+    from openagent.scenarios import config as cfg_mod
+
+    captured: list[tuple[str, dict]] = []
+    real_get_logger = structlog.get_logger
+    real_warning = real_get_logger(cfg_mod.__name__).warning
+
+    def _spy_get_logger(name: str | None = None) -> object:
+        if name == cfg_mod.__name__:
+            # Return a mock-like object that records .warning calls
+            class _Spy:
+                def warning(self, event: str, **fields: object) -> None:
+                    captured.append((event, dict(fields)))
+                    real_warning(event, **fields)
+            return _Spy()
+        return real_get_logger(name)
+
+    monkeypatch.setattr(cfg_mod.structlog, "get_logger", _spy_get_logger)
+
+    cfg = ScenarioConfig(
+        name="flat",
+        version="1.0.0",
+        routing=_routing(),
+        execution=_exec("single"),
+        workspace=_ws(),
+        progressive_skill=ProgressiveSkillConfig(
+            strategy="on_demand",
+            load_on_state={"S05": ["x:y"]},
+            initial_skills=[InitialSkillConfig(name="x", mode="summary")],
+        ),
+    )
+    # 不抛错
+    assert cfg.progressive_skill.strategy == "on_demand"
+    # 警告被 spy 捕获
+    events = [e for e, _ in captured]
+    assert "progressive_on_demand_without_hitl" in events
+    # 警告 payload 包含关键字段
+    payload = dict(captured[events.index("progressive_on_demand_without_hitl")][1])
+    assert payload.get("scenario") == "flat"
+    assert payload.get("orchestration") == "single"
+
+
+def test_on_demand_hitl_does_not_warn(monkeypatch: pytest.MonkeyPatch) -> None:
+    """P2-6 反例: HITL + on_demand 合法, 不该警告."""
+    import structlog
+    from openagent.scenarios import config as cfg_mod
+
+    captured: list[tuple[str, dict]] = []
+    real_get_logger = structlog.get_logger
+    real_warning = real_get_logger(cfg_mod.__name__).warning
+
+    def _spy_get_logger(name: str | None = None) -> object:
+        if name == cfg_mod.__name__:
+            class _Spy:
+                def warning(self, event: str, **fields: object) -> None:
+                    captured.append((event, dict(fields)))
+                    real_warning(event, **fields)
+            return _Spy()
+        return real_get_logger(name)
+
+    monkeypatch.setattr(cfg_mod.structlog, "get_logger", _spy_get_logger)
+
+    ScenarioConfig(
+        name="hl",
+        version="1.0.0",
+        routing=_routing(),
+        execution=_exec("hitl"),
+        workspace=_ws(),
+        a2ui=A2UIConfig(enabled=True),
+        progressive_skill=ProgressiveSkillConfig(
+            strategy="on_demand",
+            load_on_state={"S05": ["x:y"]},
+        ),
+    )
+    events = [e for e, _ in captured]
+    assert "progressive_on_demand_without_hitl" not in events
+
+
+# ----------------------------------------------------------------------
 # 枚举校验
 # ----------------------------------------------------------------------
 

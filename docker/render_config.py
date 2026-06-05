@@ -39,9 +39,17 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import os
 import sys
 from pathlib import Path
+from typing import Any
+
+logger = logging.getLogger(__name__)
+logging.basicConfig(
+    level=os.environ.get("LOG_LEVEL", "INFO"),
+    format="[%(levelname)s] %(message)s",
+)
 
 
 # tool_level → opencode permission 映射
@@ -154,6 +162,16 @@ def render(policy: dict) -> dict:
     if skills:
         skill_paths = [f"{workspace_cwd}/.skills/{name}" for name in skills]
         cfg["skills"] = {"paths": skill_paths}
+
+    # MCP servers (Phase 1 v3: opencode 启动时加载, 把 LLM 调用 MCP 工具
+    # 当作原生 tool, 不再走 bash+curl). 翻译自 policy["mcp_servers"] 段,
+    # 严格遵循 opencode config schema (type: remote/local + url + headers).
+    mcp_servers = policy.get("mcp_servers", {})
+    if mcp_servers:
+        cfg["mcp"] = mcp_servers
+        logger.info(
+            f"mcp_servers_rendered count={len(mcp_servers)} names={list(mcp_servers.keys())}"
+        )
 
     return cfg
 

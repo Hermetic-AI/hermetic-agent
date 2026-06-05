@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Modal, Skeleton, Empty, Badge } from '../common';
 import { useSkills, useTools, usePool, useHealth } from '../../hooks';
+import { config } from '../../config';
 import type { Tool } from '../../types';
 import './SettingsPanel.css';
 
@@ -9,7 +10,7 @@ interface SettingsPanelProps {
   onClose: () => void;
 }
 
-type Tab = 'overview' | 'skills' | 'tools' | 'agents';
+type Tab = 'overview' | 'skills' | 'tools' | 'agents' | 'tokens';
 
 export function SettingsPanel({ open, onClose }: SettingsPanelProps) {
   const [tab, setTab] = useState<Tab>('overview');
@@ -19,6 +20,7 @@ export function SettingsPanel({ open, onClose }: SettingsPanelProps) {
       <div className="settings-panel">
         <div className="settings-tabs">
           <SettingsTab id="overview" label="概览" current={tab} onSelect={setTab} />
+          <SettingsTab id="tokens" label="凭证" current={tab} onSelect={setTab} />
           <SettingsTab id="skills" label="技能" current={tab} onSelect={setTab} />
           <SettingsTab id="tools" label="工具" current={tab} onSelect={setTab} />
           <SettingsTab id="agents" label="Agent" current={tab} onSelect={setTab} />
@@ -27,6 +29,7 @@ export function SettingsPanel({ open, onClose }: SettingsPanelProps) {
           {tab === 'overview' && (
             <Overview state={state} detail={detail} ready={ready} />
           )}
+          {tab === 'tokens' && <TokensTab />}
           {tab === 'skills' && <SkillsTab />}
           {tab === 'tools' && <ToolsTab />}
           {tab === 'agents' && <AgentsTab />}
@@ -88,6 +91,90 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
     <div className="settings-row">
       <span className="settings-label">{label}</span>
       <span className="settings-value">{children}</span>
+    </div>
+  );
+}
+
+function TokensTab() {
+  // 读 env (build-time) 跟 localStorage (runtime), 展示当前生效值
+  const envCrm = (import.meta.env.VITE_CRM_TOKEN ?? '').trim();
+  const [runtimeCrm, setRuntimeCrm] = useState<string>(() => config.getCrmToken());
+  const [draft, setDraft] = useState(runtimeCrm);
+  const [saved, setSaved] = useState(false);
+
+  const handleSave = () => {
+    const v = draft.trim();
+    config.setCrmToken(v);
+    setRuntimeCrm(v);
+    setSaved(true);
+    window.setTimeout(() => setSaved(false), 1500);
+  };
+
+  const handleClear = () => {
+    setDraft('');
+    config.setCrmToken('');
+    setRuntimeCrm('');
+    setSaved(true);
+    window.setTimeout(() => setSaved(false), 1500);
+  };
+
+  const sourceLabel = envCrm
+    ? `env VITE_CRM_TOKEN (${envCrm.slice(0, 8)}…)`
+    : runtimeCrm
+      ? `localStorage "crm_token" (${runtimeCrm.slice(0, 8)}…)`
+      : '未设置';
+
+  return (
+    <div className="settings-overview">
+      <Row label="MCP Token">
+        <Badge variant={(import.meta.env.VITE_MCP_TOKEN ?? '').trim() ? 'success' : 'warning'}>
+          {config.mcpToken ? `${config.mcpToken.slice(0, 8)}…` : '未设置'}
+        </Badge>
+        <span className="settings-muted">X-MCP-Token (build-time via VITE_MCP_TOKEN)</span>
+      </Row>
+
+      <div className="settings-card" style={{ marginTop: 16 }}>
+        <div className="settings-card-head">
+          <strong>CRM Token</strong>
+          <Badge variant={config.getCrmToken() ? 'success' : 'warning'}>
+            {config.getCrmToken() ? '已设置' : '未设置'}
+          </Badge>
+        </div>
+        <p className="settings-muted" style={{ marginTop: 4 }}>
+          来源: <code>{sourceLabel}</code> — 随每个请求以 <code>X-CRM-Token</code> 头发送
+        </p>
+        <p className="settings-muted" style={{ marginTop: 4, fontSize: 12 }}>
+          获取方式: 在 <a href="https://crmdev.feiheair.com/VuePage/index.html#/index" target="_blank" rel="noreferrer">crmdev.feiheair.com</a> 登录后,
+          从 devtools / application / localStorage 里拷 <code>token</code> 字段粘到下面.
+          存到 localStorage, 不用重新打包.
+        </p>
+        <textarea
+          className="aui-field-textarea"
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          placeholder="粘贴 CRM token…"
+          rows={3}
+          style={{ width: '100%', marginTop: 8, fontFamily: 'ui-monospace, monospace', fontSize: 12 }}
+        />
+        <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+          <button
+            type="button"
+            className="aui-action aui-action-primary"
+            onClick={handleSave}
+            disabled={draft.trim() === runtimeCrm}
+          >
+            {saved ? '✓ 已保存' : '保存'}
+          </button>
+          <button
+            type="button"
+            className="aui-action aui-action-ghost"
+            onClick={handleClear}
+            disabled={!runtimeCrm}
+          >
+            清除
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

@@ -4,6 +4,7 @@ import { useChatStream, useChatSession, useHealth } from '../../hooks';
 import { MessageList, ChatInput, ChatBubble, WelcomeMessage } from '../chat';
 import { questionService } from '../../services';
 import { config } from '../../config';
+import { friendlyScenarioName, friendlyScenarioDescription } from '../../lib';
 import './ChatPage.css';
 
 interface ChatPageProps {
@@ -16,6 +17,11 @@ interface ChatPageProps {
   scenario?: string;
   /** Optional override of the displayed scenario name in welcome. */
   scenarioLabel?: string;
+  /**
+   * 用户点了「新建对话」按钮. 父组件 App.tsx 收到后清掉 localStorage
+   * 并 bump chatKey,触发整 ChatPage remount.  这里不直接做事,纯粹通知.
+   */
+  onNewChat?: () => void;
 }
 
 export function ChatPage({
@@ -24,6 +30,7 @@ export function ChatPage({
   onPendingPromptConsumed,
   scenario,
   scenarioLabel,
+  onNewChat,
 }: ChatPageProps) {
   const session = useChatSession();
   const { state: healthState, ready } = useHealth();
@@ -31,6 +38,9 @@ export function ChatPage({
   const chat = useChatStream({
     sessionId: session.sessionId ?? undefined,
     onSessionChange: (id) => session.setSessionId(id),
+    // 后端 in-memory store 丢失 (容器重启/部署) 时, 主动清掉 localStorage
+    // 里的 session_id, 下次发送自动建新 session.
+    onSessionExpired: () => session.setSessionId(null),
     agentName,
     scenario,
   });
@@ -129,15 +139,18 @@ export function ChatPage({
   );
 
   // Aggregate the most recent state from any assistant message.
-  const latestState = chat.messages
-    .slice()
-    .reverse()
-    .flatMap((m) => m.stateEvents ?? [])
-    .pop();
+  // 优先从 events[] 时间线里抽 state 事件 (新数据源), 兜底用老字段.
+  const allStateEvents = chat.messages.flatMap((m) => {
+    const fromEvents = (m.events ?? [])
+      .filter((e): e is Extract<typeof e, { type: 'state' }> => e.type === 'state')
+      .map((e) => ({ state: e.state, note: e.note, at: e.at }));
+    return fromEvents.length > 0 ? fromEvents : (m.stateEvents ?? []);
+  });
+  const latestState = allStateEvents[allStateEvents.length - 1] ?? null;
   const currentState = chat.currentState ?? latestState?.state ?? null;
-  const stateEvents = chat.messages
-    .flatMap((m) => m.stateEvents ?? [])
-    .filter((s) => s.state === currentState || s.state !== chat.currentState);
+  const stateEvents = allStateEvents.filter(
+    (s) => s.state === currentState || s.state !== chat.currentState,
+  );
   const scenarioView = chat.scenario;
 
   return (
@@ -148,6 +161,9 @@ export function ChatPage({
         scenarioLabel={scenarioLabel}
         tokenConfigured={Boolean(config.mcpToken)}
       />
+      {onNewChat && (
+        <ChatToolbar scenarioLabel={scenarioLabel} onNewChat={onNewChat} />
+      )}
       {chat.messages.length === 0 ? (
         <div className="chat-page-empty">
           <WelcomeMessage
@@ -241,9 +257,7 @@ function HealthBanner({
   let cls = 'chat-health-banner';
   switch (state) {
     case 'healthy':
-      text = scenarioLabel
-        ? `已连接 · ${scenarioLabel} · ${sessionLabel}`
-        : `已连接 · ${sessionLabel}`;
+      text = `已连接 · ${sessionLabel}`;
       cls += ' is-healthy';
       break;
     case 'degraded':
@@ -259,14 +273,79 @@ function HealthBanner({
       text = '正在连接后端…';
       break;
   }
+  const friendlyName = scenarioLabel ? friendlyScenarioName(scenarioLabel) : null;
+  const friendlyDesc = scenarioLabel ? friendlyScenarioDescription(scenarioLabel) : null;
   return (
     <div className={cls}>
-      <span>{text}</span>
+      <div className="chat-health-banner-left">
+        <span>{text}</span>
+        {friendlyName && (
+          <span
+            className="chat-scenario-chip"
+            title={friendlyDesc ?? ''}
+          >
+            <span className="chat-scenario-chip-dot" />
+            {friendlyName}
+          </span>
+        )}
+      </div>
       {!tokenConfigured && (
         <span className="chat-health-banner-warn" title="未配置 VITE_MCP_TOKEN，部分 MCP 工具可能 401">
           ⚠ 未配置 MCP Token
         </span>
       )}
     </div>
+  );
+}
+
+function ChatToolbar({
+  scenarioLabel,
+  onNewChat,
+}: {
+  scenarioLabel?: string;
+  onNewChat: () => void;
+}) {
+  const friendlyName = scenarioLabel ? friendlyScenarioName(scenarioLabel) : '自动路由';
+  return (
+    <div className="chat-toolbar">
+      <div className="chat-toolbar-title">
+        <span className="chat-toolbar-icon" aria-hidden="true">
+          <ChatBubbleIcon />
+        </span>
+        <span className="chat-toolbar-label">智能助手</span>
+        <span className="chat-toolbar-divider">·</span>
+        <span className="chat-toolbar-scenario" title={friendlyName}>
+          {friendlyName}
+        </span>
+      </div>
+      <div className="chat-toolbar-actions">
+        <button
+          type="button"
+          className="chat-toolbar-new-btn"
+          onClick={onNewChat}
+          title="清空当前对话, 开一个新会话 (场景保持不变)"
+        >
+          <PlusIcon />
+          <span>新建对话</span>
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function ChatBubbleIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+    </svg>
+  );
+}
+
+function PlusIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+      <line x1="12" y1="5" x2="12" y2="19" />
+      <line x1="5" y1="12" x2="19" y2="12" />
+    </svg>
   );
 }

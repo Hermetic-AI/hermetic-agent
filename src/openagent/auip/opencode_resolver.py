@@ -25,8 +25,12 @@ from openagent.providers.opencode_native_sdk import (
 logger = structlog.get_logger(__name__)
 
 
-def resolve_opencode_client(bridge, session_id: str) -> tuple:
+async def resolve_opencode_client(bridge, session_id: str) -> tuple:
     """从 ``bridge`` + ``session_id`` 找 ``AsyncOpencode`` client + directory.
+
+    async: OpenCodeAdapter.get_session 是 async, 必须 await. 早期写成 sync 时
+    返回的是 coroutine 不是 SessionInfo, 下游 ``session_info.directory`` 直接
+    AttributeError. (踩坑修过: opencode_resolver.py:40)
 
     Returns:
         ``(client, directory)`` 二元组; 任何一步失败都返回 ``(None, None)``。
@@ -37,7 +41,9 @@ def resolve_opencode_client(bridge, session_id: str) -> tuple:
     adapter = bridge.get_provider(agent_name)
     if adapter is None:
         return None, None
-    session_info = adapter.get_session(session_id) if hasattr(adapter, "get_session") else None
+    if not hasattr(adapter, "get_session"):
+        return None, None
+    session_info = await adapter.get_session(session_id)
     if session_info is None:
         return None, None
     directory = session_info.directory
@@ -47,7 +53,7 @@ def resolve_opencode_client(bridge, session_id: str) -> tuple:
 
 async def list_questions_for_session(bridge, session_id: str) -> list[dict]:
     """``GET /question`` 代理, 失败时返空 list, 不抛错给 L1."""
-    client, directory = resolve_opencode_client(bridge, session_id)
+    client, directory = await resolve_opencode_client(bridge, session_id)
     if client is None:
         return []
     try:
@@ -61,7 +67,7 @@ async def reply_question(
     bridge, request_id: str, session_id: str, answers: list[list[str]]
 ) -> tuple[bool, str | None]:
     """``POST /question/:id/reply`` 代理. ``(ok, err_msg)`` 形式返回."""
-    client, directory = resolve_opencode_client(bridge, session_id)
+    client, directory = await resolve_opencode_client(bridge, session_id)
     if client is None:
         return False, f"Session '{session_id}' not found"
     try:
@@ -76,7 +82,7 @@ async def reject_question(
     bridge, request_id: str, session_id: str
 ) -> tuple[bool, str | None]:
     """``POST /question/:id/reject`` 代理."""
-    client, directory = resolve_opencode_client(bridge, session_id)
+    client, directory = await resolve_opencode_client(bridge, session_id)
     if client is None:
         return False, f"Session '{session_id}' not found"
     try:
@@ -91,7 +97,7 @@ async def list_todos_for_session(
     bridge, session_id: str
 ) -> tuple[list[dict] | None, str | None]:
     """``GET /session/:id/todo`` 代理. ``(todos, None)`` 或 ``(None, err)``."""
-    client, directory = resolve_opencode_client(bridge, session_id)
+    client, directory = await resolve_opencode_client(bridge, session_id)
     if client is None:
         return None, f"Session '{session_id}' not found"
     try:

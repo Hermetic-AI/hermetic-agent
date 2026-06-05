@@ -60,7 +60,7 @@ class FragmentLoader:
         registry: SkillRegistry,
         budget: int = 4000,
         policy: str = _POLICY_ERROR,
-    ) -> None:
+    ):
         """初始化加载器.
 
         Args:
@@ -77,6 +77,12 @@ class FragmentLoader:
         self._registry = registry
         self._budget = budget
         self._policy = policy
+        # P1-4: explicit 模式的运行时 fragment 集合. 每次 load_fragment()
+        # 加一项; 下次 load(strategy="explicit") 时, 这些片段会被一并读出.
+        # 设计为 set 而非 list 是因为:
+        #   1) 同一片段重复 load_fragment 不会重复加
+        #   2) 测试时清空 set 容易
+        self._explicit_loaded: set[str] = set()
 
     @property
     def budget(self) -> int:
@@ -93,6 +99,98 @@ class FragmentLoader:
     ) -> tuple[str, FragmentLoadReport]:
         """主入口 — 根据 scenario.progressive_skill.strategy 分发."""
         ps = scenario.progressive_skill
+        strategy = ps.strategy
+        if strategy == _STRATEGY_NONE:
+            return "", FragmentLoadReport(policy=self._policy)
+        if strategy == _STRATEGY_ALL:
+            return self._load_all(scenario)
+        if strategy == _STRATEGY_ON_DEMAND:
+            return self._load_on_demand(scenario, current_state)
+        if strategy == _STRATEGY_EXPLICIT:
+            return self._load_explicit(scenario)
+        raise ValueError(
+            f"Unknown progressive_skill strategy {strategy!r} "
+            f"in scenario {getattr(scenario, 'name', '<unknown>')}"
+        )
+
+    def load_fragment(
+        self,
+        skill_name: str,
+        frag_id: str,
+        mode: str = "full",
+    ) -> tuple[str, int]:
+        """显式加载一个片段, 立即生效. 适合 ``strategy="explicit"`` 用.
+
+        与 ``strategy="on_demand"`` 不同 (它按 current_state 自动决定),
+        explicit 模式由开发者通过本方法精确控制加载哪些片段. 加载过的
+        片段会保留在本 loader 的 ``_explicit_loaded`` 集合里, 下次
+        ``load(scenario, state)`` 时 (strategy=explicit) 会一并返回.
+
+        重复 load_fragment 同一 (skill, frag) 是幂等的.
+
+        Args:
+            skill_name: skill 名称 (SKILL.md frontmatter name).
+            frag_id: fragments/ 下的子文件 id (不带 .md).
+            mode: 保留位, 未来可支持 ``"summary"`` / ``"full"`` /
+                ``"head"`` 等加载策略; 当前等价于 full.
+
+        Returns:
+            ``(text, estimated_tokens)``. 找不到 / budget 超限时抛
+            SkillNotFoundError / FragmentNotFoundError / SkillBudgetExceeded.
+
+        Raises:
+            SkillNotFoundError: skill_name 未注册.
+            FragmentNotFoundError: fragments/<frag_id>.md 不存在.
+            SkillBudgetExceeded: 仅当加载后总 token 超过 budget (且 policy=error).
+        """
+        text, n = self._load_fragment(skill_name, frag_id)
+        self._explicit_loaded.add(f"{skill_name}:{frag_id}")
+        logger.debug(
+            "fragment_explicit_loaded",
+            skill=skill_name,
+            fragment=frag_id,
+            mode=mode,
+            tokens=n,
+        )
+        return text, n
+
+    def clear_explicit(self) -> None:
+        """清空 explicit 模式的运行时集合. 适合每个新请求前重置."""
+        self._explicit_loaded.clear()
+
+    def _load_explicit(self, scenario: Any) -> tuple[str, FragmentLoadReport]:
+        """``explicit`` 策略: 加载 ``self._explicit_loaded`` + scenario 静态声明.
+
+        合并两个来源:
+          - ``self._explicit_loaded``: 开发者运行时调用 ``load_fragment()`` 加入
+          - ``scenario.progressive_skill.explicit_skills``: YAML 静态声明
+
+        任一为空则只用另一个; 都为空 → 返空 (无 error, 让 caller 知道
+        "scenario 设了 explicit 但啥也没声明").
+        """
+        report = FragmentLoadReport(policy=self._policy)
+        texts: list[str] = []
+        # 1. 运行时集合
+        for frag_id in self._explicit_loaded:
+            skill_name, frag_name = self._parse_frag_id(frag_id)
+            text, n = self._load_fragment(skill_name, frag_name)
+            texts.append(text)
+            report.loaded.append(frag_id)
+            report.total_tokens += n
+        # 2. YAML 静态声明 (YAML 字段可选, 不存在时跳过)
+        for frag_id in getattr(scenario.progressive_skill, "explicit_skills", []) or []:
+            if frag_id in self._explicit_loaded:
+                # 避免重复加载
+                continue
+            skill_name, frag_name = self._parse_frag_id(frag_id)
+            text, n = self._load_fragment(skill_name, frag_name)
+            texts.append(text)
+            report.loaded.append(frag_id)
+            report.total_tokens += n
+        return self._enforce_budget(
+            texts, report,
+            scenario_name=_scenario_name(scenario), current_state="*",
+        )
         strategy = ps.strategy
         if strategy == _STRATEGY_NONE:
             return "", FragmentLoadReport(policy=self._policy)

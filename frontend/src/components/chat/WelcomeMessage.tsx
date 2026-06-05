@@ -1,6 +1,20 @@
-import type { ChatMessage } from '../../types';
-import { ChatBubble } from './ChatBubble';
+import type { ReactNode } from 'react';
+import {
+  friendlyScenarioName,
+  friendlyScenarioDescription,
+  greetingForNow,
+  loadUserSnapshot,
+  type UpcomingTrip,
+} from '../../lib';
 import './WelcomeMessage.css';
+
+interface QuickAction {
+  label: string;
+  value: string;
+  icon: ReactNode;
+  hint?: string;
+  badge?: string;
+}
 
 interface WelcomeMessageProps {
   onQuickReply: (value: string) => void;
@@ -8,84 +22,207 @@ interface WelcomeMessageProps {
   scenarioLabel?: string;
 }
 
-export function WelcomeMessage({ onQuickReply, backendReady = true, scenarioLabel }: WelcomeMessageProps) {
-  const isFlight = scenarioLabel === 'flight_query' || scenarioLabel === 'flight_booking';
-  const isBooking = scenarioLabel === 'flight_booking';
-  const isGeneric = !scenarioLabel;
-
-  const content = backendReady
-    ? scenarioLabel
-      ? welcomeForScenario(scenarioLabel, isBooking)
-      : welcomeGeneric()
-    : '您好！我是您的差旅助手。\n\n当前无法连接后端服务，请检查服务是否已启动（默认 http://localhost:8000）。';
-
-  const quickReplies = !backendReady
-    ? [{ label: '差旅规则', value: '差旅规则是什么' }]
-    : isBooking
-      ? [
-          { label: '订机票', value: '帮我订明天北京到上海的经济舱' },
-          { label: '查航班', value: '帮我查下周二上海到深圳的航班' },
-          { label: '差旅规则', value: '差旅规则是什么' },
-        ]
-      : isFlight
-        ? [
-            { label: '查机票', value: '帮我查一下北京到上海的机票' },
-            { label: '看订单', value: '查看我的订单' },
-            { label: '差旅规则', value: '差旅规则是什么' },
-          ]
-        : isGeneric
-          ? [
-              { label: '查机票', value: '帮我查一下北京到上海的机票' },
-              { label: '看订单', value: '查看我的订单' },
-              { label: '差旅规则', value: '差旅规则是什么' },
-            ]
-          : [];
-
-  const welcomeMsg: ChatMessage = {
-    id: 'welcome',
-    role: 'assistant',
-    content,
-    timestamp: new Date().toISOString(),
-    quickReplies,
-  };
+export function WelcomeMessage({
+  onQuickReply,
+  backendReady = true,
+  scenarioLabel,
+}: WelcomeMessageProps) {
+  const actions = pickActions(scenarioLabel, backendReady);
+  const snapshot = loadUserSnapshot();
+  const friendlyName = friendlyScenarioName(scenarioLabel);
+  const friendlyDesc = friendlyScenarioDescription(scenarioLabel);
+  const greeting = greetingForNow();
 
   return (
-    <div className="welcome-container">
-      <div className="welcome-header">
-        <div className="welcome-avatar">
+    <div className="welcome-hero">
+      <div className="welcome-hero-inner">
+        <div className="welcome-hero-avatar" aria-hidden="true">
           <AIIcon />
         </div>
-        <div className="welcome-info">
-          <h2>{scenarioLabel ? `${scenarioLabel} 助手` : '差旅AI助手'}</h2>
-          <p>{isFlight ? '7×24小时为您查询 / 预订机票' : '7×24小时为您服务'}</p>
-        </div>
-      </div>
-      <div className="welcome-bubble">
-        <ChatBubble message={welcomeMsg} onQuickReply={onQuickReply} />
+        <h1 className="welcome-hero-title">
+          {greeting}, {snapshot.displayName}
+        </h1>
+        <p className="welcome-hero-subtitle">
+          {backendReady
+            ? friendlyDesc
+            : '无法连接后端服务，请检查 VITE_MCP_TOKEN 与后端是否已启动'}
+        </p>
+
+        {backendReady && <SnapshotStrip snapshot={snapshot} />}
+
+        {scenarioLabel && (
+          <div className="welcome-hero-scenario-pill" title={`当前场景: ${friendlyName}`}>
+            <span className="welcome-hero-scenario-dot" />
+            当前: <strong>{friendlyName}</strong>
+          </div>
+        )}
+
+        {actions.length > 0 && (
+          <div className="welcome-hero-grid">
+            {actions.map((a) => (
+              <button
+                key={a.value}
+                type="button"
+                className="welcome-hero-card"
+                onClick={() => onQuickReply(a.value)}
+                disabled={!backendReady}
+              >
+                <span className="welcome-hero-card-icon" aria-hidden="true">
+                  {a.icon}
+                </span>
+                <span className="welcome-hero-card-label">{a.label}</span>
+                {a.hint && <span className="welcome-hero-card-hint">{a.hint}</span>}
+                {a.badge && <span className="welcome-hero-card-badge">{a.badge}</span>}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {backendReady && snapshot.upcomingTrips.length > 0 && (
+          <UpcomingTripsWidget trips={snapshot.upcomingTrips.slice(0, 3)} onAction={onQuickReply} />
+        )}
       </div>
     </div>
   );
 }
 
-function welcomeGeneric(): string {
-  return '您好！我是您的差旅助手。我可以帮您：\n• 查询和预订机票、火车票、酒店\n• 管理您的差旅订单\n• 查看差旅规则和费用标准\n• 智能推荐最合适的出行方案';
+function SnapshotStrip({ snapshot }: { snapshot: ReturnType<typeof loadUserSnapshot> }) {
+  return (
+    <div className="welcome-hero-snapshot">
+      <div className="snapshot-item">
+        <span className="snapshot-num">{snapshot.recentTripCount}</span>
+        <span className="snapshot-label">近 30 天出行</span>
+      </div>
+      <div className="snapshot-divider" />
+      <div className="snapshot-item">
+        <span
+          className="snapshot-num"
+          data-level={snapshot.complianceHitRate >= 0.9 ? 'ok' : snapshot.complianceHitRate >= 0.7 ? 'warn' : 'over'}
+        >
+          {Math.round(snapshot.complianceHitRate * 100)}%
+        </span>
+        <span className="snapshot-label">差标命中率</span>
+      </div>
+      <div className="snapshot-divider" />
+      <div className="snapshot-item">
+        <span className="snapshot-num">{snapshot.pendingOrderCount}</span>
+        <span className="snapshot-label">待处理订单</span>
+      </div>
+    </div>
+  );
 }
 
-function welcomeForScenario(label: string, isBooking: boolean): string {
-  if (isBooking) {
-    return `您好！我是飞鹤差旅 AI 助手 — 机票预订专责。\n• 帮我订 ${new Date().toISOString().slice(0, 10)} 北京到上海的经济舱\n• 严格遵守公司差标, 关键节点会主动向您确认\n• 可预订国际机票, 提前 7 天起`;
-  }
-  if (label === 'flight_query') {
-    return `您好！我是飞鹤差旅 AI 助手 — 机票查询专责。\n• 用城市名查 (例: "北京到上海明天的航班")\n• 支持筛选舱位、航司、起飞时段\n• 不下订单, 只返回可订航班信息`;
-  }
-  return `您好！我是 ${label} 助手, 请问有什么可以帮您?`;
+function UpcomingTripsWidget({
+  trips,
+  onAction,
+}: {
+  trips: UpcomingTrip[];
+  onAction: (value: string) => void;
+}) {
+  return (
+    <div className="welcome-hero-upcoming">
+      <div className="upcoming-header">
+        <span className="upcoming-title">近期行程</span>
+        <button
+          type="button"
+          className="upcoming-action"
+          onClick={() => onAction('查看我的全部行程')}
+        >
+          查看全部 →
+        </button>
+      </div>
+      <ul className="upcoming-list">
+        {trips.map((t) => (
+          <li key={t.id} className="upcoming-item">
+            <div className="upcoming-date">
+              <span className="upcoming-date-day">{t.date.slice(5)}</span>
+              <span className="upcoming-date-route">{t.route}</span>
+            </div>
+            <div className="upcoming-meta">
+              <span className="upcoming-flight">{t.flightNo}</span>
+              <span className="upcoming-cabin">{t.cabin}</span>
+            </div>
+            <button
+              type="button"
+              className="upcoming-rebook"
+              onClick={() => onAction(`帮我再订一次 ${t.route} ${t.date} 的机票, 跟上次 ${t.flightNo} 类似`)}
+              title="一键重订同样行程"
+            >
+              再来一次
+            </button>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
 }
+
+function pickActions(label?: string, backendReady = true): QuickAction[] {
+  if (!backendReady) {
+    return [
+      { label: '差旅规则', value: '差旅规则是什么', icon: <BookIcon />, hint: '查看公司差旅标准' },
+    ];
+  }
+  if (label === 'flight_booking' || label === 'flight_booking_v2') {
+    return [
+      { label: '订机票', value: '帮我订明天北京到上海的经济舱', icon: <PlaneIcon />, hint: '按差标预订, 全程引导' },
+      { label: '查航班', value: '帮我查下周二上海到深圳的航班', icon: <SearchIcon />, hint: '单程/往返, 实时价格' },
+      { label: '我的订单', value: '查看我的订单', icon: <TicketIcon />, hint: '待支付 / 待出行 / 已完成' },
+      { label: '差旅规则', value: '差旅规则是什么', icon: <BookIcon />, hint: '舱位/价格上限' },
+    ];
+  }
+  // flight_query + 通用 (含 v3) — 主推"查 + 查+订"
+  return [
+    { label: '查机票', value: '帮我查一下北京到上海的机票', icon: <SearchIcon />, hint: '用城市名查, 不用三字码' },
+    { label: '订机票', value: '帮我订明天北京到上海的经济舱', icon: <PlaneIcon />, hint: '跳到预订流程' },
+    { label: '我的订单', value: '查看我的订单', icon: <TicketIcon />, hint: '差旅订单状态' },
+    { label: '差旅规则', value: '差旅规则是什么', icon: <BookIcon />, hint: '公司差旅标准' },
+  ];
+}
+
+// --- inline icons ---
 
 function AIIcon() {
   return (
-    <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#0051A1" strokeWidth="2">
+    <svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">
       <circle cx="12" cy="12" r="10" />
       <path d="M12 6v6l4 2" />
+      <circle cx="12" cy="12" r="3" fill="currentColor" stroke="none" opacity="0.15" />
+    </svg>
+  );
+}
+
+function SearchIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+      <circle cx="11" cy="11" r="7" />
+      <path d="m21 21-4.3-4.3" />
+    </svg>
+  );
+}
+
+function PlaneIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+      <path d="M21 16v-2l-8-5V3.5a1.5 1.5 0 0 0-3 0V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z" />
+    </svg>
+  );
+}
+
+function TicketIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+      <path d="M3 9a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v2a2 2 0 0 0 0 4v2a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-2a2 2 0 0 0 0-4V9z" />
+      <path d="M9 7v10" strokeDasharray="2 2" />
+    </svg>
+  );
+}
+
+function BookIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+      <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
+      <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
     </svg>
   );
 }

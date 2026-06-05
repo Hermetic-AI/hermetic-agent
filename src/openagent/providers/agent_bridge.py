@@ -175,6 +175,10 @@ class AgentBridge:
         timeout: float | None = None,
         stream: bool = False,
         mcp_token: str | None = None,
+        # --- 渐进式 SKILL 加载 (P0-1 新增, 全部可选, 不破坏既有 caller) ---
+        prompt_builder: Any = None,
+        scenario: Any = None,
+        current_state: str | None = None,
     ) -> ChatResult | AsyncIterator[Any]:
         """Route chat to the adapter that owns this session.
 
@@ -191,6 +195,13 @@ class AgentBridge:
                 chat header(X-MCP-Token / Authorization: Bearer)提取,
                 最终注入到 system_prompt 的 <runtime-context> 块让 LLM 自己填入
                 MCP 调用的 header。None = 当前请求无 token。
+            prompt_builder: 可选 ``skill_runtime.PromptBuilder``。若提供且
+                ``scenario`` 非 None, 走新 P6 渐进式加载路径; 否则降级到
+                下方 ``build_system_prompt_with_skills`` 的旧全量内联路径.
+            scenario: 可选 ScenarioConfig (duck-typed). 与 prompt_builder
+                一起用; 单独传会被忽略.
+            current_state: 当前 state id; ``on_demand`` / ``explicit`` 策略
+                用来选 load_on_state 段; None 时回退 "S01".
         """
         agent_name = self._session_to_agent.get(session_id)
         if not agent_name:
@@ -204,10 +215,55 @@ class AgentBridge:
             stream=stream,
             skill_count=len(skills) if skills else 0,
             tool_count=len(tools) if tools else 0,
+            has_prompt_builder=prompt_builder is not None,
+            has_scenario=scenario is not None,
         )
 
-        # Inject skills into system prompt
-        if skills and self._skill_registry:
+        # --- Skill 注入: 渐进式 (P6) > 旧全量 (向后兼容) ---
+        if prompt_builder is not None and scenario is not None:
+            # P1-3: 在 system_prompt 顶部 prepend 一次 metadata 列表 (L1).
+            # LLM 据此知道"哪些 skill 可用 + 何时该调 read_skill 加载完整内容".
+            # 列表只显示 scenario 白名单内的 skill (与 injector 的 final_skills
+            # 一致), 避免泄漏未授权的 skill.
+            if self._skill_registry is not None:
+                allowed = getattr(
+                    getattr(scenario, "execution", None), "skills", []
+                ) or []
+                metadata_block = self._skill_registry.metadata_list(allowed)
+                if metadata_block:
+                    system_prompt = metadata_block + "\n\n" + (system_prompt or "")
+
+            # 新路径: 由 PromptBuilder 根据 scenario.progressive_skill.strategy
+            # 决定加载哪些 skill 片段 (none / all / on_demand / explicit).
+            state_id = current_state or "S01"
+            try:
+                skill_section, report = prompt_builder.render_skill_section(
+                    scenario, state_id
+                )
+                if skill_section:
+                    system_prompt = (system_prompt or "") + "\n\n" + skill_section
+                logger.info(
+                    "skills_loaded_via_prompt_builder",
+                    session_id=session_id,
+                    scenario=getattr(scenario, "name", None),
+                    state=state_id,
+                    loaded=report.loaded,
+                    total_tokens=report.total_tokens,
+                )
+            except Exception as e:
+                # PromptBuilder 抛异常不能阻塞整个 chat; 降级到旧路径
+                logger.warning(
+                    "prompt_builder_failed_falling_back",
+                    session_id=session_id,
+                    error=str(e),
+                )
+                if skills and self._skill_registry:
+                    system_prompt, _missing = (
+                        self._skill_registry.build_system_prompt_with_skills(
+                            system_prompt or "", skills
+                        )
+                    )
+        elif skills and self._skill_registry:
             system_prompt, _missing = self._skill_registry.build_system_prompt_with_skills(
                 system_prompt or "", skills
             )

@@ -206,16 +206,102 @@ def test_load_skill_not_found(registry_with_skill: tuple[SkillRegistry, Path]) -
     assert exc_info.value.skill_name == "unknown-skill"
 
 
-def test_load_explicit_strategy_works_like_on_demand(registry_with_skill: tuple[SkillRegistry, Path]) -> None:
+def test_load_explicit_strategy_with_no_loaded_fragments_returns_empty(
+    registry_with_skill: tuple[SkillRegistry, Path],
+) -> None:
+    """P1-4: explicit 模式 + 没有任何 load_fragment() 调用 + 无 explicit_skills
+    声明 → 返空 (跟旧版"等同于 on_demand"的行为完全不同)."""
+    reg, _ = registry_with_skill
+    loader = FragmentLoader(reg, budget=1000, policy="error")
+    scn = _scenario(strategy="explicit")
+    text, report = loader.load(scn, current_state="S05")
+    assert text == ""
+    assert report.loaded == []
+
+
+def test_load_explicit_via_load_fragment(registry_with_skill: tuple[SkillRegistry, Path]) -> None:
+    """P1-4: load_fragment() 调用过的片段会在下次 load() 时被读出."""
+    reg, _ = registry_with_skill
+    loader = FragmentLoader(reg, budget=1000, policy="error")
+
+    # 显式 load 一个片段
+    text1, tokens1 = loader.load_fragment("book-flight", "state-s05")
+    assert "STATE-S05 BODY" in text1
+    assert tokens1 > 0
+
+    # 显式 load 另一个
+    loader.load_fragment("book-flight", "state-s02")
+
+    # load() 应该把两个都读出来
+    scn = _scenario(strategy="explicit")
+    text, report = loader.load(scn, current_state="anything")
+    assert "STATE-S05 BODY" in text
+    assert "STATE-S02 BODY" in text
+    assert "book-flight:state-s05" in report.loaded
+    assert "book-flight:state-s02" in report.loaded
+
+
+def test_load_explicit_idempotent(registry_with_skill: tuple[SkillRegistry, Path]) -> None:
+    """P1-4: 重复 load_fragment 同一片段是幂等的 (不重复加)."""
+    reg, _ = registry_with_skill
+    loader = FragmentLoader(reg, budget=1000, policy="error")
+
+    loader.load_fragment("book-flight", "state-s05")
+    loader.load_fragment("book-flight", "state-s05")
+    loader.load_fragment("book-flight", "state-s05")
+
+    scn = _scenario(strategy="explicit")
+    text, report = loader.load(scn, current_state="X")
+    # 只出现一次
+    assert report.loaded.count("book-flight:state-s05") == 1
+    assert text.count("STATE-S05 BODY") == 1
+
+
+def test_load_explicit_clear_resets(registry_with_skill: tuple[SkillRegistry, Path]) -> None:
+    """P1-4: clear_explicit() 清空运行时集合, 下次 load() 返空."""
+    reg, _ = registry_with_skill
+    loader = FragmentLoader(reg, budget=1000, policy="error")
+    loader.load_fragment("book-flight", "state-s05")
+    scn = _scenario(strategy="explicit")
+    text1, _ = loader.load(scn, current_state="X")
+    assert "STATE-S05 BODY" in text1
+
+    loader.clear_explicit()
+    text2, report2 = loader.load(scn, current_state="X")
+    assert text2 == ""
+    assert report2.loaded == []
+
+
+def test_load_explicit_via_yaml_explicit_skills(
+    registry_with_skill: tuple[SkillRegistry, Path],
+) -> None:
+    """P1-4: scenario.progressive_skill.explicit_skills YAML 字段生效."""
     reg, _ = registry_with_skill
     loader = FragmentLoader(reg, budget=1000, policy="error")
     scn = _scenario(
         strategy="explicit",
-        initial_skills=[{"name": "book-flight", "mode": "summary"}],
-        load_on_state={"S05": ["book-flight:state-s05"]},
+        # 这里借助 SimpleNamespace duck-typed 加 explicit_skills
+        # (ProgressiveSkillConfig Pydantic 模型有这字段)
     )
-    text, _ = loader.load(scn, current_state="S05")
+    # 直接给 progressive_skill 塞字段 (避开 _scenario helper)
+    from types import SimpleNamespace
+    scn.progressive_skill = SimpleNamespace(
+        strategy="explicit",
+        initial_skills=[],
+        load_on_state={},
+        explicit_skills=["book-flight:state-s05"],
+    )
+    text, report = loader.load(scn, current_state="X")
     assert "STATE-S05 BODY" in text
+    assert "book-flight:state-s05" in report.loaded
+
+
+def test_load_explicit_load_fragment_not_found(registry_with_skill: tuple[SkillRegistry, Path]) -> None:
+    """P1-4: load_fragment() 找不到时抛 FragmentNotFoundError."""
+    reg, _ = registry_with_skill
+    loader = FragmentLoader(reg, budget=1000, policy="error")
+    with pytest.raises(FragmentNotFoundError):
+        loader.load_fragment("book-flight", "nonexistent-frag")
 
 
 def test_load_invalid_frag_id_format(registry_with_skill: tuple[SkillRegistry, Path]) -> None:

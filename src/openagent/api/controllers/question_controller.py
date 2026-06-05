@@ -53,7 +53,7 @@ async def list_questions_route(request: Request) -> JSONResponse:
     items = await list_questions_for_session(bridge, session_id)
     filtered = [q for q in items if q.get("sessionID") == session_id or not session_id]
     if not items and not filtered:
-        client, _ = resolve_opencode_client(bridge, session_id)
+        client, _ = await resolve_opencode_client(bridge, session_id)
         if client is None:
             return JSONResponse(
                 ErrorResponse(error=f"Session '{session_id}' not found").model_dump(),

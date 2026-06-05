@@ -14,12 +14,20 @@
 FROM docker.m.daocloud.io/library/node:24-slim
 
 # 必要工具: curl (healthcheck), python3 (health_server / render_config)
-# Node:24-slim 默认不装 Python, 我们要跑 health_server + render_config
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl \
-    ca-certificates \
-    python3 \
-    python3-requests \
+# Node:24-slim 默认不装 Python, 我们要跑 health_server + render_config.
+#
+# 重试 3 次: deb.debian.org 偶尔返 502 (特别是 readline-common 这种 "软依赖"
+# 性质的包), --fix-missing 兜底让 build 不因单包 502 全盘失败.
+RUN for i in 1 2 3; do \
+        apt-get update \
+        && apt-get install -y --no-install-recommends --fix-missing \
+            curl \
+            ca-certificates \
+            python3 \
+            python3-requests \
+        && break \
+        || { echo "apt-get failed (attempt $i/3), retrying in 5s..."; sleep 5; }; \
+    done \
     && rm -rf /var/lib/apt/lists/* \
     && python3 --version
 
@@ -32,6 +40,15 @@ RUN mkdir -p /opt/sandbox
 COPY docker/entrypoint.sh    /opt/sandbox/entrypoint.sh
 COPY docker/health_server.py /opt/sandbox/health_server.py
 COPY docker/render_config.py /opt/sandbox/render_config.py
+# policy.json bake 进镜像 (跟 docker-compose.yml 注释一致).
+# 不再 bind mount: 原因 — Docker Desktop + WSL2 9P 文件系统会看到
+# host 跟 daemon 视图不一致, bind mount 永远把目标当目录.
+# 改 policy 后: docker build -f docker/Dockerfile.opencode-sandbox + force-recreate.
+COPY work/sandbox/policy.opencode-1.json /opt/sandbox/policy.json
+# 关键: 强制 LF 行尾. 源文件从 Windows 编辑器写出时带 CRLF,
+# 镜像里 shebang 变 "#!\r/bin/bash\r", Linux 内核 execve() 找不到
+# 解释器, 整个容器启动 fail. 一行 sed 兜住.
+RUN find /opt/sandbox -type f -exec sed -i 's/\r$//' {} +
 RUN chmod +x /opt/sandbox/entrypoint.sh /opt/sandbox/health_server.py /opt/sandbox/render_config.py
 
 # 容器根 FS 是 --read-only, 容器层有 /opt/sandbox (entrypoint 要写 health log),

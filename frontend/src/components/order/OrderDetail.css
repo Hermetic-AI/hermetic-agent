@@ -197,3 +197,85 @@
   gap: 12px;
   margin-top: 8px;
 }
+
+.detail-value-mono {
+  font-family: 'SF Mono', 'JetBrains Mono', Consolas, monospace;
+  font-size: 13px;
+  color: #555;
+}
+
+.detail-countdown {
+  font-family: 'SF Mono', 'JetBrains Mono', Consolas, monospace;
+  font-weight: 600;
+  color: #1E7E34;
+  font-variant-numeric: tabular-nums;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.detail-countdown.is-urgent {
+  color: #B00020;
+  animation: countdownPulse 1s ease-in-out infinite;
+}
+
+@keyframes countdownPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+.detail-countdown-tag {
+  font-size: 10px;
+  font-weight: 700;
+  background: #FFEBEA;
+  color: #B00020;
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+
+.detail-countdown-expired {
+  color: #999;
+  font-style: italic;
+}
+
+.detail-quick-actions {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+}
+
+.detail-quick-action {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 12px 14px;
+  background: #F8F9FA;
+  border: 1px solid #E5E5EA;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  text-align: left;
+  color: var(--color-text-primary);
+  transition: all var(--transition-fast);
+}
+
+.detail-quick-action:hover {
+  background: #E8F4FF;
+  border-color: #B6DDFB;
+  color: #0051A1;
+}
+
+.detail-quick-action svg {
+  color: var(--color-primary);
+  margin-bottom: 4px;
+}
+
+.detail-quick-action-label {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.detail-quick-action-hint {
+  font-size: 11px;
+  color: var(--color-text-muted);
+}

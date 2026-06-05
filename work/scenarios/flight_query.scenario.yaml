@@ -4,11 +4,20 @@
 # 用 single orchestration, 但启用 a2ui 让 LLM 调 ask_user 推 FLIGHT_RESULT 卡片
 # ============================================================
 name: flight_query
-version: "1.1.0"
+version: "1.2.0"
 description: |
-  飞鹤机票查询场景。User 提需求 → 调 flight-query skill + MCP queryFlightBasic
-  → 整理成 FLIGHT_RESULT 卡片(按"最快/最便宜/直飞首选"3 方案分组)推回前端
-  FlightResultCard 渲染。下订/选舱走 flight_booking skill, 本场景纯查询。
+  飞鹤机票查询场景 (v1.2.0 — 迁移到 v3 skill 协议, 2026-06-05)。
+  User 提需求 → 加载 flight-query-v3 skill + opencode 原生 MCP 工具
+  (queryFlightBasic / filterFlightList) → 整理成 FLIGHT_RESULT 卡片
+  (按"最快/最便宜/直飞首选"3 方案分组)推回前端 FlightResultCard 渲染。
+  下游选舱走 flight_booking skill, 本场景纯查询。
+
+  v1.2.0 相对 v1.1.0 的关键变化:
+  - skill 从 v2.1.0 (Bash+curl 协议) 切到 v3.0.0 (opencode 原生 MCP 工具).
+    原因: tool_level: safe 把 Bash 拒了, LLM 调 bash 必报 "unavailable tool",
+    触发死锁. v3 改让 LLM 直接调原生 queryFlightBasic, 不走 Bash.
+  - 加 read_skill 到工具白名单, 配合 on_demand 的 flight-query-v3:iata_icao_codes
+    子 skill, 让 LLM 看到 IATA/ICAO 时能按需加载翻译表.
 enabled: true
 tags: [travel, query, auip]
 owner: openagent-core
@@ -29,11 +38,11 @@ routing:
 execution:
   system_prompt: |
     你是飞鹤差旅 AI 助手 — 机票查询专责。
-    当用户问"明天北京到上海的航班"时,严格遵循 [flight-query] skill 的工作流:
+    当用户问"明天北京到上海的航班"时,严格遵循 [flight-query-v3] skill 的工作流:
     1. 解析用户需求(出发/到达/日期/舱等/筛选)
     2. 缺信息就追问(出发/到达/日期/回程必问)
-    3. 调 queryFlightBasic 工具
-    4. **必须** 按 skill §5.1 把结果整理成 FLIGHT_RESULT 卡片
+    3. 调 queryFlightBasic 工具(opencode 原生 MCP 工具, **不要**用 Bash+curl)
+    4. **必须** 按 skill §5.1 / §5.2 把结果整理成 FLIGHT_RESULT 卡片
        (调 ask_user 工具, card_type=FLIGHT_RESULT, body.plans[] 分方案)
     5. 在 text 事件里**只**发一句简短总结(例: "按你需求筛出 3 个方案, 详见下方卡片")
 
@@ -42,11 +51,15 @@ execution:
     - 在用户没确认前执行任何写操作
     - 调用白名单以外的工具
     - 在 chat text 里发整张 Markdown 表(改用 FLIGHT_RESULT 卡片)
+    - 用 Bash+curl 调 MCP (v3 协议层已被 opencode 接管, 旧 v2 写法已废)
   skills:
-    - flight-query                    # 核心层(必读):契约 + 协议 + 工具列表 + 速查 + 铁律 + §5.1 卡片规范
-    - flight-query.query_flight_basic # on-demand: query_flight_basic 完整 schema + NL 映射 + 错误码 + 模板
-    - flight-query.iata_icao_codes     # on-demand: IATA/ICAO 速查 + 模糊处理
-  tools: [queryFlightBasic, filterFlightList]   # 来自 MCP, scenarios/injector.py 过滤后下发;名字必须与 flight-query/tools/flight-mcp.json 严格一致
+    - flight-query-v3                       # 核心层(必读):契约 + 工具清单 + §5.1 卡片规范 + 铁律
+    - flight-query-v3.iata_icao_codes       # on-demand: 遇到 IATA/ICAO 时按需加载(用 read_skill 工具)
+  tools:
+    - queryFlightBasic      # opencode 原生 MCP 工具, 来自 work/mcp/servers.json
+    - filterFlightList      # 同上
+    - ask_user              # AUIP 卡片合成工具
+    - read_skill            # 渐进式 SKILL 加载器 (P0-2)
   orchestration: single            # 单步聊天, 不用 HITL / parallel / chain
 
 # ============================================================

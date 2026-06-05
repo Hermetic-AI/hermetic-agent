@@ -1,43 +1,346 @@
-.welcome-container {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  padding: 40px 20px;
-  gap: 24px;
-}
+/* WelcomeMessage — 空状态 hero, 仿 ChatGPT / OpenCode / Claude.
+   整个 hero 在 chat-page 剩余空间里垂直水平居中, 不会浮在中间很丑.
+   ChatInput 仍在 chat-page 底部, 不在 hero 里.
+*/
 
-.welcome-header {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 12px;
-  text-align: center;
-}
-
-.welcome-avatar {
-  width: 72px;
-  height: 72px;
-  background: linear-gradient(135deg, #E8F4FF 0%, #D4E9FF 100%);
-  border-radius: 50%;
+.welcome-hero {
+  flex: 1 1 auto;
+  min-height: 0;
   display: flex;
   align-items: center;
   justify-content: center;
+  padding: 24px 24px 8px;
+  overflow-y: auto;
+  animation: welcome-fade-in 360ms ease-out;
 }
 
-.welcome-info h2 {
-  font-size: 20px;
-  font-weight: 600;
-  color: #333;
-  margin: 0;
+@keyframes welcome-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
-.welcome-info p {
-  font-size: 14px;
-  color: #666;
-  margin: 4px 0 0 0;
-}
-
-.welcome-bubble {
-  max-width: 600px;
+.welcome-hero-inner {
   width: 100%;
+  max-width: 720px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 18px;
+}
+
+.welcome-hero-avatar {
+  width: 84px;
+  height: 84px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #E8F4FF 0%, #C7E0FF 100%);
+  color: #0051A1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 8px 24px rgba(0, 81, 161, 0.12);
+  margin-bottom: 4px;
+}
+
+.welcome-hero-title {
+  margin: 0;
+  font-size: 30px;
+  font-weight: 700;
+  letter-spacing: -0.5px;
+  color: #0F172A;
+  line-height: 1.2;
+}
+
+.welcome-hero-subtitle {
+  margin: 0;
+  font-size: 15px;
+  color: #64748B;
+  line-height: 1.5;
+  max-width: 540px;
+}
+
+.welcome-hero-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+  width: 100%;
+  max-width: 640px;
+  margin-top: 8px;
+}
+
+.welcome-hero-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 14px 16px;
+  background: #FFFFFF;
+  border: 1px solid #E2E8F0;
+  border-radius: 12px;
+  cursor: pointer;
+  text-align: left;
+  transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+  font: inherit;
+  color: inherit;
+}
+
+.welcome-hero-card:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.08);
+  border-color: #93C5FD;
+}
+
+.welcome-hero-card:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.welcome-hero-card:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.welcome-hero-card-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: #EFF6FF;
+  color: #1D4ED8;
+  margin-bottom: 4px;
+}
+
+.welcome-hero-card-label {
+  font-size: 14px;
+  font-weight: 600;
+  color: #0F172A;
+}
+
+.welcome-hero-card-hint {
+  font-size: 12px;
+  color: var(--color-text-muted);
+  line-height: 1.5;
+}
+
+.welcome-hero-card-badge {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  background: var(--color-accent, #FF7A14);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 999px;
+  line-height: 1.4;
+}
+
+.welcome-hero-scenario-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 12px;
+  padding: 6px 14px;
+  background: #E8F4FF;
+  border: 1px solid #B6DDFB;
+  border-radius: 999px;
+  font-size: 12px;
+  color: #0051A1;
+}
+
+.welcome-hero-scenario-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #4A9BE8;
+  box-shadow: 0 0 0 2px rgba(74, 155, 232, 0.2);
+}
+
+/* Snapshot strip (出行 / 差标 / 订单) */
+.welcome-hero-snapshot {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  margin: 20px auto 16px;
+  padding: 14px 28px;
+  background: rgba(255, 255, 255, 0.6);
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-md);
+  max-width: 560px;
+  width: fit-content;
+  backdrop-filter: blur(6px);
+}
+
+.snapshot-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  min-width: 64px;
+}
+
+.snapshot-num {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--color-primary);
+  line-height: 1.1;
+}
+
+.snapshot-num[data-level="warn"] {
+  color: #B26A00;
+}
+
+.snapshot-num[data-level="over"] {
+  color: #B00020;
+}
+
+.snapshot-label {
+  font-size: 11px;
+  color: var(--color-text-muted);
+  line-height: 1.3;
+  text-align: center;
+}
+
+.snapshot-divider {
+  width: 1px;
+  height: 28px;
+  background: var(--color-border-light);
+}
+
+/* 近期行程小部件 */
+.welcome-hero-upcoming {
+  margin-top: 20px;
+  padding: 14px 16px;
+  background: #fff;
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-md);
+  max-width: 640px;
+  margin-left: auto;
+  margin-right: auto;
+  text-align: left;
+}
+
+.upcoming-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.upcoming-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.upcoming-action {
+  background: none;
+  border: none;
+  font-size: 11px;
+  color: var(--color-primary);
+  cursor: pointer;
+  padding: 0;
+}
+
+.upcoming-action:hover {
+  text-decoration: underline;
+}
+
+.upcoming-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.upcoming-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  background: #F5F5F7;
+  font-size: 12px;
+}
+
+.upcoming-date {
+  display: flex;
+  flex-direction: column;
+  min-width: 90px;
+}
+
+.upcoming-date-day {
+  font-weight: 700;
+  color: var(--color-text-primary);
+  font-size: 13px;
+  line-height: 1.2;
+}
+
+.upcoming-date-route {
+  color: var(--color-text-muted);
+  font-size: 11px;
+}
+
+.upcoming-meta {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--color-text-muted);
+}
+
+.upcoming-flight {
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.upcoming-cabin {
+  font-size: 11px;
+  background: #E8F4FF;
+  color: #0051A1;
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+
+.upcoming-rebook {
+  background: none;
+  border: 1px solid var(--color-primary);
+  color: var(--color-primary);
+  font-size: 11px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.upcoming-rebook:hover {
+  background: var(--color-primary);
+  color: #fff;
+}
+
+/* 响应式: 窄屏单列 */
+@media (max-width: 480px) {
+  .welcome-hero-title {
+    font-size: 24px;
+  }
+  .welcome-hero-grid {
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+  .welcome-hero-card {
+    padding: 12px;
+  }
+  .welcome-hero-avatar {
+    width: 64px;
+    height: 64px;
+  }
 }

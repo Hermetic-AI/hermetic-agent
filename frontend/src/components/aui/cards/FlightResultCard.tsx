@@ -6,6 +6,8 @@ import type {
   FlightSegment,
 } from '../../../types';
 import { CardShell } from '../CardShell';
+import { checkCompliance } from '../../../lib';
+import '../../../lib/compliance.css';
 import './FlightResultCard.css';
 
 export interface FlightResultCardProps {
@@ -205,6 +207,7 @@ function FlightRow({
             {airlineLabel} · {segment.aircraft ?? '机型未提供'}
           </span>
           <span className="frc-row-cabin">{segment.cabin}</span>
+          <FlightComplianceInline price={Number(segment.price)} cabinClass={segment.cabinClass} />
         </div>
 
         {showTags.length > 0 && (
@@ -231,5 +234,23 @@ function FlightRow({
         </button>
       </div>
     </div>
+  );
+}
+
+function FlightComplianceInline({
+  price,
+  cabinClass,
+}: {
+  price: number;
+  cabinClass?: string;
+}) {
+  const verdict = checkCompliance(price, cabinClass ?? 'economy');
+  return (
+    <span
+      className={`compliance-badge compliance-${verdict.level}`}
+      title={verdict.tooltip}
+    >
+      {verdict.label}
+    </span>
   );
 }

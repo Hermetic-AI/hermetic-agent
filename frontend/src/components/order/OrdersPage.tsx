@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import type { Order } from '../../types';
 import { OrderCard, Tabs } from './index';
 import { OrderDetail } from './OrderDetail';
@@ -22,13 +22,13 @@ const mockOrders: Order[] = [
       price: 860,
       tax: 50,
       remainingSeats: 28,
-      aircraft: '波音737-800'
+      aircraft: '波音737-800',
     }],
     passengers: [{ name: '张三', type: 'adult', idType: '身份证', idNumber: '110101199001011234' }],
     totalPrice: 910,
     tax: 50,
     createdAt: '2026-05-29 10:00:00',
-    travelDate: '2026-06-01'
+    travelDate: '2026-06-01',
   },
   {
     id: '2',
@@ -46,17 +46,17 @@ const mockOrders: Order[] = [
       price: 780,
       tax: 50,
       remainingSeats: 20,
-      aircraft: '空客A320'
+      aircraft: '空客A320',
     }],
     passengers: [
       { name: '张三', type: 'adult', idType: '身份证', idNumber: '110101199001011234' },
-      { name: '李四', type: 'adult', idType: '身份证', idNumber: '110101199002022345' }
+      { name: '李四', type: 'adult', idType: '身份证', idNumber: '110101199002022345' },
     ],
     totalPrice: 1660,
     tax: 100,
     createdAt: '2026-05-28 15:30:00',
     paidAt: '2026-05-28 15:35:00',
-    travelDate: '2026-06-05'
+    travelDate: '2026-06-05',
   },
   {
     id: '3',
@@ -74,23 +74,26 @@ const mockOrders: Order[] = [
       price: 2180,
       tax: 80,
       remainingSeats: 12,
-      aircraft: '波音787-9'
+      aircraft: '波音787-9',
     }],
     passengers: [{ name: '王五', type: 'adult', idType: '身份证', idNumber: '110101198505053456' }],
     totalPrice: 2260,
     tax: 80,
     createdAt: '2026-05-20 08:00:00',
     paidAt: '2026-05-20 08:05:00',
-    travelDate: '2026-05-20'
-  }
+    travelDate: '2026-05-20',
+  },
 ];
 
 const tabs = [
   { id: 'pending', label: '待支付', count: 1 },
   { id: 'confirmed', label: '待出行', count: 1 },
   { id: 'completed', label: '已完成', count: 1 },
-  { id: 'all', label: '全部' }
+  { id: 'all', label: '全部' },
 ];
+
+type SortKey = 'travel' | 'created' | 'price';
+type FilterCity = 'all' | string;
 
 export function OrdersPage({ onAskAI, hintScenario }: { onAskAI?: (prompt: string, hintScenario?: string) => void; hintScenario?: string } = {}) {
   const [activeTab, setActiveTab] = useState('pending');
@@ -98,15 +101,43 @@ export function OrdersPage({ onAskAI, hintScenario }: { onAskAI?: (prompt: strin
   const [showDetail, setShowDetail] = useState(false);
   const [cancelOrder, setCancelOrder] = useState<Order | null>(null);
 
-  const filteredOrders = activeTab === 'all'
-    ? mockOrders
-    : mockOrders.filter((o) => o.status === activeTab);
+  const [sortKey, setSortKey] = useState<SortKey>('travel');
+  const [filterCity, setFilterCity] = useState<FilterCity>('all');
+
+  const allCities = useMemo(() => {
+    const set = new Set<string>();
+    mockOrders.forEach((o) => o.flights.forEach((f) => {
+      set.add(f.departure.city);
+      set.add(f.arrival.city);
+    }));
+    return ['all', ...Array.from(set)];
+  }, []);
+
+  const filteredOrders = useMemo(() => {
+    const byTab = activeTab === 'all'
+      ? mockOrders
+      : mockOrders.filter((o) => o.status === activeTab);
+    const byCity = filterCity === 'all'
+      ? byTab
+      : byTab.filter((o) =>
+          o.flights.some(
+            (f) => f.departure.city === filterCity || f.arrival.city === filterCity,
+          ),
+        );
+    const sorted = [...byCity].sort((a, b) => {
+      if (sortKey === 'travel') {
+        return a.travelDate.localeCompare(b.travelDate);
+      }
+      if (sortKey === 'created') {
+        return b.createdAt.localeCompare(a.createdAt);
+      }
+      return b.totalPrice - a.totalPrice;
+    });
+    return sorted;
+  }, [activeTab, filterCity, sortKey]);
 
   const handlePay = (order: Order) => {
-    onAskAI?.(
-      `帮我支付订单 ${order.orderNo}`,
-      hintScenario ?? 'flight_booking',
-    );
+    onAskAI?.(`帮我支付订单 ${order.orderNo}`, hintScenario ?? 'flight_booking');
   };
 
   const handleCancel = (order: Order) => {
@@ -118,14 +149,43 @@ export function OrdersPage({ onAskAI, hintScenario }: { onAskAI?: (prompt: strin
     setShowDetail(true);
   };
 
+  const handleAskAIDetail = (prompt: string) => {
+    if (!selectedOrder) return;
+    setShowDetail(false);
+    onAskAI?.(prompt, hintScenario ?? 'flight_booking');
+  };
+
   const confirmCancel = () => {
     if (cancelOrder) {
-      onAskAI?.(
-        `帮我取消订单 ${cancelOrder.orderNo}`,
-        hintScenario ?? 'flight_booking',
-      );
+      onAskAI?.(`帮我取消订单 ${cancelOrder.orderNo}`, hintScenario ?? 'flight_booking');
       setCancelOrder(null);
     }
+  };
+
+  const handleExport = () => {
+    if (filteredOrders.length === 0) return;
+    const rows = filteredOrders.map((o) => ({
+      订单号: o.orderNo,
+      状态: o.status,
+      下单时间: o.createdAt,
+      出发日期: o.travelDate,
+      出发: o.flights[0].departure.city,
+      到达: o.flights[0].arrival.city,
+      航班: o.flights[0].flightNumber,
+      舱位: o.flights[0].cabinClass,
+      金额: o.totalPrice,
+    }));
+    const csv = [
+      Object.keys(rows[0]).join(','),
+      ...rows.map((r) => Object.values(r).map((v) => `"${String(v).replace(/"/g, '""')}"`).join(',')),
+    ].join('\n');
+    const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `orders-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
   return (
@@ -133,6 +193,47 @@ export function OrdersPage({ onAskAI, hintScenario }: { onAskAI?: (prompt: strin
       <div className="orders-header">
         <h1>我的订单</h1>
         <p className="orders-subtitle">当前展示为示例数据；点击「去支付/取消」会唤起 AI 助手代为操作。</p>
+      </div>
+
+      <div className="orders-toolbar">
+        <div className="orders-filters">
+          <label className="orders-filter-label">
+            <span>城市</span>
+            <select
+              value={filterCity}
+              onChange={(e) => setFilterCity(e.target.value)}
+              className="orders-filter-select"
+            >
+              {allCities.map((c) => (
+                <option key={c} value={c}>
+                  {c === 'all' ? '全部城市' : c}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="orders-filter-label">
+            <span>排序</span>
+            <select
+              value={sortKey}
+              onChange={(e) => setSortKey(e.target.value as SortKey)}
+              className="orders-filter-select"
+            >
+              <option value="travel">出发日期</option>
+              <option value="created">下单时间</option>
+              <option value="price">价格 (高→低)</option>
+            </select>
+          </label>
+        </div>
+        <button
+          type="button"
+          className="orders-export-btn"
+          onClick={handleExport}
+          disabled={filteredOrders.length === 0}
+          title={`导出 ${filteredOrders.length} 条订单为 CSV`}
+        >
+          <ExportIcon />
+          导出 CSV
+        </button>
       </div>
 
       <Tabs tabs={tabs} activeTab={activeTab} onTabChange={setActiveTab}>
@@ -175,6 +276,7 @@ export function OrdersPage({ onAskAI, hintScenario }: { onAskAI?: (prompt: strin
         onClose={() => setShowDetail(false)}
         onPay={handlePay}
         onCancel={handleCancel}
+        onAskAI={handleAskAIDetail}
       />
 
       <ConfirmModal
@@ -206,4 +308,14 @@ function getEmptyDescription(tab: string): string {
     default:
       return '您还没有任何订单';
   }
+}
+
+function ExportIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+      <polyline points="7 10 12 15 17 10" />
+      <line x1="12" y1="15" x2="12" y2="3" />
+    </svg>
+  );
 }

@@ -105,7 +105,7 @@ MCP_SECURITY: 不要在自然语言回复、表格、日志里回显这个 token
 | `queryFlightBasic` | **首调 / 改条件重调** — 改 OD/日期/舱等/航司/限价/直飞/排序/时段/含餐/退改/差标**任何一个** → 必重调本工具 | `flight-query:query_flight_basic` §2 + §5 |
 | `filterFlightList` | **次调(内存筛选)** — 在已加载的 `flightList` 上做 TMS 不支持的维度二次筛选:飞机大小(`planeSize`)、飞行时长(`maxDuration`)、或加追加简单条件 | `tools/flight-mcp.json` 直接查 `filterFlightList.inputSchema` |
 
-**其余 13 个工具**(`getWeather` / `buildOrderPreview` / `fillPassenger` / `getDefaultContact` / `getOrderDetail` / `getTripApplicationDetail` / `bindCostCenter` / `listCostCenters` / `listTripApplications` / `recordPolicyUserDecision` / `resetBookingSession` / `validateBookingInfo` / `read_skill`)→ **本 skill 不接**,归 `flight-booking` skill。
+**其余 13 个工具**(`getWeather` / `buildOrderPreview` / `fillPassenger` / `getDefaultContact` / `getOrderDetail` / `getTripApplicationDetail` / `bindCostCenter` / `listCostCenters` / `listTripApplications` / `recordPolicyUserDecision` / `resetBookingSession` / `validateBookingInfo` / `read_skill`)→ **本 skill 不接**,归 `book-flight` skill (`work/scenarios/flight_booking/skills/book-flight/SKILL.md`)。
 
 ### 2.1 路由决策(LLM 行为)
 
@@ -190,7 +190,7 @@ MCP_SECURITY: 不要在自然语言回复、表格、日志里回显这个 token
 6. **城市用用户原话**(中文优先);IATA/ICAO/机场名先翻译(见 §3)
 7. **token 不外泄**(§1.4)
 8. **调工具失败 → 不编造**,老实说"查询失败"
-9. **本 skill 仅查票** → 选航班/选舱/填人/核价/下单走 `flight-booking` skill
+9. **本 skill 仅查票** → 选航班/选舱/填人/核价/下单走 `book-flight` skill (scenario 侧, `work/scenarios/flight_booking/skills/book-flight/`)
 10. **底层数据缺失**(`samples/*.json` 的 `notIncluded` 字段明示):舱位列表/退改规则/行李额/乘机人/校验/订单预览 — **本 skill 不渲染**这些,只展示 `flightList` 顶层的 `lowestPrice/lowestCabinName/fullPrice/totalDuration/depTime/arrTime` 等;细节引导用户"选航班后看舱位",**不**在 skill 里给空值
 11. **必须用 AUIP 卡片**:`queryFlightBasic` 拿到 flightList 后, **必须**调 `ask_user` 工具发 `card_type: "FLIGHT_RESULT"`,把航班按"最快/最便宜/舒适"等维度分方案,推到前端 `FlightResultCard` 渲染 — **不要**再用 Markdown 表格发回(老方案已废,见 §5.1)
 
@@ -358,7 +358,7 @@ LM 可直接读**这些 JSON 学习真实返回结构。
 |---|---|---|
 | `flight-query:query_flight_basic` | 准备调 `queryFlightBasic` / 需查完整参数 schema / 出参怎么解析 / NL→param 映射 | 完整输入 schema(从 `tools/flight-mcp.json` 摘)+ **真实输出字段说明**(从 `samples/*.json` 提炼)+ NL 映射 + 6 个 use case + 端到端 curl 模板 |
 | `flight-query:iata_icao_codes` | 遇到 IATA/ICAO 码要翻译 / 未识别城市 / 用户问"XX 城市的代码" | 30+ 城市 IATA+ICAO 对照 + 模糊处理 + 临时表查询指引 |
-| `flight-query:flight_booking` | 用户要"选航班/下单"(本 skill **不**加载,只给指引) | 走 `flight-booking` skill,本 skill 只负责把 `flightList` 给前端选 |
+| `flight-query:flight_booking` | 用户要"选航班/下单"(本 skill **不**加载,只给指引) | 走 `book-flight` skill (scenario 侧, 见上), 本 skill 只负责把 `flightList` 给前端选 |
 
 ---
 

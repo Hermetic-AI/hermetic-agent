@@ -116,7 +116,7 @@ class OpenCodeEventHub:
         base_url: str,
         client: AsyncOpencode,
         session_id: str,
-    ) -> _HubSubscription:
+    ) -> "_HubSubscription":
         """``async with`` 形式的订阅包装 — 比 ``async for ... in hub.subscribe()`` 整洁.
 
         Example::
@@ -134,38 +134,6 @@ class OpenCodeEventHub:
             client=client,
             session_id=session_id,
         )
-
-
-class _HubSubscription:
-    """``async with`` 包装 ``OpenCodeEventHub.subscribe`` 的一次性订阅."""
-
-    def __init__(
-        self,
-        *,
-        hub: OpenCodeEventHub,
-        agent_name: str,
-        base_url: str,
-        client: AsyncOpencode,
-        session_id: str,
-    ) -> None:
-        self._gen = hub.subscribe(
-            agent_name=agent_name,
-            base_url=base_url,
-            client=client,
-            session_id=session_id,
-        )
-
-    def __aiter__(self) -> AsyncIterator[Any]:
-        return self._gen
-
-    def __anext__(self) -> Any:
-        return self._gen.__anext__()
-
-    async def __aenter__(self) -> _HubSubscription:
-        return self
-
-    async def __aexit__(self, exc_type, exc, tb) -> None:
-        await self._gen.aclose()
 
     async def _ensure_state(self, key: str, client: AsyncOpencode) -> _StreamState:
         """Open the long-lived stream for ``key`` if not already open.
@@ -217,43 +185,68 @@ class _HubSubscription:
         if state is None:
             return
         state.subscribers.discard(sub)
-        state.refcount = max(0, state.refcount - 1)
+        state.refcount -= 1
         logger.debug(
-            "event_hub_unsubscribed",
+            "event_hub_released",
             key=key,
             session_id=sub.session_id,
-            remaining=len(state.subscribers),
+            subscribers=len(state.subscribers),
         )
-        if state.refcount == 0:
-            # Last subscriber out: stop the fanout and close the stream.
+        if state.refcount <= 0 and not state.subscribers:
             await self._shutdown_state(key, state)
 
     async def _shutdown_state(self, key: str, state: _StreamState) -> None:
-        """Idempotent: stop fanout, signal subscribers, close the stream."""
-        async with self._lock:
-            # Only act if this is still the current state for the key.
-            if self._states.get(key) is not state:
-                return
-            self._states.pop(key, None)
-        # Tell remaining subscribers to wind down (if any).
-        for sub in list(state.subscribers):
-            try:
-                sub.queue.put_nowait(_SHUTDOWN)
-            except Exception:
-                pass
-        # Cancel the fanout task; it may have already finished on its own.
-        if not state.fanout_task.done():
+        """Tear down the stream + fanout for ``key`` (idempotent)."""
+        # Idempotency: only the first caller actually closes the stream;
+        # subsequent callers see the key already gone from ``_states``.
+        if self._states.get(key) is not state:
+            return
+        self._states.pop(key, None)
+        if state.fanout_task is not None and not state.fanout_task.done():
             state.fanout_task.cancel()
-            try:
-                await state.fanout_task
-            except (asyncio.CancelledError, Exception):
-                pass
-        # Close the underlying httpx response.
         try:
             await state.stream.close()
         except Exception as e:
-            logger.warning("event_hub_stream_close_failed", key=key, error=str(e))
-        logger.info("event_hub_stream_closed", key=key)
+            logger.debug("event_hub_stream_close_warn", key=key, error=str(e))
+        # Wake up any subscribers still parked on the queue so they
+        # can see the SHUTDOWN sentinel and bail.
+        for sub in list(state.subscribers):
+            try:
+                sub.queue.put_nowait(_SHUTDOWN)
+            except asyncio.QueueFull:
+                pass
+
+
+class _HubSubscription:
+    """``async with`` 包装 ``OpenCodeEventHub.subscribe`` 的一次性订阅."""
+
+    def __init__(
+        self,
+        *,
+        hub: OpenCodeEventHub,
+        agent_name: str,
+        base_url: str,
+        client: AsyncOpencode,
+        session_id: str,
+    ) -> None:
+        self._gen = hub.subscribe(
+            agent_name=agent_name,
+            base_url=base_url,
+            client=client,
+            session_id=session_id,
+        )
+
+    def __aiter__(self) -> AsyncIterator[Any]:
+        return self._gen
+
+    def __anext__(self) -> Any:
+        return self._gen.__anext__()
+
+    async def __aenter__(self) -> "_HubSubscription":
+        return self
+
+    async def __aexit__(self, exc_type: Any, exc: Any, tb: Any) -> None:
+        await self._gen.aclose()
 
 
 __all__ = ["OpenCodeEventHub"]

@@ -80,6 +80,35 @@ class PromptBuilder:
             parts.append(history)
         return "\n\n".join(parts)
 
+    def render_skill_section(
+        self,
+        scenario: Any,
+        current_state: str,
+    ) -> tuple[str, "FragmentLoadReport"]:
+        """只渲染第 4 段(skill 片段), 给已有 system prompt 追加.
+
+        用途: bridge.chat 已经有 caller 传进来的 system_prompt (来自
+        scenario injector), 不想让 PromptBuilder 重新拼全部 6 段, 只想要
+        第 4 段(skill 片段)以便 append. 同时返回 FragmentLoadReport
+        供调用方记日志 / 做 budget 决策.
+
+        Args:
+            scenario: ScenarioConfig (duck-typed).
+            current_state: 当前 state id.
+
+        Returns:
+            ``(skill_section_text, load_report)``.
+            text 已含 ``[Active skill fragments: ...]`` header (若非空);
+            加载失败 / 策略为 none 时 text 为空字符串.
+        """
+        from openagent.skill_runtime.fragments import FragmentLoadReport
+
+        skill_text, report = self._loader.load(scenario, current_state)
+        if not skill_text:
+            return "", report
+        header = f"[Active skill fragments: {', '.join(report.loaded)}]"
+        return f"{header}\n{skill_text}", report
+
     @staticmethod
     def _scenario_prompt(scenario: Any) -> str:
         exec_ = getattr(scenario, "execution", None)

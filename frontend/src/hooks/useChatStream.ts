@@ -40,6 +40,18 @@ import type {
   TodoView,
   TodoItem,
 } from '../types';
+import {
+  appendCard,
+  appendQuestion,
+  appendReasoning,
+  appendState,
+  appendText,
+  appendToolCall,
+  markQuestionRejected,
+  markQuestionSubmitted,
+  suspendCard,
+  updateToolResult,
+} from './chatEvents';
 
 export type ChatStatus =
   | 'idle'
@@ -60,6 +72,14 @@ export interface UseChatStreamOptions {
   sessionId?: string;
   /** Called with the backend-issued session id once known. */
   onSessionChange?: (id: string) => void;
+  /**
+   * Called when the backend reports the current session is gone (typically
+   * because the server was restarted and lost its in-memory store, but the
+   * localStorage entry is still around).  Should clear the local session id
+   * so the next send creates a fresh one.  The hook will then auto-retry
+   * the current send once with the cleared session.
+   */
+  onSessionExpired?: () => void;
   /** Optional prompt prefix / system context appended to every user message. */
   systemPrompt?: string;
   /** Skills to enable for the run. */
@@ -214,6 +234,8 @@ export function useChatStream(options: UseChatStreamOptions = {}): UseChatStream
         timestamp: new Date().toISOString(),
         streaming: true,
         status: 'sending',
+        // 双写: events[] 是新数据源 (按 SSE 顺序), 老字段保留为推导视图.
+        events: [],
         toolEvents: [],
         reasoningEvents: [],
         cards: [],
@@ -368,40 +390,47 @@ export function useChatStream(options: UseChatStreamOptions = {}): UseChatStream
         const chunk = event.data.content ?? '';
         if (!chunk) return;
         setStatus('streaming');
+        const at = new Date().toISOString();
         patchAssistant(assistantId, (m) => ({
           ...m,
           content: m.content + chunk,
           status: 'streaming',
+          events: appendText(m.events ?? [], chunk, at),
         }));
         return;
       }
       case 'reasoning': {
         const content = event.data.content ?? '';
         if (!content) return;
+        const at = new Date().toISOString();
         const item: ReasoningEventView = {
           id: newId('reasoning'),
           content,
-          at: new Date().toISOString(),
+          at,
         };
         patchAssistant(assistantId, (m) => ({
           ...m,
           reasoningEvents: [...(m.reasoningEvents ?? []), item],
+          events: appendReasoning(m.events ?? [], content, at),
         }));
         return;
       }
       case 'tool_use': {
         const data = event.data;
         const name = (data.name ?? data.tool_name ?? 'unknown') as string;
+        const input = (data.input as Record<string, unknown> | undefined) ?? {};
+        const at = new Date().toISOString();
         const item: ToolEventView = {
           id: newId('tool'),
           name,
           phase: 'call',
-          input: (data.input as Record<string, unknown> | undefined) ?? {},
-          at: new Date().toISOString(),
+          input,
+          at,
         };
         patchAssistant(assistantId, (m) => ({
           ...m,
           toolEvents: [...(m.toolEvents ?? []), item],
+          events: appendToolCall(m.events ?? [], name, input, at),
         }));
         return;
       }
@@ -414,7 +443,11 @@ export function useChatStream(options: UseChatStreamOptions = {}): UseChatStream
           for (let i = events.length - 1; i >= 0; i -= 1) {
             if (events[i].name === toolName && events[i].phase === 'call') {
               events[i] = { ...events[i], phase: 'result', output };
-              return { ...m, toolEvents: events };
+              return {
+                ...m,
+                toolEvents: events,
+                events: updateToolResult(m.events ?? [], toolName, output),
+              };
             }
           }
           events.push({
@@ -424,7 +457,11 @@ export function useChatStream(options: UseChatStreamOptions = {}): UseChatStream
             output,
             at: new Date().toISOString(),
           });
-          return { ...m, toolEvents: events };
+          return {
+            ...m,
+            toolEvents: events,
+            events: updateToolResult(m.events ?? [], toolName, output),
+          };
         });
         return;
       }
@@ -440,6 +477,7 @@ export function useChatStream(options: UseChatStreamOptions = {}): UseChatStream
         patchAssistant(assistantId, (m) => ({
           ...m,
           cards: [...(m.cards ?? []), cardView],
+          events: appendCard(m.events ?? [], cardView),
         }));
         return;
       }
@@ -454,6 +492,7 @@ export function useChatStream(options: UseChatStreamOptions = {}): UseChatStream
         patchAssistant(assistantId, (m) => ({
           ...m,
           stateEvents: [...(m.stateEvents ?? []), stateView],
+          events: appendState(m.events ?? [], stateView.state, stateView.note, stateView.at),
         }));
         return;
       }
@@ -483,8 +522,9 @@ export function useChatStream(options: UseChatStreamOptions = {}): UseChatStream
           turnId: tid,
           pendingCorrelationId: correlationId,
           cards: (m.cards ?? []).map((c) =>
-            c.card_id === card.card_id ? { ...c, suspended: true } : c,
+            c.card_id === card.card_id ? { ...c, suspendido: true } : c,
           ),
+          events: suspendCard(m.events ?? [], card.card_id),
         }));
         setStatus('suspended');
         abortRef.current = null; // stream is closed by server
@@ -505,6 +545,15 @@ export function useChatStream(options: UseChatStreamOptions = {}): UseChatStream
           status: 'error',
           errorMessage: code ? `[${code}] ${message}` : message,
         }));
+        // Detect stale session: 后端 in-memory store 丢了 (容器重启/部署),
+        // localStorage 还存着旧 session_id. 触发 onSessionExpired 让 ChatPage
+        // 清掉, 下次发送会自动建新 session.
+        const isSessionExpired =
+          code === 'SESSION_ERROR' ||
+          (typeof message === 'string' && /session .* not found/i.test(message));
+        if (isSessionExpired) {
+          optionsRef.current.onSessionExpired?.();
+        }
         return;
       }
       case 'done':
@@ -527,9 +576,15 @@ export function useChatStream(options: UseChatStreamOptions = {}): UseChatStream
           questions,
           received_at: new Date().toISOString(),
         };
+        const at = new Date().toISOString();
         patchAssistant(assistantId, (m) => ({
           ...m,
           pendingQuestion: pending,
+          events: appendQuestion(
+            m.events ?? [],
+            { requestId, sessionId: pending.session_id, questions },
+            at,
+          ),
         }));
         return;
       }
@@ -539,8 +594,12 @@ export function useChatStream(options: UseChatStreamOptions = {}): UseChatStream
         // Mark the matching pending question as submitted so the UI dims.
         patchAssistant(assistantId, (m) =>
           m.pendingQuestion?.request_id === requestId
-            ? { ...m, pendingQuestion: { ...m.pendingQuestion, submitted: true } }
-            : m,
+            ? {
+                ...m,
+                pendingQuestion: { ...m.pendingQuestion, submitted: true },
+                events: markQuestionSubmitted(m.events ?? [], requestId),
+              }
+            : { ...m, events: markQuestionSubmitted(m.events ?? [], requestId) },
         );
         return;
       }
@@ -549,8 +608,12 @@ export function useChatStream(options: UseChatStreamOptions = {}): UseChatStream
         const requestId = String(data.request_id ?? '');
         patchAssistant(assistantId, (m) =>
           m.pendingQuestion?.request_id === requestId
-            ? { ...m, pendingQuestion: { ...m.pendingQuestion, rejected: true } }
-            : m,
+            ? {
+                ...m,
+                pendingQuestion: { ...m.pendingQuestion, rejected: true },
+                events: markQuestionRejected(m.events ?? [], requestId),
+              }
+            : { ...m, events: markQuestionRejected(m.events ?? [], requestId) },
         );
         return;
       }

@@ -163,3 +163,48 @@ def test_build_with_empty_messages(stub_loader: _StubFragmentLoader) -> None:
     # empty messages should be fine
     assert "BASE" in out
     assert "Current state: S01" in out
+
+
+# ----- render_skill_section (P0-1) -----------------------------------------
+
+
+def test_render_skill_section_returns_empty_when_strategy_none(tmp_path: Path) -> None:
+    """当 strategy=none 或片段为空, 返回空字符串 + 空 report."""
+    reg = SkillRegistry()
+    loader = FragmentLoader(reg, budget=1000, policy="error")
+    b = PromptBuilder(loader)
+    scn = _scenario(strategy="none")
+    text, report = b.render_skill_section(scn, current_state="S01")
+    assert text == ""
+    assert report.loaded == []
+
+
+def test_render_skill_section_returns_section_with_header(stub_loader: _StubFragmentLoader) -> None:
+    """非空时, 返回 [Active skill fragments: ...] header + body."""
+    stub_loader._text = "FRAG-BODY"
+    stub_loader._loaded = ["a:summary", "a:detail"]
+    b = PromptBuilder(stub_loader)
+    scn = _scenario(strategy="on_demand")
+    text, report = b.render_skill_section(scn, current_state="S05")
+    assert "FRAG-BODY" in text
+    assert "[Active skill fragments: a:summary, a:detail]" in text
+    assert report.loaded == ["a:summary", "a:detail"]
+
+
+def test_render_skill_section_does_not_include_scenario_prompt(stub_loader: _StubFragmentLoader) -> None:
+    """render_skill_section 只输出第 4 段; 不应带 scenario system_prompt /
+    a2ui / state 标记 (这些由 caller 自己拼)."""
+    stub_loader._text = "FRAG"
+    stub_loader._loaded = ["a:summary"]
+    b = PromptBuilder(
+        stub_loader,
+        framework_base="BASE",  # 不应出现
+        aui_instructions="AUI",  # 不应出现
+    )
+    scn = _scenario(strategy="on_demand", system_prompt="SCEN-SYS")
+    text, _ = b.render_skill_section(scn, current_state="S01")
+    assert "FRAG" in text
+    assert "SCEN-SYS" not in text
+    assert "BASE" not in text
+    assert "AUI" not in text
+    assert "Current state" not in text

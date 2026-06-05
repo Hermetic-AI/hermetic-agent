@@ -1,11 +1,14 @@
-import { useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { useHealth, useScenarios } from '../../hooks';
+import { friendlyScenarioName, friendlyScenarioDescription, loadUserSnapshot } from '../../lib';
+import type { ScenarioSummary } from '../../types';
 import './Sidebar.css';
 
 type NavItem = {
   id: string;
   label: string;
   icon: ReactNode;
+  badgeKey?: 'pending' | 'confirmed' | 'rules';
 };
 
 interface SidebarProps {
@@ -19,13 +22,16 @@ interface SidebarProps {
 const navItems: NavItem[] = [
   { id: 'chat', label: '智能助手', icon: <ChatIcon /> },
   { id: 'search', label: '机票查询', icon: <SearchIcon /> },
-  { id: 'orders', label: '我的订单', icon: <OrderIcon /> },
+  { id: 'orders', label: '我的订单', icon: <OrderIcon />, badgeKey: 'pending' },
   { id: 'rules', label: '差旅规则', icon: <RulesIcon /> },
 ];
 
-// Subset of scenarios safe to expose to the chat entry.  Internal/hidden
-// ones (`_default`, `_generic`) are kept out of the picker.
-const USER_PICKABLE_DEFAULT: string[] = ['flight_query', 'flight_booking'];
+const STATIC_BADGE: Record<string, number> = {
+  // 真实接入会从后端 /agent/orders/summary 拉,这里先用 mock 数量,跟
+  // OrdersPage 里的 mock 保持一致.
+  pending: 1,
+  confirmed: 1,
+};
 
 export function Sidebar({
   activeId,
@@ -37,11 +43,23 @@ export function Sidebar({
   const { state } = useHealth();
   const { scenarios } = useScenarios();
   const [open, setOpen] = useState(false);
+  const [pendingCount, setPendingCount] = useState(0);
+  const [confirmedCount, setConfirmedCount] = useState(0);
 
-  const pickable = scenarios.filter(
-    (s) => s.enabled !== false && USER_PICKABLE_DEFAULT.includes(s.name),
+  useEffect(() => {
+    // 真实接入: const res = await orderService.summary(); setPendingCount(res.pending);
+    // demo 用 localStorage + 静态兜底,等接入后端即可替换.
+    void loadUserSnapshot(); // 触发现有数据
+    setPendingCount(STATIC_BADGE.pending ?? 0);
+    setConfirmedCount(STATIC_BADGE.confirmed ?? 0);
+  }, []);
+
+  const pickable: ScenarioSummary[] = scenarios.filter(
+    (s) => s.enabled !== false,
   );
-  const hasMore = pickable.length > 1;
+
+  const activeScenarioName = friendlyScenarioName(scenario);
+  const activeScenarioDesc = scenario ? friendlyScenarioDescription(scenario) : '由后端按 keyword 推断';
 
   return (
     <aside className="sidebar">
@@ -50,19 +68,17 @@ export function Sidebar({
         <span className="sidebar-tagline">差旅 AI 调度中心</span>
       </div>
 
-      {onScenarioChange && hasMore && (
+      {onScenarioChange && pickable.length > 0 && (
         <div className={`sidebar-scenario ${open ? 'is-open' : ''}`}>
           <button
             type="button"
             className="sidebar-scenario-toggle"
             onClick={() => setOpen((v) => !v)}
             aria-expanded={open}
-            title={`当前场景: ${scenario ?? '自动'}`}
+            title={`当前场景: ${activeScenarioName}`}
           >
             <span className="sidebar-scenario-dot" />
-            <span className="sidebar-scenario-label">
-              {scenario ?? '自动路由'}
-            </span>
+            <span className="sidebar-scenario-label">{activeScenarioName}</span>
             <span className="sidebar-scenario-caret">▾</span>
           </button>
           {open && (
@@ -77,42 +93,65 @@ export function Sidebar({
                   }}
                 >
                   <span className="sidebar-scenario-item-name">自动路由</span>
-                  <span className="sidebar-scenario-item-hint">由后端按 keyword 推断</span>
+                  <span className="sidebar-scenario-item-hint">{activeScenarioDesc}</span>
                 </button>
               </li>
-              {pickable.map((s) => (
-                <li key={s.name}>
-                  <button
-                    type="button"
-                    className={`sidebar-scenario-item ${scenario === s.name ? 'is-active' : ''}`}
-                    onClick={() => {
-                      onScenarioChange(s.name);
-                      setOpen(false);
-                    }}
-                  >
-                    <span className="sidebar-scenario-item-name">{s.name}</span>
-                    {s.description && (
-                      <span className="sidebar-scenario-item-hint">{s.description}</span>
-                    )}
-                  </button>
-                </li>
-              ))}
+              {pickable.map((s) => {
+                const isActive = scenario === s.name;
+                return (
+                  <li key={s.name}>
+                    <button
+                      type="button"
+                      className={`sidebar-scenario-item ${isActive ? 'is-active' : ''}`}
+                      onClick={() => {
+                        onScenarioChange(s.name);
+                        setOpen(false);
+                      }}
+                    >
+                      <span className="sidebar-scenario-item-name">
+                        {friendlyScenarioName(s.name)}
+                      </span>
+                      {(s.description || friendlyScenarioDescription(s.name)) && (
+                        <span className="sidebar-scenario-item-hint">
+                          {s.description || friendlyScenarioDescription(s.name)}
+                        </span>
+                      )}
+                    </button>
+                  </li>
+                );
+              })}
             </ul>
           )}
         </div>
       )}
 
       <nav className="sidebar-nav">
-        {navItems.map((item) => (
-          <button
-            key={item.id}
-            className={`nav-item ${activeId === item.id ? 'nav-item-active' : ''}`}
-            onClick={() => onNavChange(item.id)}
-          >
-            <span className="nav-icon">{item.icon}</span>
-            <span className="nav-label">{item.label}</span>
-          </button>
-        ))}
+        {navItems.map((item) => {
+          const badge =
+            item.badgeKey === 'pending'
+              ? pendingCount
+              : item.badgeKey === 'confirmed'
+                ? confirmedCount
+                : 0;
+          return (
+            <button
+              key={item.id}
+              className={`nav-item ${activeId === item.id ? 'nav-item-active' : ''}`}
+              onClick={() => onNavChange(item.id)}
+            >
+              <span className="nav-icon">{item.icon}</span>
+              <span className="nav-label">{item.label}</span>
+              {badge > 0 && (
+                <span
+                  className={`nav-badge ${item.badgeKey === 'pending' ? 'nav-badge-pending' : 'nav-badge-confirmed'}`}
+                  title={item.badgeKey === 'pending' ? `${badge} 个待支付` : `${badge} 个待出行`}
+                >
+                  {badge}
+                </span>
+              )}
+            </button>
+          );
+        })}
       </nav>
       <div className="sidebar-footer">
         <HealthIndicator state={state} />

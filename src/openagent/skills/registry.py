@@ -263,6 +263,49 @@ class SkillRegistry:
 
         return "\n\n".join(parts), missing
 
+    def metadata_list(
+        self,
+        skill_names: list[str] | None = None,
+        *,
+        missing_label: str = "(not in registry)",
+    ) -> str:
+        """渲染 ``(name, description)`` 列表 — Anthropic Skills 协议 L1 (metadata-only).
+
+        用法: 在 system prompt 顶部放一段小广告, 让 LLM 知道"哪些 skill 可用 +
+        何时该用". LLM 看到相关关键词后, 主动调 ``read_skill`` 加载完整内容.
+
+        Args:
+            skill_names: 要列出的 skill 名称列表. None = 全注册表.
+            missing_label: 列表中找不到的 skill 名称渲染为什么.
+
+        Returns:
+            多行字符串, 形如::
+
+                [Available skills (call read_skill to load full content on demand)]
+                - flight-query: 通过 MCP 端点查询国内航班...
+                - flight-booking: 机票预订状态机...
+                - nonexistent: (not in registry)
+        """
+        # None = 默认列出全部注册表; [] = 显式空, 啥也不列 (caller 区分用).
+        if skill_names is None:
+            names = [s.name for s in self.list_all()]
+        else:
+            names = list(skill_names)
+        if not names:
+            return ""
+        lines = [
+            "[Available skills "
+            "(call read_skill to load full SKILL.md on demand)]"
+        ]
+        for name in names:
+            skill = self._skills.get(name)
+            if skill is None:
+                lines.append(f"- {name}: {missing_label}")
+                continue
+            desc = skill.description or "(no description)"
+            lines.append(f"- {skill.name} (v{skill.version}): {desc}")
+        return "\n".join(lines)
+
     def match_by_trigger(self, text: str) -> list[Skill]:
         """根据触发词匹配技能。
 

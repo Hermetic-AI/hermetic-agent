@@ -55,6 +55,12 @@
   gap: 12px;
 }
 
+.flight-header-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
 .airline-logo {
   width: 36px;
   height: 36px;

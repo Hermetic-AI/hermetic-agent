@@ -20,6 +20,52 @@ export interface SessionInfo {
 
 export type ChatRole = 'user' | 'assistant' | 'system' | 'tool';
 
+/**
+ * 单条消息内嵌的有序事件时间线.
+ *
+ * 旧设计把同类事件聚到一个字段 (toolEvents[] / cards[] / stateEvents[] / pendingQuestion),
+ * 渲染时按"字段类型"固定顺序 (reasoning → text → tool → card), 完全丢失了 SSE
+ * 真正的到达顺序.  比如 AI 说 "查一下" → 调 tool → 说 "查到了" → 弹问题,
+ * 旧渲染会变成 ["查一下查到了" 拼成一段] [tool] [问题], 文本/工具/问题的穿插
+ * 关系全错.
+ *
+ * 新设计: events[] 按 SSE 到达顺序追加, ChatBubble 按 events[] 顺序渲染,
+ * 相邻同类型事件自动合并成一段 (避免 100 个 text chunk 变 100 行).
+ * 老字段 (toolEvents/cards/...) 保留, 但由 events[] 推导出来, 单一数据源.
+ */
+export type ChatEvent =
+  | { type: 'reasoning'; id: string; content: string; at: string }
+  | { type: 'text'; id: string; content: string; at: string }
+  | {
+      type: 'tool';
+      id: string;
+      name: string;
+      phase: 'call' | 'result';
+      input?: unknown;
+      output?: unknown;
+      at: string;
+    }
+  | {
+      type: 'card';
+      id: string;
+      card: import('./api').CardDescriptor;
+      correlationId?: string;
+      suspended?: boolean;
+      submitted?: boolean;
+      at: string;
+    }
+  | { type: 'state'; id: string; state: string; note?: string; at: string }
+  | {
+      type: 'question';
+      id: string;
+      requestId: string;
+      sessionId: string;
+      questions: QuestionItem[];
+      submitted?: boolean;
+      rejected?: boolean;
+      at: string;
+    };
+
 export interface ChatMessage {
   id: string;
   role: ChatRole;
@@ -60,6 +106,12 @@ export interface ChatMessage {
   pendingQuestion?: QuestionView;
   /** P7: opencode 原生 todo 列表 (来自 ``todo_updated`` 事件) */
   todoView?: TodoView;
+  /**
+   * Ordered timeline of streaming events (assistant only).  The renderer
+   * walks this list in order so text / tool / question / card interleave
+   * exactly as the SSE stream delivered them.  See {@link ChatEvent}.
+   */
+  events?: ChatEvent[];
 }
 
 export interface ChatAttachment {

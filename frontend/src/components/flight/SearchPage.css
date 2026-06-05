@@ -51,6 +51,10 @@
   gap: 6px;
 }
 
+.search-field-narrow {
+  max-width: 100px;
+}
+
 .search-field label {
   font-size: 13px;
   font-weight: 500;
@@ -77,6 +81,25 @@
 
 .search-field input::placeholder {
   color: #999;
+}
+
+.search-form-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.search-handoff-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 42px;
+  color: var(--color-text-muted);
+}
+
+.search-handoff-btn:hover {
+  color: var(--color-primary);
 }
 
 .swap-btn {
@@ -145,6 +168,146 @@
 .results-count {
   font-size: 13px;
   color: #999;
+}
+
+.results-meta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.results-compliance {
+  font-size: 12px;
+}
+
+/* 日期预设 + 收藏按钮 (form 下方独立行) */
+.search-date-presets {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px dashed var(--color-border-light);
+}
+
+.search-date-chip {
+  padding: 6px 14px;
+  border: 1px solid var(--color-border);
+  background: #fff;
+  border-radius: 999px;
+  font-size: 12px;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.search-date-chip:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+  background: #E8F4FF;
+}
+
+.search-fav-btn {
+  margin-left: auto;
+  padding: 6px 14px;
+  border: 1px solid var(--color-border);
+  background: #fff;
+  border-radius: 999px;
+  font-size: 12px;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.search-fav-btn:hover:not(:disabled) {
+  border-color: #FFB347;
+  color: #FF7A14;
+  background: #FFF9F0;
+}
+
+.search-fav-btn.is-active {
+  background: #FFF4E5;
+  border-color: #FCD9A6;
+  color: #B26A00;
+}
+
+.search-fav-btn:disabled {
+  cursor: default;
+  opacity: 0.7;
+}
+
+/* 我的常飞 */
+.search-favorites {
+  background: #fff;
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-md);
+  padding: 12px 16px;
+  margin-bottom: 16px;
+}
+
+.search-favorites-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.search-favorites-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.search-favorites-hint {
+  font-size: 11px;
+  color: var(--color-text-muted);
+}
+
+.search-favorites-list {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.search-favorite-chip {
+  display: inline-flex;
+  align-items: center;
+  background: #F5F5F7;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  padding: 0 0 0 14px;
+  font-size: 12px;
+  color: var(--color-text-primary);
+  transition: all var(--transition-fast);
+}
+
+.search-favorite-chip:hover {
+  border-color: var(--color-primary);
+  background: #E8F4FF;
+}
+
+.search-favorite-main {
+  background: none;
+  border: none;
+  padding: 6px 4px 6px 0;
+  cursor: pointer;
+  color: inherit;
+  font: inherit;
+}
+
+.search-favorite-remove {
+  background: none;
+  border: none;
+  padding: 4px 10px;
+  cursor: pointer;
+  color: var(--color-text-muted);
+  font-size: 14px;
+  line-height: 1;
+}
+
+.search-favorite-remove:hover {
+  color: #B00020;
 }
 
 .search-results {
