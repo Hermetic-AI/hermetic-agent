@@ -105,16 +105,16 @@ def scenarios(workspace_dir: str) -> tuple[ScenarioRegistry, dict]:
 
 
 def test_all_seven_scenarios_load(scenarios):
-    """全部 scenario 加载成功 (v3.0.0 新增 flight_query_v3 — opencode 原生 MCP)."""
+    """全部 scenario 加载成功 (v3.0.0 新增 flight_query_v3 — opencode 原生 MCP; v4.0.0 新增 flight_query_v4)."""
     reg, _ = scenarios
     names = set(reg.list_names())
     expected = {
         "_generic", "_default", "flight_booking", "flight_query",
         "expense_audit", "customer_service", "code_review",
-        "flight_query_v3",
+        "flight_query_v3", "flight_query_v4",
     }
     assert expected.issubset(names), f"missing: {expected - names}"
-    assert len(reg.list_enabled()) == 8
+    assert len(reg.list_enabled()) == 9
 
 
 def test_flight_booking_is_hitl(scenarios):

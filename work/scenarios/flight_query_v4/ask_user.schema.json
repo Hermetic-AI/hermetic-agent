@@ -1,0 +1,97 @@
+{
+  "$id": "auip.flight_query_v4.ask_user.v1",
+  "title": "flight_query_v4 scenario - ask_user tool schema (极简, plan_kind 模式)",
+  "description": "v4 核心: LLM 只填 plan_kind + flightList, backend 用 plan_rules.md + flask_payload.json 自动生成完整 AUIP 卡片. 不再像 v3 那样要求 LLM 填 summary/plans/flights 等 30+ 字段.",
+  "type": "object",
+  "required": ["card_type"],
+  "properties": {
+    "card_type": {
+      "type": "string",
+      "enum": ["FLIGHT_RESULT", "CANNOT_ORDER", "ASK_QUERY", "CHAT_FALLBACK"],
+      "description": "FLIGHT_RESULT=有结果 | CANNOT_ORDER=空/错 | ASK_QUERY=缺字段 | CHAT_FALLBACK=兜底"
+    },
+    "title": {
+      "type": "string",
+      "description": "卡片标题 (可选, 有默认值)"
+    },
+    "dismissible": {
+      "type": "boolean",
+      "default": false,
+      "description": "用户能否关掉卡片 (false=强制交互)"
+    }
+  },
+  "oneOf": [
+    {
+      "title": "FLIGHT_RESULT (v4 极简)",
+      "description": "LLM 只填 plan_kind + flightList; backend 用 plan_rules.md 自动生成完整 plans[] + flights[]",
+      "required": ["card_type", "plan_kind", "flightList"],
+      "properties": {
+        "card_type": { "const": "FLIGHT_RESULT" },
+        "plan_kind": {
+          "type": "string",
+          "enum": ["default", "cheapest", "fastest", "comfortable", "user_explicit"],
+          "description": "default=3方案 (最快/最便宜/直飞首选) | cheapest/fastest/comfortable=1方案 | user_explicit=1方案用户已选"
+        },
+        "flightList": {
+          "type": "array",
+          "minItems": 1,
+          "description": "MCP queryFlightBasic 工具返回的 flightList 数组, 原样透传给 backend",
+          "items": { "type": "object" }
+        },
+        "preference": {
+          "type": "string",
+          "description": "可选, 用户原话偏好 (例: '最快' / '早班' / '国航'), backend 按 plan_rules.md 二次调整"
+        }
+      },
+      "_backend_logic": "调用 _build_plans(flightList, plan_kind, preference) 生成 plans[] + 调用 _flight_to_auip() 逐项翻译"
+    },
+    {
+      "title": "CANNOT_ORDER",
+      "required": ["card_type", "reason", "fallback"],
+      "properties": {
+        "card_type": { "const": "CANNOT_ORDER" },
+        "reason": {
+          "type": "string",
+          "description": "用户可见原因, 例 '暂无符合条件的航班' / '机票查询服务暂时不可用, 请稍后重试'"
+        },
+        "fallback": {
+          "type": "string",
+          "description": "建议下一步, 例 '放宽日期 / 换舱等 / 换 OD'"
+        }
+      }
+    },
+    {
+      "title": "ASK_QUERY (v4 新增)",
+      "description": "缺字段时推表单让用户填, 替代 LLM 自己组织追问话术",
+      "required": ["card_type", "missing"],
+      "properties": {
+        "card_type": { "const": "ASK_QUERY" },
+        "missing": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "enum": ["origin", "destination", "departDate", "returnDate", "cabin"]
+          },
+          "description": "缺失的字段名列表, 前端按字段名渲染对应输入框"
+        },
+        "hints": {
+          "type": "object",
+          "description": "可选, 给用户看的输入提示",
+          "additionalProperties": { "type": "string" }
+        }
+      }
+    },
+    {
+      "title": "CHAT_FALLBACK",
+      "required": ["card_type", "message"],
+      "properties": {
+        "card_type": { "const": "CHAT_FALLBACK" },
+        "message": {
+          "type": "string",
+          "description": "兜底消息"
+        }
+      }
+    }
+  ]
+}

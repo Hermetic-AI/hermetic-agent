@@ -1,0 +1,177 @@
+# ============================================================
+# 飞鹤机票查询 — v4 (LLM 推理流程固化, 端到端 2-3s)
+# 与 flight_query_v3.scenario.yaml 的关系: v3 = 4 步 LLM 推理;
+#   v4 = 3 步固定流程 + 后端模板化, 砍掉 60% 推理耗时
+# ============================================================
+name: flight_query_v4
+version: "1.0.0"
+description: |
+  飞鹤机票查询场景 — v4 全新设计 (速度优化).
+  User 提需求 → LLM 解析为结构化 Query (1-2s) → LLM 调 queryFlightBasic (1-2s)
+  → LLM 调 ask_user, 只填 plan_kind + flightList (0.3s)
+  → **backend _build_plans() 1ms 生成完整 FLIGHT_RESULT 卡片** → 前端 FlightResultCard 渲染.
+
+  v4 关键变化 (vs v3):
+  - LLM **不再手填** plans[] / flights[] — backend 模板化, 1ms 出卡片
+  - LLM 只填 plan_kind 枚举 (default/cheapest/fastest/comfortable/user_explicit)
+  - 新增 ASK_QUERY 卡片: 缺字段时让用户填表单, 替代 LLM 组织追问话术
+  - SKILL.md 273 行 → 110 行 (砍 60%)
+  - 端到端 5-10s → 2-3s (砍 60%)
+enabled: true
+tags: [travel, query, auip, mcp-native, v4, fast]
+owner: openagent-core
+tier: gold
+
+# ============================================================
+# 路由: 关键词命中 (priority 100, 比 _default/_generic 优先)
+# ============================================================
+routing:
+  trigger_keywords: [查机票v4, 查航班v4, flight query v4, v4机票, v4查票, 机票v4]
+  trigger_intent: null
+  url_path: null
+  priority: 100
+
+# ============================================================
+# 执行: system_prompt + skills + tools
+#   - system_prompt: 极简, 3 步固定流程, 不超过 20 行
+#   - skills: v4 skill (110 行, 极简版) + IATA 子 skill
+#   - tools: 来自 opencode 加载的 MCP server (work/mcp/servers.json)
+# ============================================================
+execution:
+  system_prompt: |
+    你是飞鹤机票查询 AI 助手 (v4).
+    严格遵循 3 步固定流程, **不**要发散:
+    1. PARSE — 用户原话转 Query JSON (origin/destination/departDate/cabin?/filters?)
+    2. CALL — 调 queryFlightBasic MCP 工具
+    3. CARD — 调 ask_user 工具, 缺字段推 ASK_QUERY, 有结果推 FLIGHT_RESULT (plan_kind+flightList 原样), 错/空推 CANNOT_ORDER
+
+    严禁:
+    - 自己编 plans[] / flights[] 字段 (backend 用 plan_rules.md 自动生成)
+    - 改 OD/日期/舱等后调 filterFlightList 做客户端过滤 (重调 queryFlightBasic)
+    - 在 chat text 里发整张 Markdown 表 (用 ask_user 卡片)
+    - 选舱/填人/核价/下单 (走 flight-booking skill)
+  skills:
+    - flight-query-v4                              # 核心层 (必读, 110 行, 3 步固定流程)
+    - flight-query-v4.iata_icao_codes              # on-demand: IATA/ICAO 翻译
+  tools: [queryFlightBasic, filterFlightList]      # 来自 MCP server, opencode 启动时加载
+  orchestration: single                            # 单步聊天
+
+# ============================================================
+# 安全: safe 档 — v4 不需要 Bash 工具 (opencode 调原生 MCP 工具)
+# ============================================================
+security:
+  tool_level: safe
+  allowed_tools: [Read, Grep, Glob]
+  denied_tools: [Write, Edit, Bash, WebFetch, WebSearch]
+  allowed_commands: []
+  denied_commands: [rm -rf, sudo, dd, mkfs, "chmod 777", ":(){:|:&};:"]
+  network: local
+  max_turns: 8                                       # v3 是 10, v4 因为流程固化, 砍到 8
+  max_budget_usd: 0.25                               # v3 是 0.3, v4 砍 17% (更少 LLM 调用)
+  require_approval_for_writes: true
+
+# ============================================================
+# 工作区 — 透传给 opencode 的根
+# ============================================================
+workspace:
+  strategy: project_relative
+  workspace_dirs:
+    - ${PROJECT_DIR}
+  readonly_dirs:
+    - ${WORK_SHARED}/docs
+    - ${WORK_SHARED}/skills
+    - ${WORK_SHARED}/mcp
+  deny_dirs:
+    - /etc
+    - ~/.ssh
+    - ~/.aws
+    - ~/.config/gcloud
+    - ${HOME}
+  deny_path_patterns:
+    - "**/.env"
+    - "**/.env.*"
+    - "**/id_rsa"
+    - "**/id_ed25519"
+    - "**/*.pem"
+    - "**/*.key"
+    - "**/secrets/**"
+  launcher:
+    prefer_engine: opencode
+    fallback_engine: claude_code
+    engine_config:
+      opencode:
+        config_template: standard
+        mcp_servers_config: ${WORK_SHARED}/mcp/servers.json
+
+# ============================================================
+# A2UI — 启用 + 4 种 card_type (v4 新增 ASK_QUERY)
+# ============================================================
+a2ui:
+  enabled: true
+  protocol: auip
+  card_schemas:
+    - FLIGHT_RESULT        # backend _build_plans() 自动生成完整 plans
+    - CANNOT_ORDER         # 缺 reason + fallback
+    - ASK_QUERY            # v4 新增: 缺字段推表单让用户填
+    - CHAT_FALLBACK        # 兜底
+  ask_user:
+    tool_name: ask_user
+    schema: ${SCENARIO_DIR}/ask_user.schema.json
+  renderer_hint: react_aui_v1
+  progressive_loading: true
+
+# ============================================================
+# 渐进 SKILL: v4 一次性全量加载 (110 行, 4K budget 宽裕)
+# ============================================================
+progressive_skill:
+  strategy: all
+  budget_tokens: 4000
+  budget_policy: warn
+  initial_skills: []
+  load_on_state: {}
+
+# ============================================================
+# 资源目录
+# ============================================================
+resource_dirs:
+  prompts: ${WORK_SHARED}/prompts/flight_query_v4
+  skills: ${WORK_SHARED}/skills
+  mcp_servers: ${WORK_SHARED}/mcp
+  shared_skills: ${WORK_SHARED}/skills
+  tools: ${SCENARIO_DIR}/tools
+  cards: ${SCENARIO_DIR}/cards
+
+# ============================================================
+# 资源
+# ============================================================
+resources:
+  agent: opencode-default
+  model: MiniMax-M3
+  timeout: 90                                       # v3 是 120, v4 因为更快, 砍 25%
+
+# ============================================================
+# 业务元数据
+# ============================================================
+metadata:
+  cost_center: T-1001
+  ab_group: fast_v4                                # A/B 测试用, 区分 v3 vs v4
+  sla_tier: gold                                    # v3 是 silver, v4 升 gold
+  dashboard_url: null
+  parent_scenario: flight_query_v3
+  replaces: flight_query_v3@1.x
+  architecture: skill-backend-presentation-decoupled
+  mcp_servers:
+    - name: feihe-travel
+      source: ${WORK_SHARED}/mcp/servers.json
+      tool_count: 15
+      tools_used_by_this_scenario: [queryFlightBasic, filterFlightList]
+  performance:
+    end_to_end_seconds:
+      v3: 5-10
+      v4: 2-3
+    skill_md_lines:
+      v3: 273
+      v4: 110
+    llm_calls_per_turn:
+      v3: 2-3
+      v4: 1-2
