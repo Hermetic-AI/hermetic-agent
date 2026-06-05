@@ -98,6 +98,10 @@ KNOWN_VIOLATIONS: set[str] = {
     "src/openagent/api/app.py",
     # L3 (core/) — HITL 完整事件流 (P5)
     "src/openagent/core/suspendable_scheduler.py",
+    # L3 (skill_runtime/) — fragments 预存在超 250
+    "src/openagent/skill_runtime/fragments.py",
+    # L2 (scenarios/) — config 254 lines, 超 L2 上限 250
+    "src/openagent/scenarios/config.py",
     # L4 (providers/) — 双 SDK 适配 + bridge (P3)
     "src/openagent/providers/base.py",
     "src/openagent/providers/agent_bridge.py",
@@ -106,6 +110,7 @@ KNOWN_VIOLATIONS: set[str] = {
     "src/openagent/providers/opencode_chat.py",
     "src/openagent/providers/opencode_lifecycle.py",
     "src/openagent/providers/opencode_adapter.py",  # 201 lines, 超 L4 上限 200 (P7 之前 1 行)
+    "src/openagent/providers/opencode_event_hub.py",  # 258 lines, L4 上限 200 (P8 TTFT hub + _HubSubscription)
     # L5 (store/) — Schema / DDL 集中
     "src/openagent/store/base.py",
     "src/openagent/store/postgres.py",

@@ -14,12 +14,13 @@ events for the target session_id, rather than parsing HTTP response bodies.
 from __future__ import annotations
 
 import asyncio
-from typing import TYPE_CHECKING, Any, AsyncIterator
+from collections.abc import AsyncIterator
+from typing import TYPE_CHECKING, Any
 
+import httpx
 import structlog
 
 from openagent.providers.base import (
-    AgentConfig,
     ChatMessage,
     ChatResult,
     SessionInfo,
@@ -37,7 +38,7 @@ from openagent.streaming import (
 )
 
 try:
-    from opencode_ai import AsyncOpencode  # type: ignore
+    from opencode_ai import AsyncOpencode
 except ImportError:  # pragma: no cover
     from openagent._vendor.opencode import AsyncOpencode  # type: ignore
 
@@ -52,11 +53,37 @@ logger = structlog.get_logger(__name__)
 # ---------------------------------------------------------------------------
 
 
-def get_client(adapter: "OpenCodeAdapter", agent_name: str, base_url: str) -> AsyncOpencode:
+def _build_http_client() -> httpx.AsyncClient:
+    """构造带显式 timeout + 限流的 httpx.AsyncClient, 注入到 SDK 客户端.
+
+    重要 — 不调这个会断流:
+    - SDK ``AsyncOpencode(base_url=...)`` 默认 ``timeout=NOT_GIVEN``,
+      httpx 兜底 5s; LLM 思考/MCP 调用稍微慢点就会 5s read timeout 断流.
+    - 这里显式给 ``connect=10, read=300, write=10, pool=5``:
+      * connect 10s 容忍 opencode serve 启动慢
+      * read 300s 容忍长 LLM 调用 (含多步工具调用/MCP)
+      * write 10s 容忍小 body 上传慢
+      * pool 5s 容忍连接池紧张
+    - limits 限并发 100 连接 + 100 keepalive, 避免单 agent 占用太多
+    """
+    timeout = httpx.Timeout(connect=10.0, read=300.0, write=10.0, pool=5.0)
+    limits = httpx.Limits(
+        max_connections=100,
+        max_keepalive_connections=100,
+        keepalive_expiry=120.0,  # 跟 Sanic KEEP_ALIVE 错开 2 倍, 防止握手冲突
+    )
+    return httpx.AsyncClient(timeout=timeout, limits=limits)
+
+
+def get_client(adapter: OpenCodeAdapter, agent_name: str, base_url: str) -> AsyncOpencode:
     """获取或创建指定 Agent+base_url 对应的 AsyncOpencode 客户端。
 
     以 ``"{agent_name}:{base_url}"`` 为键在适配器内部做缓存，避免重复
     构造底层 HTTP 客户端。
+
+    httpx 客户端**必须**用 ``_build_http_client()`` 注入, 不能用 SDK 默认
+    (默认 5s read timeout → 5s 后流式必死). 详细原因见 ``_build_http_client``
+    注释。
 
     Args:
         adapter: 适配器实例，作为客户端缓存宿主。
@@ -68,16 +95,29 @@ def get_client(adapter: "OpenCodeAdapter", agent_name: str, base_url: str) -> As
     """
     key = f"{agent_name}:{base_url}"
     if key not in adapter._clients:
-        adapter._clients[key] = AsyncOpencode(base_url=base_url)
+        adapter._clients[key] = AsyncOpencode(
+            base_url=base_url,
+            http_client=_build_http_client(),
+        )
+        logger.info(
+            "opencode_client_created",
+            key=key,
+            timeout_connect=10.0,
+            timeout_read=300.0,
+        )
     return adapter._clients[key]
 
 
-def _resolve_tool_names(adapter: "OpenCodeAdapter", tools: Any) -> list[dict[str, Any]] | None:
+def _resolve_tool_names(adapter: OpenCodeAdapter, tools: Any) -> dict[str, bool] | None:
     """把 caller 传的 tools 列表 (str / MCPTool / 混合) 归一化为 opencode 格式.
 
     历史 caller 直接传 ``list[str]`` (scenario ``injection.final_tools``);
     也有传 ``MCPTool`` 对象 (历史 test 路径). 这里都兼容, 避免在
     opencode chat 里 ``t.name`` 触发 ``AttributeError``.
+
+    额外 always-add: 框架级工具 ``ask_user`` (AUIP 卡片). 它是 Hub 注册的
+    synthetic tool, opencode MCP 也有对应本地 command. 不加到 tool_list 里
+    LLM 看不见, 不会调, 流就提前断.
     """
     if not tools:
         return None
@@ -91,13 +131,20 @@ def _resolve_tool_names(adapter: "OpenCodeAdapter", tools: Any) -> list[dict[str
                 names.append(str(name))
     if not names:
         return None
+    # 框架级工具: ask_user (AUIP 卡片). Hub 注册的 synthetic tool,
+    # 同时 opencode MCP 也配了对应本地 command (policy.mcp_servers.ask_user).
+    # 必须让 LLM 知道有这个 tool 可调, 它才会调, 我们 stream_chat 才能在
+    # tool_use 事件里检测到, 转成 card SSE 发前端.
+    if "ask_user" not in names:
+        names.append("ask_user")
     # opencode-ai SDK 的 chat() 收 tools: Dict[str, bool] (tool_name → 是否启用),
     # 不是 list[ToolDefinition]. 见 site-packages/opencode_ai/resources/session.py:602.
     # 走 Dict 是 opencode 故意为之: tool schema 走 opencode config (provider 段),
     # chat 请求只声明"启用哪些", 跟自带 tool / MCP tool 解耦.
-    # 这里给的是 MCP 名, opencode 不认识会忽略, 但 LLM 还能用 system_prompt
-    # 教它的 bash+curl 调 MCP 端点 (这是 Phase 1 的 fallback).
-    return {name: True for name in names}
+    result = dict.fromkeys(names, True)
+    logger.info("opencode_tools_resolved", tools_sent=list(result.keys()))
+    return result
+    return dict.fromkeys(names, True)
 
 
 def _workspace_query(session_info: SessionInfo) -> dict[str, Any]:
@@ -135,6 +182,10 @@ def _build_runtime_context(
       5. LLM 在调 MCP (走 Bash + curl) 时,从 system 块取 token 填 header
       6. opencode 的 Bash tool 实际执行 curl,带 token 打到 MCP 端
 
+    v3 提示: 当 scenario 启用了原生 MCP 工具 (opencode config 里配了 mcpServers,
+    例如 feihe-travel queryFlightBasic), **不**用 Bash+curl, 直接调 native tool.
+    本 runtime-context block 仅在 v2 兼容 (scenario 没配 MCP) 时还有用.
+
     返回 ``None`` 表示"原始 base_system_prompt 也是 None",无 token 时原样返回 base。
     """
     if not mcp_token:
@@ -144,9 +195,13 @@ def _build_runtime_context(
         "MCP_TOKEN: " + mcp_token + "\n"
         "MCP_ENDPOINT: https://traveldev.feiheair.com/api/mcp\n"
         "MCP_AUTH_STYLE: header token: <value> | Authorization: Bearer <value>\n"
-        "MCP_USAGE: 本对话专属 MCP token。调用任何 MCP 工具时,把它放到对应 "
-        "header(token: ... 或 Authorization: Bearer ...)中。\n"
+        "MCP_USAGE (v2 fallback): 本对话专属 MCP token。v2 scenario 下 LLM 调 MCP "
+        "走 Bash+curl, 把 token 放到对应 header. v3 scenario 下 LLM 直接调 "
+        "native MCP tool, **不需要**本 block, Hub 端会自己处理 auth.\n"
         "MCP_SECURITY: 不要在自然语言回复、表格、日志里回显这个 token。\n"
+        "AUIP_CARD: 如果 scenario 启用了 ask_user 工具 (查 opencode config.mcp "
+        "里有 ask_user 节点), LLM 应调 ask_user(card_type=..., body=...) 发卡片, "
+        "**不要**塞 Markdown 表格到 text 事件. card 渲染由 Hub→前端 FlightResultCard 接管.\n"
         "</runtime-context>"
     )
     if base_system_prompt:
@@ -176,7 +231,7 @@ def _log_payload_kwargs(sdk_kwargs: dict[str, Any]) -> dict[str, Any]:
 
 
 async def blocking_chat(
-    adapter: "OpenCodeAdapter",
+    adapter: OpenCodeAdapter,
     session_id: str,
     messages: list[ChatMessage],
     *,
@@ -304,7 +359,7 @@ async def blocking_chat(
 
 
 async def stream_chat(
-    adapter: "OpenCodeAdapter",
+    adapter: OpenCodeAdapter,
     session_id: str,
     messages: list[ChatMessage],
     *,
@@ -403,48 +458,78 @@ async def stream_chat(
     log_opencode_request(build_opencode_payload(**_log_payload_kwargs(opencode_payload_kwargs)))
 
     try:
-        # Open the SSE event subscription BEFORE firing the chat so we
-        # do not miss the initial ``message.updated`` events.
-        event_stream = await client.event.list()
+        # 关键优化: 复用长连接 — OpenCodeEventHub 给每 (agent, base_url) 维护
+        # 1 条持久的 client.event.list() SSE, N 个 chat 调用订阅同一流, 通过
+        # per-caller queue 扇出. 避免每次 chat 都新建 SSE (50-200ms 握手 + 偶现
+        # opencode 服务端 idle timeout 提前断).
+        #
+        # P0-1 还加了显式 httpx.Timeout(connect=10/read=300/...) 防止 5s 兜底超时.
+        from openagent.providers.opencode_event_hub import OpenCodeEventHub
+
+        hub: OpenCodeEventHub = getattr(adapter, "_event_hub", None) or OpenCodeEventHub()
+        # 缓存在 adapter 上, 跨 chat 调用复用
         try:
-            # Fire the chat as a background task. The opencode serve side
-            # will start emitting events on the SSE stream we just opened.
-            chat_task = asyncio.create_task(
-                client.session.chat(**opencode_payload_kwargs)
-            )
+            adapter._event_hub = hub
+        except Exception:  # pragma: no cover — 防御性, 旧 adapter 可能 __slots__
+            pass
 
-            async for event in event_stream:
-                mapped = map_opencode_event(event, session_id, assistant_message_ids)
-                if mapped is OPENCODE_STREAM_END:
-                    break
-                if mapped is None:
-                    continue
-                # Dedup text updates: the SDK sends the full text so far
-                # on every ``message.part.updated`` for a text part.
-                if mapped.type == "text":
-                    text = mapped.data.get("content", "") or ""
-                    if text == last_text:
-                        continue
-                    last_text = text
-                    accumulated_text = text
-                yield mapped
-
-            # Surface any exception raised by the chat call so it is not
-            # silently swallowed.
-            try:
-                await chat_task
-            except Exception as task_err:
-                logger.warning(
-                    "opencode_chat_task_failed",
-                    session_id=session_id,
-                    error=str(task_err),
+        chat_task: asyncio.Task | None = None
+        try:
+            # 1. 先订阅 hub (复用或新建长连接)
+            async with hub.subscription(
+                agent_name=agent_name,
+                base_url=session_info.agent_base_url,
+                client=client,
+                session_id=session_id,
+            ) as sub_iter:
+                # 2. 启动 chat 后台任务 (不等结果, 持续发到 opencode serve)
+                chat_task = asyncio.create_task(
+                    client.session.chat(**opencode_payload_kwargs)
                 )
-                yield StreamEvent.error(message=str(task_err))
+
+                async for event in sub_iter:
+                    mapped = map_opencode_event(event, session_id, assistant_message_ids)
+                    if mapped is OPENCODE_STREAM_END:
+                        break
+                    if mapped is None:
+                        continue
+                    # Dedup text updates: the SDK sends the full text so far
+                    # on every ``message.part.updated`` for a text part.
+                    if mapped.type == "text":
+                        text = mapped.data.get("content", "") or ""
+                        if text == last_text:
+                            continue
+                        last_text = text
+                        accumulated_text = text
+                    # ask_user (AUIP 卡片): opencode 把它当 native tool 调本地脚本,
+                    # 实际 card 渲染走 SSE 转 — Hub 把 tool_use 翻译成 card 事件.
+                    if mapped.type == "tool_use" and mapped.data.get("tool_name") == "ask_user":
+                        import uuid
+                        card_input = mapped.data.get("input", {}) or {}
+                        yield StreamEvent.card(
+                            card_id=f"card-{uuid.uuid4().hex[:12]}",
+                            card_type=card_input.get("card_type", "CHAT_FALLBACK"),
+                            card=card_input,
+                        )
+                        # 仍然 yield tool_use, 让 LLM 看到 ask_user 被调了 (status=running)
+                        yield mapped
+                        continue
+                    yield mapped
         finally:
-            await event_stream.close()
+            # chat_task 在 stream 自然结束后, 我们还需要 await 它 (拿到可能的异常)
+            if chat_task is not None and not chat_task.done():
+                try:
+                    await chat_task
+                except Exception as task_err:
+                    logger.warning(
+                        "opencode_chat_task_failed",
+                        session_id=session_id,
+                        error=str(task_err),
+                    )
+                    yield StreamEvent.error(message=str(task_err), retry=2000)
     except Exception as e:
         logger.error("opencode_stream_failed", session_id=session_id, error=str(e))
-        yield StreamEvent.error(message=str(e))
+        yield StreamEvent.error(message=str(e), retry=2000)
         return
 
     # Persist the final assistant text for history retrieval.

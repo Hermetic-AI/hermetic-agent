@@ -15,9 +15,10 @@ from openagent.config.settings import Settings
 class _FakeAdapter:
     def __init__(self, session_info):
         self._session_info = session_info
+        # 持久 dict, 让 opencode_chat.get_client 能按 ``agent:base_url`` 键缓存
         self._clients: dict = {}
 
-    def get_session(self, session_id: str):
+    async def get_session(self, session_id: str):
         return self._session_info if session_id == self._session_info.session_id else None
 
 

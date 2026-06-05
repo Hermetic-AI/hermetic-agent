@@ -169,6 +169,28 @@ def create_app(settings: Settings | None = None) -> Sanic:
     app.config.FALLBACK_ERROR_FORMAT = "json"
     app.config.DEBUG = settings.debug
 
+    # P8: SSE 长连接超时 (P0 流式断流修复)
+    # ------------------------------------------------------------------
+    # Sanic 默认 10s RequestTimeout / 5s KEEP_ALIVE, 任何 < 1min 的 LLM
+    # 调用都会被打断. 这里统一抬到 10min, 让 chat/stream 和 turn/resume
+    # 端点能撑过长 LLM 思考 + 多步工具调用.
+    #
+    # 这些是**上限**而不是**真实等待时间**: 业务流自然结束
+    # (LLM done / 客户端断开) 会立即释放资源, 不会浪费.
+    # ------------------------------------------------------------------
+    app.config.REQUEST_TIMEOUT = 600       # 10 min 接受完整请求体
+    app.config.REQUEST_MAX_SIZE = 50_000_000  # 50MB, 容纳大 system_prompt
+    app.config.KEEP_ALIVE_TIMEOUT = 120    # 2 min keep-alive 探活
+    app.config.KEEP_ALIVE = True           # 启用 HTTP/1.1 keep-alive
+    app.config.WEBSOCKET_PING_TIMEOUT = 60  # WebSocket ping 间隔 (后用)
+    app.config.WEBSOCKET_PONG_TIMEOUT = 60  # WebSocket pong 超时
+    logger.info(
+        "sanic_timeouts_configured",
+        request_timeout=600,
+        keep_alive_timeout=120,
+        max_request_size=50_000_000,
+    )
+
     CORS(app, resources={r"/*": {"origins": settings.cors_origins}}, automatic_options=True)
 
     app.config.API_TITLE = "Agent Scheduler Hub"

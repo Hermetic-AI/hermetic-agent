@@ -8,32 +8,39 @@ P6/F2 改造: 真正接入 scenario + injection.
 - 普通场景: 用 injection.final_* 调 bridge.chat, 流开头 emit scenario 事件
 - AUIP 卡片: single 场景下, 把 LLM 调 ask_user 合成工具的 tool_use
   拦截为 card SSE 事件 (HITL 由 SuspendableScheduler 负责)
+
+P8 长连接加固 (P0 流式断流修复):
+- chat_stream 外层套 ``_stream_with_keepalive``: 业务事件空闲 15s 时
+  yield ``: keepalive\\n\\n`` SSE 注释行, 防止 Vite/Nginx 代理关连接
+- timeout/httpx 超时配置在 ``opencode_chat._build_http_client``:
+  connect=10/read=300/write=10/pool=5, 替代 SDK 默认 5s 兜底
+- 流式 SSE 端到端超时不依赖 opencode serve 的 idle, 由 hub 复用长连接
 """
 from __future__ import annotations
 
-import time
+import asyncio
+import contextlib
 import traceback as _tb
-from typing import Any, Optional
+from typing import Any
 from uuid import uuid4
 
 import structlog
 from sanic import Blueprint
+from sanic.request import Request
 from sanic.response import JSONResponse
 from sanic.response.types import ResponseStream
-from sanic.request import Request
-
 from sanic_ext import openapi as sanic_openapi
 
+from openagent.api.routes import _extract_mcp_token
 from openagent.api.schemas import (
     ChatRequest,
     ChatResponse,
     ErrorResponse,
     get_bridge,
 )
+from openagent.auip.cards import CARD_TYPES_SET
 from openagent.providers.base import ChatMessage
 from openagent.streaming import StreamEvent
-from openagent.api.routes import _extract_mcp_token
-from openagent.auip.cards import CARD_TYPES_SET
 
 logger = structlog.get_logger(__name__)
 
@@ -158,7 +165,7 @@ def _build_chat_response(
     result,
     agent_name: str,
     fallback_session_id: str,
-    scenario_dict: Optional[dict] = None,
+    scenario_dict: dict | None = None,
     injection: Any = None,
 ) -> ChatResponse:
     resp = ChatResponse(
@@ -259,7 +266,7 @@ def _turn_event_to_sse(turn_event) -> StreamEvent:
 def _ask_user_to_card(
     event: StreamEvent,
     *,
-    allowed_card_types: Optional[set],
+    allowed_card_types: set | None,
 ) -> StreamEvent:
     """把 tool_use(ask_user) 转成 card 事件. 其它事件原样返回.
 
@@ -324,14 +331,14 @@ def _ask_user_to_card(
     )
 
 
-async def _stream_with_ask_user_intercept(iterator, *, allowed_card_types: Optional[set]):
+async def _stream_with_ask_user_intercept(iterator, *, allowed_card_types: set | None):
     """Wrap bridge event iterator: convert ask_user tool_use to card, suppress tool_result.
 
     Yields:
         Transformed events. Suppresses tool_result(name=ask_user) - the LLM does
         not need to see its own tool result because the card itself is the ack.
     """
-    last_ask_user_id: Optional[str] = None
+    last_ask_user_id: str | None = None
     async for event in iterator:
         if event.type == "tool_use":
             data = event.data or {}
@@ -348,6 +355,43 @@ async def _stream_with_ask_user_intercept(iterator, *, allowed_card_types: Optio
                 last_ask_user_id = None
                 continue
         yield event
+
+
+# 心跳间隔 (秒): 15s 是 Vite / Nginx / Cloud LB / 浏览器侧 SSE 实现都接受的
+# "足够安静 + 不被杀" 的平衡点. 短了浪费带宽, 长了对端可能误判 idle.
+DEFAULT_SSE_KEEPALIVE_INTERVAL = 15.0
+
+
+async def _stream_with_keepalive(
+    iterator,
+    *,
+    keepalive_interval: float = DEFAULT_SSE_KEEPALIVE_INTERVAL,
+):
+    """SSE 心跳包装 — 在业务事件空闲时插入 SSE 注释行, 防止中间代理断连.
+
+    SSE 协议规定 ``: xxx\\n`` 注释行会被浏览器 EventSource / 标准 SSE 解析器
+    忽略内容, 但能重置对端 keep-alive 计时器. 没有这层, 长 LLM 思考会让
+    Vite proxy / Nginx / 浏览器在 30-60s 后关闭连接.
+
+    行为:
+    - 业务事件 (text/reasoning/tool/card/...) → 原样 yield
+    - ``keepalive_interval`` 秒内没业务事件 → yield 一次 ``: keepalive\\n\\n``
+    - ``done`` / ``error`` 事件 → 原样 yield 然后退出
+    """
+    loop = asyncio.get_event_loop()
+    last_yield = loop.time()
+    keepalive_text = ": keepalive\n\n"
+    async for event in iterator:
+        yield event
+        if event.type in ("done", "error"):
+            return
+        now = loop.time()
+        if now - last_yield >= keepalive_interval:
+            # 直接 yield 字符串, Sanic ResponseStream.write 接受 str/bytes
+            yield keepalive_text
+            last_yield = now
+        else:
+            last_yield = now
 
 
 # ---------------------------------------------------------------------------
@@ -472,7 +516,8 @@ async def chat_stream(request: Request) -> ResponseStream:
         err_msg = f"[{code}] {scen_err}"
 
         async def _scenario_err(resp: ResponseStream) -> None:
-            await resp.write(StreamEvent.error(message=err_msg, code=code).to_sse())
+            await resp.write(StreamEvent.error(message=err_msg, code=code, retry=2000).to_sse())
+            await resp.write(StreamEvent.done().to_sse())
             await resp.eof()
 
         return ResponseStream(
@@ -593,6 +638,10 @@ async def chat_stream(request: Request) -> ResponseStream:
                 if scenario and scenario.a2ui.card_schemas
                 else None
             )
+            # P0-1: 把 prompt_builder + scenario 透传给 bridge, 让
+            # scenario.progressive_skill (on_demand / explicit) 真正生效.
+            # None 时 bridge 降级到旧 build_system_prompt_with_skills 路径.
+            prompt_builder = getattr(request.app.ctx, "prompt_builder", None)
             iterator = await bridge.chat(
                 session_id=session_id,
                 messages=[ChatMessage(role="user", content=json_body.message)],
@@ -603,11 +652,22 @@ async def chat_stream(request: Request) -> ResponseStream:
                 timeout=json_body.timeout,
                 mcp_token=_extract_mcp_token(request),
                 stream=True,
+                prompt_builder=prompt_builder,
+                scenario=scenario,
+                current_state=None,  # single-mode streaming: 走 initial state
             )
-            async for event in _stream_with_ask_user_intercept(
+            # 拦截链: ask_user 转 card → 加 SSE keepalive 心跳
+            # keepalive 在业务事件空闲时 yield SSE 注释行, 防止 Vite/Nginx
+            # 代理在长 LLM 思考时关连接
+            intercepted = _stream_with_ask_user_intercept(
                 iterator, allowed_card_types=card_schemas,
-            ):
-                await resp.write(event.to_sse())
+            )
+            async for chunk in _stream_with_keepalive(intercepted):
+                if isinstance(chunk, str):
+                    # 心跳注释行, 直接写裸字符串 (SSE 协议)
+                    await resp.write(chunk)
+                else:
+                    await resp.write(chunk.to_sse())
             await resp.write(StreamEvent.done().to_sse())
             logger.info(
                 "chat_stream_completed",
@@ -617,17 +677,30 @@ async def chat_stream(request: Request) -> ResponseStream:
             )
         except Exception as e:
             logger.error("chat_stream_failed", error=str(e), exc_info=_tb.format_exc())
+            # P8: 错误透传 — 把异常以 SSE error 事件发前端, 让前端能展示
+            # 可读错误并触发 EventSource 重连 (带 retry 提示).
+            # 之前的 except: pass 会让 connection 静默断, 前端只能看到空 stream.
             try:
                 await resp.write(
-                    StreamEvent.error(message=f"{type(e).__name__}: {e}").to_sse()
+                    StreamEvent.error(
+                        message=f"{type(e).__name__}: {e}",
+                        code="CHAT_STREAM_FAILED",
+                        retry=2000,  # 2s 后重试
+                    ).to_sse()
                 )
-            except Exception:
-                pass
+            except Exception as write_err:
+                logger.warning(
+                    "chat_stream_error_write_failed",
+                    original_error=str(e),
+                    write_error=str(write_err),
+                )
         finally:
-            try:
+            # P8: 写一个 done 哨兵让前端知道流真的结束 (之前是 silent close).
+            # 但只在非错误路径下写 — 错误路径已经发了 error 事件.
+            with contextlib.suppress(Exception):
+                await resp.write(StreamEvent.done().to_sse())
+            with contextlib.suppress(Exception):
                 await resp.eof()
-            except Exception:
-                pass
 
     return ResponseStream(
         streaming_fn,
