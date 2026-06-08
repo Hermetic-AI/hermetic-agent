@@ -8,7 +8,7 @@
 # 架构:
 #   openagent-hub  (L1~L3)  :8000
 #       ↓ 调 SDK
-#   opencode-1      (L4 sandbox 容器)  :7777 (health) / :14096 (opencode serve)
+#   opencode-1      (L4 sandbox 容器)  :7777 (health) / :7778 (admin) / :14096 (opencode serve)
 #
 # 关键点 (跟 agent-sandbox-overview.md §5 一致):
 #   - 凭证走 env 挂载, 不引入 egress 代理
@@ -16,6 +16,10 @@
 #   - skill 走 ro bind mount 到 workspace/.skills/<name>/
 #   - 容器根 FS --read-only, tmpfs 给 /tmp
 #   - 1 hub + 1 opencode 节点 (要加就复制 service 块)
+#   - admin_server (容器内 :7778) 改 model/url/key 不用 rebuild 镜像:
+#     改完调 POST /admin/policy[/env][/reload] 即可, 详见 docker/admin_server.py
+#     (走 Hub 代理: POST /agent/admin/opencode/opencode-1/policy[/env][/reload])
+#     想直接调: 7778 端口暴露到 host, 也能用 Swagger UI (http://localhost:7778/docs)
 
 services:
   # ============================================================
@@ -108,14 +112,33 @@ services:
       #   (host: file 684B, daemon: directory 1024B), bind mount 永远把目标当目录.
       #   改 policy 后: docker build -f docker/Dockerfile.opencode-sandbox + force-recreate.
       # workspace/skills 仍是 bind mount (目录, 9P 没事, 仅 file 受影响).
+      # 命名 volume 持久化 admin API 写的 runtime overlay (env.runtime / policy.runtime.json),
+      # 这样 `docker compose up -d --force-recreate` 不会丢用户的 model/KEY 改动.
+      # (单容器名 volume, 跟 opencode-1 服务生命周期绑定, down -v 才清)
+      - opencode-1-runtime:/tmp/opencode-sandbox
     networks: [sandbox-net]
-    # 调试期: 暴露 opencode serve 到 host, 方便用浏览器/OpenAPI UI 排查
-    # 路径: http://localhost:14096/doc   (OpenAPI 3.1 Swagger UI)
-    #       http://localhost:14096/global/health
-    #       POST http://localhost:14096/session  (建会话)
+    # 调试期: 暴露 opencode serve + admin API 到 host, 方便用浏览器/OpenAPI UI 排查
+    # 路径:
+    #   http://localhost:14096/doc                   (opencode 原生 OpenAPI 3.1 Swagger UI)
+    #   http://localhost:14096/global/health
+    #   POST http://localhost:14096/session          (建会话)
+    #   http://localhost:7778/docs                   (admin API Swagger UI)
+    #   http://localhost:7778/admin/opencode/status  (看 opencode pid + active_model)
+    #   POST http://localhost:7778/admin/policy      -d '{"agent":{"model":"..."}}'
+    #   POST http://localhost:7778/admin/env         -d '{"OPENAI_API_KEY":"sk-..."}'
+    #   POST http://localhost:7778/admin/reload
+    # 或者走 Hub 代理: POST /agent/admin/opencode/opencode-1/policy[/env][/reload]
     # 生产环境删掉这段, sandbox 不应直接对外
+    #
+    # /opt/sandbox 是 read-only (COPY 进来的 baked 资源), runtime 文件写 /tmp/opencode-sandbox/ (named volume)
     ports:
       - "14096:14096"
+      - "7778:7778"
+
+volumes:
+  opencode-1-runtime:
+    # 命名 volume, 不指定 driver (默认 local). 容器 recreate 时保留内容.
+    # 清理: docker compose down -v
 
 networks:
   sandbox-net:

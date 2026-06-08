@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Compact Domestic Flight Result",
+  "type": "object",
+  "required": ["summary", "flights"],
+  "properties": {
+    "summary": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "serialNumber": {"type": ["string", "number", "null"]},
+        "resultSetId": {"type": ["string", "null"]},
+        "searchType": {"type": ["string", "null"]},
+        "roundTrip": {"type": ["boolean", "null"]},
+        "flightCount": {"type": ["integer", "null"]},
+        "filteredCount": {"type": ["integer", "null"]},
+        "lowestPrice": {"type": ["integer", "number", "null"]},
+        "notIncluded": {}
+      }
+    },
+    "flights": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "properties": {
+          "index": {"type": "integer"},
+          "flightNo": {"type": ["string", "null"]},
+          "returnFlightNo": {"type": ["string", "null"]},
+          "airline": {"type": ["string", "null"]},
+          "origin": {"type": ["string", "null"]},
+          "destination": {"type": ["string", "null"]},
+          "departTime": {"type": ["string", "null"]},
+          "arriveTime": {"type": ["string", "null"]},
+          "returnDepartTime": {"type": ["string", "null"]},
+          "returnArriveTime": {"type": ["string", "null"]},
+          "durationMin": {"type": ["integer", "number", "null"]},
+          "stopCount": {"type": ["integer", "number", "null"]},
+          "price": {"type": ["integer", "number", "null"]},
+          "cabin": {"type": ["string", "null"]},
+          "meal": {"type": ["string", "boolean", "null"]},
+          "baggage": {"type": ["string", "boolean", "null"]},
+          "policy": {"type": ["string", "boolean", "null"]},
+          "cabId": {"type": ["string", "null"]}
+        }
+      }
+    }
+  }
+}

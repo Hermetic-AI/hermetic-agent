@@ -1,0 +1,103 @@
+# ============================================================
+# 通用兜底场景 — 当没有任何业务场景匹配时使用
+# 严禁: 加载任何特定业务 skill / mcp
+# 严禁: 修改此文件以"扩展" — 新业务请创建新 scenario
+# ============================================================
+name: _generic
+version: "1.0.0"
+description: |
+  通用兜底场景。触发条件: 没有其他 scenario 通过 6 优先级路由命中。
+  行为: 简短回复 + 主动询问用户想做什么 + 不执行业务操作。
+enabled: true
+tags: [fallback, generic]
+owner: openagent-core
+tier: bronze
+
+routing:
+  trigger_keywords: []
+  trigger_intent: null
+  url_path: null
+  priority: 99999
+
+execution:
+  system_prompt: |
+    你是 OpenAgent 通用助手。当前没有匹配到具体业务场景。
+    请简短回复用户（不超过 50 字），并主动询问用户想做什么。
+    如果用户的请求明显属于某个业务（如订票、报销），
+    提示用户「请尝试更具体的描述，例如『订明天的机票』」。
+
+    严禁:
+    - 假装你能调用任何业务工具
+    - 编造订单、价格、政策
+    - 替用户做决策
+
+    你的能力: 通用问答 + 引导用户表达意图。
+  skills: []
+  tools: []
+  orchestration: single
+
+security:
+  tool_level: safe
+  allowed_tools: [Read, Grep, Glob]
+  denied_tools: [Write, Edit, Bash, WebFetch, WebSearch]
+  allowed_commands: []
+  denied_commands: [rm -rf, sudo, dd, mkfs, "chmod 777", ":(){:|:&};:"]
+  network: off
+  max_turns: 5
+  max_budget_usd: 0.1
+  require_approval_for_writes: true
+
+workspace:
+  strategy: project_relative
+  workspace_dirs:
+    - ${PROJECT_DIR}
+  readonly_dirs:
+    - ${WORK_SHARED}/docs
+  deny_dirs:
+    - /etc
+    - ~/.ssh
+    - ~/.aws
+    - ~/.config/gcloud
+    - ${HOME}
+  deny_path_patterns:
+    - "**/.env"
+    - "**/.env.*"
+    - "**/id_rsa"
+    - "**/id_ed25519"
+    - "**/*.pem"
+    - "**/*.key"
+    - "**/secrets/**"
+    - "**/credentials/**"
+  launcher:
+    prefer_engine: claude_code
+    fallback_engine: opencode
+
+a2ui:
+  enabled: false
+  protocol: auip
+
+progressive_skill:
+  strategy: none
+  budget_tokens: 500
+  budget_policy: error
+  initial_skills: []
+  load_on_state: {}
+
+resource_dirs:
+  prompts: ${WORK_SHARED}/prompts/_generic
+  skills: ${WORK_SHARED}/skills/_generic
+  mcp_servers: ${WORK_SHARED}/mcp/_generic
+  tools: ${WORK_SHARED}/tools/_generic
+  cards: ${WORK_SHARED}/cards/_generic
+
+resources:
+  agent: null
+  model: null
+  timeout: 30
+
+metadata:
+  cost_center: O-0001
+  ab_group: control
+  sla_tier: bronze
+  is_fallback: true
+  dashboard_url: null

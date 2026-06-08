@@ -22,6 +22,13 @@ export { scenarioService } from './scenarios';
 export { skillsService } from './skills';
 export { toolsService } from './tools';
 export { poolService } from './pool';
+export { adminService } from './admin';
+export type {
+  OpencodePolicy,
+  OpencodeEnv,
+  OpencodeStatus,
+  ReloadResult,
+} from './admin';
 export { systemService } from './system';
 // P7: opencode 原生 question / todo
 export { questionService } from './question';

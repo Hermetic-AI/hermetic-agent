@@ -1,0 +1,95 @@
+# ============================================================
+# 差旅报销单 AI 审核 — 并行编排
+# skills 全部由渐进加载 (strategy: all), 安全标准档
+# ============================================================
+name: expense_audit
+version: "1.0.0"
+description: |
+  差旅报销单 AI 审核场景。
+  编排: parallel (4 worker 并行审单, 聚合结果)
+  安全: standard, 允许数据库查询
+  业务: 校验发票真伪、行程、政策合规
+enabled: true
+tags: [finance, audit, parallel]
+owner: team-finance-ai
+tier: gold
+
+routing:
+  trigger_keywords: [报销, 审核, 差旅费, expense, audit, 发票]
+  trigger_intent: null
+  url_path: null
+  priority: 90
+
+execution:
+  system_prompt: |
+    你是差旅报销审核员。请按 4 个维度并行审核:
+    1) 发票真伪 (OCR + 税局接口)
+    2) 行程合理性 (出发地/目的地/时间是否一致)
+    3) 政策合规 (舱位/单价/航司)
+    4) 风险评分 (高频/异常)
+
+    严禁: 直接给"通过"结论; 必须列出每项证据 + 置信度。
+  skills: []
+  tools: [fetch_receipt_ocr, query_trip_record, check_policy_db, score_risk]
+  orchestration: parallel
+  parallel:
+    n: 4
+    aggregation: merge
+
+security:
+  tool_level: standard
+  allowed_tools: [Read, Grep, Glob, Bash]
+  denied_tools: [WebSearch, WebFetch]
+  allowed_commands: [ls, cat, grep, python]
+  denied_commands: [rm -rf, sudo, dd, mkfs, "chmod 777", ":(){:|:&};:"]
+  network: local
+  max_turns: 20
+  max_budget_usd: 1.0
+  require_approval_for_writes: true
+
+workspace:
+  strategy: project_relative
+  workspace_dirs:
+    - ${PROJECT_DIR}
+  readonly_dirs:
+    - ${WORK_SHARED}/docs/finance
+    - ${WORK_SHARED}/docs/policy
+  deny_dirs:
+    - /etc
+    - ~/.ssh
+    - ~/.aws
+  deny_path_patterns:
+    - "**/.env"
+    - "**/.env.*"
+    - "**/secrets/**"
+  launcher:
+    prefer_engine: opencode
+    fallback_engine: claude_code
+
+a2ui:
+  enabled: false
+  protocol: auip
+
+progressive_skill:
+  strategy: all
+  budget_tokens: 6000
+  budget_policy: error
+  initial_skills: []
+  load_on_state: {}
+
+resource_dirs:
+  prompts: ${SCENARIO_DIR}/prompts
+  skills: ${SCENARIO_DIR}/skills
+  tools: ${SCENARIO_DIR}/tools
+  mcp_servers: ${SCENARIO_DIR}/mcp
+
+resources:
+  agent: opencode-core
+  model: claude-sonnet-4-5
+  timeout: 180
+
+metadata:
+  cost_center: F-2001
+  ab_group: experiment-B
+  sla_tier: gold
+  dashboard_url: https://grafana.example.com/d/expense_audit

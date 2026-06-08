@@ -4,6 +4,7 @@
 # 容器内:
 #   - entrypoint.sh: 读 /opt/sandbox/policy.json → 渲染 opencode config → 启 opencode serve
 #   - health_server.py: 周期 /healthz (供 Hub 探活)
+#   - admin_server.py:  改 policy / env / reload opencode (供 Hub 调, 也可 host 直连)
 #
 # 构建: docker build -f docker/Dockerfile.opencode-sandbox -t opencode-sandbox:dev .
 #
@@ -40,6 +41,8 @@ RUN mkdir -p /opt/sandbox
 COPY docker/entrypoint.sh    /opt/sandbox/entrypoint.sh
 COPY docker/health_server.py /opt/sandbox/health_server.py
 COPY docker/render_config.py /opt/sandbox/render_config.py
+COPY docker/admin_server.py  /opt/sandbox/admin_server.py
+COPY docker/openapi.json     /opt/sandbox/openapi.json
 # policy.json bake 进镜像 (跟 docker-compose.yml 注释一致).
 # 不再 bind mount: 原因 — Docker Desktop + WSL2 9P 文件系统会看到
 # host 跟 daemon 视图不一致, bind mount 永远把目标当目录.
@@ -49,7 +52,7 @@ COPY work/sandbox/policy.opencode-1.json /opt/sandbox/policy.json
 # 镜像里 shebang 变 "#!\r/bin/bash\r", Linux 内核 execve() 找不到
 # 解释器, 整个容器启动 fail. 一行 sed 兜住.
 RUN find /opt/sandbox -type f -exec sed -i 's/\r$//' {} +
-RUN chmod +x /opt/sandbox/entrypoint.sh /opt/sandbox/health_server.py /opt/sandbox/render_config.py
+RUN chmod +x /opt/sandbox/entrypoint.sh /opt/sandbox/health_server.py /opt/sandbox/render_config.py /opt/sandbox/admin_server.py
 
 # 容器根 FS 是 --read-only, 容器层有 /opt/sandbox (entrypoint 要写 health log),
 # 跟 /tmp (tmpfs) 一样运行时写. 容器层目录在 --read-only 下需要 --read-only=false
@@ -61,9 +64,10 @@ RUN chmod +x /opt/sandbox/entrypoint.sh /opt/sandbox/health_server.py /opt/sandb
 # opencode serve 端口 (跟 entrypoint.sh / docker-compose / runtime.py 保持一致)
 #  - 14096 = opencode serve (供 Hub 调 SDK, 用项目专属号避免跟 host 上 8080 冲突)
 #  - 7777  = health_server (供 Hub 探活)
+#  - 7778  = admin_server (改 policy / env / reload opencode)
 # 想覆盖: docker run -e OPENCODE_PORT=<port> 或 compose environment
 ENV OPENCODE_PORT=14096
-EXPOSE 7777 14096
+EXPOSE 7777 7778 14096
 
 # 健康检查 (走 health_server.py 起的 7777, 不是 opencode 自己的)
 HEALTHCHECK --interval=5s --timeout=2s --start-period=10s --retries=3 \

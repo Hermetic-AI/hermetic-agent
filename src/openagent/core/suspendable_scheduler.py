@@ -291,12 +291,10 @@ class SuspendableScheduler:
                 "message": "为了查询航班, 我需要知道城市和日期",
                 "prompt": prompt,
             },
+            "fields": [
+                {"id": "departureCity", "label": "Departure city", "type": "text", "required": True},
+                {"id": "arrivalCity", "label": "Arrival city", "type": "text", "required": True},
+                {"id": "departureDate", "label": "Departure date", "type": "date", "required": True},
+            ],
         }
-
-
-__all__ = [
-    "ASK_USER_TOOL",
-    "SuspendPoint",
-    "SuspendableScheduler",
-    "UserInput",
-]
+__all__ = ["ASK_USER_TOOL", "SuspendPoint", "SuspendableScheduler", "UserInput"]

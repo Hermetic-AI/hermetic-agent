@@ -1,0 +1,209 @@
+# ============================================================
+# FH domestic flight booking scenario
+# Source skill: ${WORK_SHARED}/skills/fh-domestic-flight-booking
+# ============================================================
+name: fh_domestic_flight_booking
+version: "1.0.0"
+description: |
+  FH domestic flight search and booking scenario backed by the
+  fh-domestic-flight-booking skill and fh-travel MCP tools. Covers date and
+  city normalization, flight search, local filtering, flight/cabin selection,
+  passengers, trip applications, cost centers, policy decisions, validation,
+  order preview, and recovery.
+enabled: true
+tags: [travel, domestic-flight, booking, hitl, fh-travel]
+owner: team-travel-ai
+contact: travel-ai@feihe.com
+tier: gold
+
+routing:
+  trigger_keywords:
+    - fh domestic flight
+    - domestic flight booking
+    - flight booking
+    - book flight
+    - query flight
+    - fh-travel
+    - fh-domestic-flight-booking
+    - 订机票
+    - 预订机票
+    - 国内机票
+    - 差旅机票
+  priority: 90
+
+execution:
+  system_prompt: |
+    You are the FH domestic flight booking assistant.
+
+    Follow the fh-domestic-flight-booking skill as the operating source of
+    truth. Keep one sessionId for the whole booking thread, normalize relative
+    dates to yyyy-MM-dd before calling MCP tools, show compact options before
+    details, and ask the user at every irreversible or policy-sensitive step.
+
+    Required stage order:
+    INIT -> FLIGHT_LISTED -> FLIGHT_SELECTED -> CABIN_SELECTED
+    -> PASSENGER_FILLED -> INFO_VALIDATED -> ORDER_PREVIEWED -> FINISHED.
+
+    Never invent flight numbers, prices, cabins, policy results, passenger
+    data, trip applications, cost centers, or order status. Treat MCP output as
+    authoritative. If context is corrupted or the user restarts, use
+    resetBookingSession.
+
+    AUIP card contract:
+    - Ask the user by calling ask_user. Do not render interactive choices as
+      Markdown tables when an AUIP card fits.
+    - Missing route/date/cabin filters: OD_INPUT with fields[].
+    - Search results: FLIGHT_RESULT with body.summary and body.plans.
+    - Raw flight choice outside grouped results: FLIGHT_LIST with flights[].
+    - Cabin choice: CABIN_LIST with cabins[].
+    - Passenger fields: PASSENGER_FORM with fields[].
+    - Trip application, cost center, or contact binding: OAT_BINDING with
+      fields[] or options[].
+    - Price change: PRICE_VERIFY with current_price, original_price, and
+      price_diff.
+    - Policy overrun: POLICY_DECISION with decision_buttons[].
+    - Final preview: ORDER_CONFIRM with order_summary and total_price.
+    - Finished order: ORDER_SUCCESS with order_no and order_summary.
+    - Terminal failure: CANNOT_ORDER with reason and fallback.
+  skills:
+    - fh-domestic-flight-booking
+  tools:
+    - ask_user
+    - checkProductAccess
+    - getDateInfo
+    - listUpcomingHolidays
+    - getHolidayDate
+    - queryFlightBasic
+    - filterFlightList
+    - chooseFlight
+    - getFlightPolicyInfo
+    - chooseCabin
+    - chooseAlternativeCabin
+    - listTripApplications
+    - getTripApplicationDetail
+    - listCostCenters
+    - bindCostCenter
+    - getDefaultContact
+    - fillPassenger
+    - validateBookingInfo
+    - recordPolicyUserDecision
+    - buildOrderPreview
+    - getOrderDetail
+    - resetBookingSession
+  orchestration: hitl
+  hitl:
+    card_schemas:
+      - OD_INPUT
+      - FLIGHT_RESULT
+      - FLIGHT_LIST
+      - CABIN_LIST
+      - PASSENGER_FORM
+      - OAT_BINDING
+      - PRICE_VERIFY
+      - POLICY_DECISION
+      - ORDER_CONFIRM
+      - ORDER_SUCCESS
+      - CANNOT_ORDER
+      - CHAT_FALLBACK
+    suspend_timeout: 600
+    state_machine: ${WORK_SHARED}/skills/fh-domestic-flight-booking/schemas/state-machine.json
+
+security:
+  tool_level: standard
+  allowed_tools: [Read, Grep, Glob, Bash]
+  denied_tools: [Write, Edit, WebFetch, WebSearch]
+  allowed_commands: [python]
+  denied_commands: [rm -rf, sudo, dd, mkfs, "chmod 777", ":(){:|:&};:"]
+  network: local
+  max_turns: 40
+  max_budget_usd: 2.0
+  require_approval_for_writes: true
+
+workspace:
+  strategy: project_relative
+  workspace_dirs:
+    - ${PROJECT_DIR}
+  readonly_dirs:
+    - ${WORK_SHARED}/skills/fh-domestic-flight-booking
+    - ${WORK_SHARED}/docs
+  deny_dirs:
+    - /etc
+    - ~/.ssh
+    - ~/.aws
+    - ~/.config/gcloud
+    - ${HOME}
+  deny_path_patterns:
+    - "**/.env"
+    - "**/.env.*"
+    - "**/id_rsa"
+    - "**/id_ed25519"
+    - "**/*.pem"
+    - "**/*.key"
+    - "**/secrets/**"
+  launcher:
+    prefer_engine: opencode
+    fallback_engine: claude_code
+    engine_config:
+      opencode:
+        config_template: standard
+
+a2ui:
+  enabled: true
+  protocol: auip
+  state_machine: ${WORK_SHARED}/skills/fh-domestic-flight-booking/schemas/state-machine.json
+  default_card_timeout: 600
+  ask_user:
+    tool_name: ask_user
+    schema: ${SCENARIO_DIR}/ask_user.schema.json
+  renderer_hint: react_aui_v1
+  progressive_loading: true
+  card_schemas:
+    - OD_INPUT
+    - FLIGHT_RESULT
+    - FLIGHT_LIST
+    - CABIN_LIST
+    - PASSENGER_FORM
+    - OAT_BINDING
+    - PRICE_VERIFY
+    - POLICY_DECISION
+    - ORDER_CONFIRM
+    - ORDER_SUCCESS
+    - CANNOT_ORDER
+    - CHAT_FALLBACK
+
+progressive_skill:
+  strategy: all
+  budget_tokens: 8000
+  budget_policy: warn
+  initial_skills: []
+  load_on_state: {}
+
+resource_dirs:
+  skills: ${WORK_SHARED}/skills
+  shared_skills: ${WORK_SHARED}/skills
+  schemas: ${WORK_SHARED}/skills/fh-domestic-flight-booking/schemas
+  workflows: ${WORK_SHARED}/skills/fh-domestic-flight-booking/workflows
+  references: ${WORK_SHARED}/skills/fh-domestic-flight-booking/references
+  scripts: ${WORK_SHARED}/skills/fh-domestic-flight-booking/scripts
+  ask_user_schema: ${SCENARIO_DIR}/ask_user.schema.json
+  state_machine: ${WORK_SHARED}/skills/fh-domestic-flight-booking/schemas/state-machine.json
+  tool_contracts: ${WORK_SHARED}/skills/fh-domestic-flight-booking/schemas/tool-contracts.json
+
+resources:
+  agent: opencode-default
+  model: MiniMax-M3
+  timeout: 300
+
+metadata:
+  source_skill: fh-domestic-flight-booking
+  skill_root: ${WORK_SHARED}/skills/fh-domestic-flight-booking
+  state_machine_source: AirDomesticBookingStage
+  tool_contracts: ${WORK_SHARED}/skills/fh-domestic-flight-booking/schemas/tool-contracts.json
+  workflows:
+    - progressive-search
+    - booking-mainline
+    - round-trip
+    - policy-oat-recovery
+  cost_center: T-1001
+  ab_group: fh_domestic_booking_skill
+  sla_tier: gold

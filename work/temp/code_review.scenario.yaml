@@ -1,0 +1,96 @@
+# ============================================================
+# 代码评审 — 委托 (delegate) 编排
+# 安全标准, 渐进加载 all, 无 A2UI
+# ============================================================
+name: code_review
+version: "1.0.0"
+description: |
+  AI 辅助 code review 场景。
+  编排: delegate (把不同维度审阅派给子 agent)
+  安全: standard, 网络 local, 允许 Bash
+  技能: 全量加载 (评审规则短, 不分状态)
+enabled: true
+tags: [devtools, code-review, delegate]
+owner: team-devtools-ai
+tier: silver
+
+routing:
+  trigger_keywords: [review, 代码评审, code review, pr review, review pr]
+  trigger_intent: null
+  url_path: null
+  priority: 70
+
+execution:
+  system_prompt: |
+    你是 AI 代码评审员。按 4 个维度派给子 agent:
+    1) 风格 (lint / format)
+    2) 正确性 (逻辑 / 边界 / 异常)
+    3) 安全 (注入 / 鉴权 / 密钥)
+    4) 性能 (算法复杂度 / N+1 / 缓存)
+
+    评审结束 → 给出结构化结论 + 关键行号 + 修复建议。
+  skills: []
+  tools: [git_diff, read_file, run_linter, run_tests]
+  orchestration: delegate
+  chain:
+    steps: [style, correctness, security, performance]
+
+security:
+  tool_level: standard
+  allowed_tools: [Read, Grep, Glob, Bash, Edit]
+  denied_tools: [WebFetch]
+  allowed_commands: [ls, cat, grep, git, python, pytest, ruff, mypy, npm, pnpm]
+  denied_commands: [rm -rf, sudo, dd, mkfs, "chmod 777", ":(){:|:&};:", curl, wget, ssh]
+  network: local
+  max_turns: 25
+  max_budget_usd: 1.5
+  require_approval_for_writes: true
+
+workspace:
+  strategy: project_relative
+  workspace_dirs:
+    - ${PROJECT_DIR}
+  readonly_dirs:
+    - ${WORK_SHARED}/docs/devtools
+  deny_dirs:
+    - /etc
+    - ~/.ssh
+    - ~/.aws
+  deny_path_patterns:
+    - "**/.env"
+    - "**/.env.*"
+    - "**/id_rsa"
+    - "**/id_ed25519"
+    - "**/*.pem"
+    - "**/*.key"
+  launcher:
+    prefer_engine: claude_code
+    fallback_engine: opencode
+
+a2ui:
+  enabled: false
+  protocol: auip
+
+progressive_skill:
+  strategy: all
+  budget_tokens: 6000
+  budget_policy: warn
+  initial_skills: []
+  load_on_state: {}
+
+resource_dirs:
+  prompts: ${SCENARIO_DIR}/prompts
+  skills: ${SCENARIO_DIR}/skills
+  tools: ${SCENARIO_DIR}/tools
+  shared_skills: ${WORK_SHARED}/skills
+
+resources:
+  agent: claude-core
+  model: claude-sonnet-4-5
+  timeout: 300
+
+metadata:
+  cost_center: D-4001
+  ab_group: control
+  sla_tier: silver
+  dashboard_url: https://grafana.example.com/d/code_review

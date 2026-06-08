@@ -3,14 +3,16 @@
 #
 # 流程:
 #   1. 启动 health_server.py (后台, 端口 7777) — 供 Hub 探活
-#   2. 读 /opt/sandbox/policy.json → 渲染 /root/.config/opencode/config.json
-#   3. exec opencode serve (前台, 端口 14096) — 供 Hub 调 SDK
+#   2. 启动 admin_server.py  (后台, 端口 7778) — 供 Hub 改 policy / reload opencode
+#   3. 读 /opt/sandbox/policy.json (+ runtime overlay) → 渲染 config.json
+#   4. supervisor 循环启 opencode serve (前台子进程) — admin 发 SIGTERM 触发重启
 #
 # 设计原则:
-#   - health_server 先启, 跟 opencode 进程独立 (opencode 挂了, health 还能报状态)
-#   - policy.json 走 ro bind mount, 不可写 (内核 EROFS)
+#   - health + admin 先启, 跟 opencode 进程独立 (opencode 挂了, sidecar 还能报状态)
+#   - policy.json 走 ro bind mount / image bake, 不可写 (内核 EROFS)
 #   - config.json 写在容器层, stop 保留, rm 才清
 #   - 所有 LLM key 从 env 读 (docker run -e 注入), 不进 policy.json
+#   - admin_server 通过 SIGTERM opencode 触发 reload; supervisor 自动拉起
 #
 # 退出码:
 #   0  = 正常 SIGTERM
@@ -25,16 +27,34 @@ OPENCODE_PORT="${OPENCODE_PORT:-14096}"
 # 想只绑 loopback (调试用): docker run -e OPENCODE_HOST=127.0.0.1
 OPENCODE_HOST="${OPENCODE_HOST:-0.0.0.0}"
 HEALTH_PORT="${HEALTH_PORT:-7777}"
+ADMIN_PORT="${ADMIN_PORT:-7778}"
 POLICY_PATH="${POLICY_PATH:-/opt/sandbox/policy.json}"
+POLICY_RUNTIME_PATH="${POLICY_RUNTIME_PATH:-/tmp/opencode-sandbox/policy.runtime.json}"
+ENV_RUNTIME_PATH="${ENV_RUNTIME_PATH:-/tmp/opencode-sandbox/env.runtime}"
 CONFIG_PATH="${CONFIG_PATH:-/root/.config/opencode/config.json}"
 WORKSPACE_CWD="${WORKSPACE_CWD:-/work/tenant-A/project-1}"
 
 echo "[entrypoint] starting opencode-sandbox"
 echo "[entrypoint] opencode: ${OPENCODE_HOST}:${OPENCODE_PORT}"
 echo "[entrypoint] health:   ${OPENCODE_HOST}:${HEALTH_PORT}"
-echo "[entrypoint] policy:   ${POLICY_PATH}"
+echo "[entrypoint] admin:    ${OPENCODE_HOST}:${ADMIN_PORT}"
+echo "[entrypoint] policy:   ${POLICY_PATH} (+ overlay ${POLICY_RUNTIME_PATH})"
+echo "[entrypoint] env:      ${ENV_RUNTIME_PATH} (admin API 写的 KEY=VALUE, source 后启 opencode; named volume, recreate 保留)"
 echo "[entrypoint] config:   ${CONFIG_PATH}"
 echo "[entrypoint] cwd:      ${WORKSPACE_CWD}"
+
+# 0. 容器启动时 source 一次 env (为了 health_server / admin_server 也能读到新 key,
+#    例如 admin 自身如果想验证 key 是否生效, 或者 health 探活时调一次 opencode health)
+#    注意: **真正的 opencode serve 在 supervisor 循环里会 re-source** (line 137+),
+#    所以 reload 后的新 env 一定生效.
+if [ -f "${ENV_RUNTIME_PATH}" ]; then
+    echo "[entrypoint] sourcing runtime env from ${ENV_RUNTIME_PATH}"
+    # shellcheck disable=SC1090
+    set -a  # auto-export 所有赋值的变量
+    # shellcheck disable=SC1090
+    . "${ENV_RUNTIME_PATH}"
+    set +a
+fi
 
 # 1. 启动 health_server (后台)
 echo "[entrypoint] starting health_server.py on :${HEALTH_PORT}"
@@ -42,7 +62,13 @@ python3 /opt/sandbox/health_server.py "${HEALTH_PORT}" &
 HEALTH_PID=$!
 echo "[entrypoint] health_server pid=${HEALTH_PID}"
 
-# 2. 渲染 opencode config
+# 2. 启动 admin_server (后台)
+echo "[entrypoint] starting admin_server.py on :${ADMIN_PORT}"
+python3 /opt/sandbox/admin_server.py "${ADMIN_PORT}" &
+ADMIN_PID=$!
+echo "[entrypoint] admin_server pid=${ADMIN_PID}"
+
+# 3. 渲染 opencode config (baked + runtime overlay)
 #
 # 防御要点: 区分"policy 不存在"和"policy 不是 regular file".
 # 历史踩坑: docker Desktop + WSL2 路径下, bind mount 一个文件到
@@ -60,9 +86,11 @@ if [ -e "${POLICY_PATH}" ]; then
         echo "[entrypoint]   fix: docker compose up -d --force-recreate --no-deps opencode-1"
         exit 1
     fi
-    echo "[entrypoint] rendering config from policy.json"
+    echo "[entrypoint] rendering config from policy.json (+ runtime overlay if any)"
+    # render_config.py 现在会自己合并 baked + runtime; 直接传 runtime 路径即可
     if ! python3 /opt/sandbox/render_config.py \
-        --policy "${POLICY_PATH}" \
+        --policy "${POLICY_RUNTIME_PATH}" \
+        --policy-baked "${POLICY_PATH}" \
         --output "${CONFIG_PATH}"; then
         echo "[entrypoint] ERROR: render_config.py failed, refusing to start opencode with default config"
         echo "[entrypoint]   fix: check policy.json schema (see docker/render_config.py docstring)"
@@ -92,19 +120,43 @@ if [ -s "${CONFIG_PATH}" ] && [ -z "${OPENAI_API_KEY:-}" ] && [ -z "${ANTHROPIC_
     echo "[entrypoint]   opencode will start but every LLM call will return 401"
 fi
 
-# 3. 确保 cwd 存在 (bind mount 一定存在, 但防止空目录导致 opencode 启动失败)
+# 3.5. 确保 cwd 存在 (bind mount 一定存在, 但防止空目录导致 opencode 启动失败)
 if [ ! -d "${WORKSPACE_CWD}" ]; then
     echo "[entrypoint] ERROR: workspace cwd ${WORKSPACE_CWD} does not exist"
     echo "[entrypoint] check that workspace volume mount is correct"
     exit 1
 fi
 
-# 4. 启 opencode serve (前台, 占住容器主进程)
+# 4. supervisor 循环: 启 opencode serve, 死掉自动拉起
+# 这样 admin_server 可以发 SIGTERM 触发 reload (新的 config 生效),
+# supervisor 会立刻 restart opencode, 整个 reload 流程 ~1s.
+#
 # 注意: opencode serve 不支持 --config / --cwd 参数 (v0.1.0a36)
 # - config 走默认 ~/.config/opencode/config.json (== ${CONFIG_PATH})
 # - cwd 靠 cd 设
-echo "[entrypoint] starting opencode serve (foreground) on :${OPENCODE_PORT}"
 cd "${WORKSPACE_CWD}"
-exec opencode serve \
-    --port "${OPENCODE_PORT}" \
-    --hostname "${OPENCODE_HOST}"
+echo "[entrypoint] supervisor starting; opencode will run on :${OPENCODE_PORT}"
+while true; do
+    # 每次重启前重新 source 一次 env.runtime, 确保 admin 写的新 KEY/URL 生效.
+    # 没文件就静默跳过 (用 docker-compose 注入的 env).
+    if [ -f "${ENV_RUNTIME_PATH}" ]; then
+        # shellcheck disable=SC1090
+        set -a
+        # shellcheck disable=SC1090
+        . "${ENV_RUNTIME_PATH}"
+        set +a
+    fi
+    # 也 re-render 一次 config (baked + runtime overlay 合并)
+    if [ -f "${POLICY_PATH}" ]; then
+        python3 /opt/sandbox/render_config.py \
+            --policy "${POLICY_RUNTIME_PATH}" \
+            --policy-baked "${POLICY_PATH}" \
+            --output "${CONFIG_PATH}" >/dev/null 2>&1 || true
+    fi
+    echo "[entrypoint] (re)starting opencode serve on :${OPENCODE_PORT}"
+    opencode serve \
+        --port "${OPENCODE_PORT}" \
+        --hostname "${OPENCODE_HOST}" || true
+    echo "[entrypoint] opencode exited, restarting in 1s (config + env will be re-read on next start)"
+    sleep 1
+done

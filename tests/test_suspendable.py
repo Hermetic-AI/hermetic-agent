@@ -8,9 +8,8 @@ from __future__ import annotations
 
 import pytest
 
-from openagent.auip.cards import CardType
 from openagent.auip.errors import TurnNotFound
-from openagent.auip.events import TurnEvent, TurnEventType
+from openagent.auip.events import TurnEventType
 from openagent.core.suspendable_scheduler import (
     ASK_USER_TOOL,
     SuspendableScheduler,
@@ -18,12 +17,10 @@ from openagent.core.suspendable_scheduler import (
 )
 from openagent.core.turn_store import (
     TURN_STATUS_DONE,
-    TURN_STATUS_ERROR,
     TURN_STATUS_SUSPENDED,
     InMemoryTurnStore,
 )
 from openagent.skill_runtime.manifest import SkillManifest, StateSpec
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -87,6 +84,12 @@ async def test_run_turn_emits_ask_user_tool_use() -> None:
     assert tu_evts[0].data["name"] == "ask_user"
     assert "id" in tu_evts[0].data
     assert tu_evts[0].data["input"]["card_type"] == "OD_INPUT"
+    fields = tu_evts[0].data["input"]["fields"]
+    assert [f["id"] for f in fields] == [
+        "departureCity",
+        "arrivalCity",
+        "departureDate",
+    ]
 
 
 async def test_run_turn_emits_card() -> None:
@@ -98,6 +101,7 @@ async def test_run_turn_emits_card() -> None:
     card_evts = [e for e in events if e.type == TurnEventType.CARD]
     assert len(card_evts) == 1
     assert card_evts[0].data["card"]["card_type"] == "OD_INPUT"
+    assert len(card_evts[0].data["card"]["fields"]) == 3
     # correlation_id 等于 tool_use_id
     tu_id = [e for e in events if e.type == TurnEventType.TOOL_USE][0].data["id"]
     assert card_evts[0].data["correlation_id"] == tu_id

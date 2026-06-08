@@ -1,0 +1,113 @@
+# ============================================================
+# 客服场景 — 轻量级 HITL (2 个卡片)
+# 用 on_demand progressive, 安全偏严 (tool_level: safe, max_turns 少)
+# ============================================================
+name: customer_service
+version: "1.0.0"
+description: |
+  客服场景 — 解决用户问题, 必要时转人工。
+  编排: hitl (2 卡片: HANDOFF_HUMAN / TICKET_RESULT)
+  安全: safe 档 (只读), 严控网络 (local)
+  渐进加载: 2 状态共享片段
+enabled: true
+tags: [customer-service, hitl, support]
+owner: team-cs-ai
+tier: silver
+
+routing:
+  trigger_keywords: [客服, 工单, 投诉, 问题, support, ticket, help]
+  trigger_intent: null
+  url_path: null
+  priority: 80
+
+execution:
+  system_prompt: |
+    你是 OpenAgent 客服助手。
+    1) 先听用户描述, 主动确认问题类型
+    2) 知识库能查 → 直接给答案 (附引用)
+    3) 知识库不能查 → 走 HANDOFF_HUMAN 卡片, 转人工
+    4) 给出工单号后 → 走 TICKET_RESULT 卡片
+
+    严禁:
+    - 承诺具体退款时间
+    - 让用户提供密码 / 验证码
+    - 假装是真人
+  skills: []
+  tools: [search_faq, create_ticket, query_ticket]
+  orchestration: hitl
+  hitl:
+    card_schemas: [cs-v1]
+    suspend_timeout: 600
+    # state_machine: P7 阶段填 ${SCENARIO_DIR}/state-machine.yaml
+
+security:
+  tool_level: safe
+  allowed_tools: [Read, Grep, Glob, search_faq, create_ticket, query_ticket]
+  denied_tools: [Write, Edit, Bash, WebFetch, WebSearch]
+  allowed_commands: []
+  denied_commands: [rm -rf, sudo, dd, mkfs, "chmod 777", ":(){:|:&};:"]
+  network: local
+  max_turns: 10
+  max_budget_usd: 0.3
+  require_approval_for_writes: true
+
+workspace:
+  strategy: project_relative
+  workspace_dirs:
+    - ${PROJECT_DIR}
+  readonly_dirs:
+    - ${WORK_SHARED}/docs/cs
+    - ${WORK_SHARED}/skills/faq
+  deny_dirs:
+    - /etc
+    - ~/.ssh
+    - ~/.aws
+  deny_path_patterns:
+    - "**/.env"
+    - "**/.env.*"
+    - "**/secrets/**"
+    - "**/customer-pii/**"
+  launcher:
+    prefer_engine: claude_code
+    fallback_engine: opencode
+
+a2ui:
+  enabled: true
+  protocol: auip
+  cards_dir: ${SCENARIO_DIR}/cards
+  # state_machine: P7 阶段填 ${SCENARIO_DIR}/state-machine.yaml
+  default_card_timeout: 600
+  renderer_hint: react_aui_v1
+  progressive_loading: true
+
+progressive_skill:
+  strategy: on_demand
+  budget_tokens: 2000
+  budget_policy: error
+  initial_skills:
+    - name: cs-base
+      mode: summary
+  load_on_state:
+    H1: []                       # INIT
+    H2:                          # 转人工
+      - cs-base:handoff
+    H3:                          # 工单结果
+      - cs-base:ticket-result
+
+resource_dirs:
+  prompts: ${SCENARIO_DIR}/prompts
+  skills: ${SCENARIO_DIR}/skills
+  shared_skills: ${WORK_SHARED}/skills
+  cards: ${SCENARIO_DIR}/cards
+  state_machine: ${SCENARIO_DIR}/state-machine.yaml
+
+resources:
+  agent: claude-core
+  model: claude-sonnet-4-5
+  timeout: 120
+
+metadata:
+  cost_center: CS-3001
+  ab_group: control
+  sla_tier: silver
+  dashboard_url: https://grafana.example.com/d/customer_service

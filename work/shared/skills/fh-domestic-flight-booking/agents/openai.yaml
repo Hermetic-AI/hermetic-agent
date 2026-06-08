@@ -1,0 +1,4 @@
+interface:
+  display_name: "FH Domestic Flight Booking"
+  short_description: "Run fh-travel MCP domestic flight search and booking flows."
+  default_prompt: "Use $fh-domestic-flight-booking to search, filter, select, and book a domestic flight through fh-travel MCP tools."

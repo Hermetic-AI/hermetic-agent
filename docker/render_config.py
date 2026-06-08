@@ -79,6 +79,21 @@ def _read_policy(path: Path) -> dict:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
+def _deep_merge(base: dict, overlay: dict) -> dict:
+    """浅覆深的 dict 合并. list 字段整体替换. 专给 policy.json 合并用."""
+    out = dict(base)
+    for k, v in overlay.items():
+        if (
+            k in out
+            and isinstance(out[k], dict)
+            and isinstance(v, dict)
+        ):
+            out[k] = _deep_merge(out[k], v)
+        else:
+            out[k] = v
+    return out
+
+
 def _resolve_provider(model_string: str) -> tuple[str, str]:
     """从 'openai/deepseek-chat' 拆出 ('openai', 'deepseek-chat').
 
@@ -178,11 +193,34 @@ def render(policy: dict) -> dict:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Render opencode config from policy.json")
-    parser.add_argument("--policy", required=True, type=Path, help="path to policy.json")
+    parser.add_argument(
+        "--policy", required=True, type=Path,
+        help="path to policy.runtime.json (baked + runtime overlay merged)",
+    )
+    parser.add_argument(
+        "--policy-baked", type=Path, default=Path("/opt/sandbox/policy.json"),
+        help="path to baked (immutable) policy.json, used as base layer",
+    )
     parser.add_argument("--output", required=True, type=Path, help="path to write config.json")
     args = parser.parse_args()
 
-    policy = _read_policy(args.policy)
+    # 1. 读 baked 政策 (底, Dockerfile COPY 进来, ro)
+    baked = _read_policy(args.policy_baked)
+    # 2. 读 runtime overlay (顶, admin API 写的, rw)
+    #    args.policy 一般就是 runtime overlay
+    if args.policy == args.policy_baked:
+        # admin server 可能传同一个 baked 路径 (没 runtime 时), 别 merge 自己
+        runtime = {}
+    else:
+        runtime = _read_policy(args.policy)
+    # 3. 合并: baked 上叠 runtime (deep merge, 浅覆深)
+    policy = _deep_merge(baked, runtime)
+    if runtime:
+        logger.info(
+            f"policy merged: baked={len(baked)} keys, runtime={len(runtime)} keys, "
+            f"effective={len(policy)} keys"
+        )
+
     cfg = render(policy)
 
     args.output.parent.mkdir(parents=True, exist_ok=True)
