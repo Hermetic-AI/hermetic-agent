@@ -1,0 +1,44 @@
+# Frontend .dockerignore — 走 Dockerfile.frontend 时的 ignore
+# 作用: 让 docker build context 最小, 加快 build, 避免把 node_modules 拷进镜像
+
+# 依赖 (容器内重装)
+node_modules
+.pnpm-store
+.pnpm-debug.log*
+
+# 构建产物 (容器内重 build)
+dist
+dist-ssr
+*.local
+
+# 编辑器
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# 日志
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# 测试
+coverage
+.nyc_output
+
+# 环境文件 (含 LLM KEY)
+.env
+.env.local
+.env.*.local
+
+# misc
+.cache
+.parcel-cache
+.eslintcache

@@ -1,0 +1,98 @@
+# OpenAgent 容器化部署 — 前端镜像版 (与 docker-compose.yml / docker-compose.image.yml 并存)
+#
+# 用法:
+#   # build 模式 (本地开发, 镜像带 :dev tag)
+#   docker compose -f docker-compose.frontend.yml --env-file .env up -d --build
+#
+#   # image 模式 (从 registry pull, 镜像由 CI 推)
+#   docker compose -f docker-compose.frontend.yml --env-file .env pull
+#   docker compose -f docker-compose.frontend.yml --env-file .env up -d
+#
+# 跟原 compose 并用叠加 (后者覆盖前者同名字段):
+#   docker compose \
+#     -f docker-compose.yml \
+#     -f docker-compose.frontend.yml \
+#     --env-file .env \
+#     up -d
+#
+#   docker compose \
+#     -f docker-compose.image.yml \
+#     -f docker-compose.frontend.yml \
+#     --env-file .env \
+#     up -d
+#
+# 启动: curl http://localhost:13000/
+# 验证: curl http://localhost:13000/api/ready   (反代到 Hub)
+#
+# 架构 (在原 2 服务基础上加 frontend):
+#   openagent-frontend  :3000 (nginx, 静态 + /api 反代)
+#       ↓ /api
+#   openagent-hub       :8000
+#       ↓ 调 SDK
+#   opencode-1          :14096 (opencode) / :7777 (health) / :7778 (admin)
+#
+# 关键点:
+#   - 多阶段 Dockerfile: pnpm build → nginx:alpine serve
+#   - /api/* 反代到 openagent-hub:8000, 配 SSE 长连接 (关 buffering / 600s timeout)
+#   - SPA fallback: try_files $uri /index.html (react-router)
+#   - 静态资源 30d immutable 缓存 (vite 文件名带 hash)
+#   - 容器 read_only, nginx 写目录走 tmpfs
+
+services:
+  # ============================================================
+  # 0. OpenAgent Frontend (nginx serve, 静态 + /api 反代)
+  # ============================================================
+  openagent-frontend:
+    # build 模式: 本地 docker build, 镜像 = openagent-frontend:dev
+    # image 模式: 在 .env 里设 OPENAGENT_FRONTEND_IMAGE=ghcr.io/.../openagent-frontend:1.0.0
+    #            (本文件会优先用 image 字段, 用 build 时把 image 注释掉, 或保留让 build 自动 tag)
+    image: ${OPENAGENT_FRONTEND_IMAGE:-openagent-frontend:dev}
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.frontend
+      args:
+        # 浏览器走 /api 同源, 由 nginx 反代到 openagent-hub:8000
+        # 这里给 Vite 的是 placeholder, 真正生效的是 nginx proxy_pass
+        VITE_BACKEND_URL: /api
+    pull_policy: ${OPENAGENT_FRONTEND_PULL_POLICY:-always}
+    container_name: openagent-frontend
+    hostname: openagent-frontend
+    restart: unless-stopped
+    # 容器安全加固
+    read_only: true
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges
+    # 资源限制 (nginx 静态服务很轻)
+    mem_limit: 256m
+    cpus: "0.5"
+    pids_limit: 64
+    # nginx 写目录 (容器根 FS --read-only, 这些必须 tmpfs)
+    tmpfs:
+      - /var/cache/nginx:size=50m,mode=0755
+      - /var/run:size=10m,mode=0755
+      - /var/log/nginx:size=20m,mode=0755
+      - /tmp:size=20m,mode=1777
+    ports:
+      # host:13000 → container:3000 (nginx listen)
+      - "13000:3000"
+    networks: [sandbox-net]
+    depends_on:
+      openagent-hub:
+        condition: service_started
+    # 复用 .env 拿 LLM 凭证/路径 (frontend 自身用不到, 但保持跟其他服务 env 注入一致)
+    env_file:
+      - path: .env
+        required: false
+    # healthcheck (镜像里也声明了, 这里再写一遍方便 docker inspect)
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O-", "http://127.0.0.1:13000/"]
+      interval: 10s
+      timeout: 3s
+      start_period: 5s
+      retries: 3
+
+networks:
+  sandbox-net:
+    external: true   # 复用 docker-compose.yml / docker-compose.image.yml 里的同名网络
+    name: openagent-sandbox-net
