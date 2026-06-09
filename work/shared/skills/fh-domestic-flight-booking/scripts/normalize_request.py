@@ -8,6 +8,7 @@ import json
 import re
 import sys
 from datetime import date, timedelta
+from pathlib import Path
 from typing import Any
 
 DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
@@ -33,11 +34,15 @@ DATE_ALIASES = {
     "today": 0,
     "tomorrow": 1,
     "day after tomorrow": 2,
+    "今天": 0,
+    "明天": 1,
+    "后天": 2,
+    "大后天": 3,
 }
 
 
 def load_json(path: str | None) -> dict[str, Any]:
-    text = sys.stdin.read() if not path or path == "-" else open(path, "r", encoding="utf-8").read()
+    text = sys.stdin.read() if not path or path == "-" else Path(path).read_text(encoding="utf-8")
     value = json.loads(text)
     if not isinstance(value, dict):
         raise ValueError("plan must be a JSON object")
@@ -75,7 +80,7 @@ def normalize(plan: dict[str, Any], today: date | None = None) -> dict[str, Any]
 
 def validate(plan: dict[str, Any]) -> list[str]:
     errors: list[str] = []
-    for key in ("sessionId", "departureCity", "arrivalCity", "departureDate"):
+    for key in ("departureCity", "arrivalCity", "departureDate"):
         if blank(plan.get(key)):
             errors.append(f"missing required field: {key}")
     for key in ("departureDate", "returnDate"):

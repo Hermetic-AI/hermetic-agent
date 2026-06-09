@@ -16,6 +16,7 @@ from sanic.response import JSONResponse
 from sanic_cors import CORS
 from sanic_ext import openapi as sanic_openapi
 
+from openagent.api.controllers.auth_controller import auth_bp
 from openagent.api.controllers.chat_controller import chat_bp
 from openagent.api.controllers.pool_controller import pool_bp
 from openagent.api.controllers.question_controller import question_bp
@@ -213,6 +214,8 @@ def create_app(settings: Settings | None = None) -> Sanic:
     # P7: opencode 原生 question / todo 端点 (代理 /question + /session/:id/todo)
     app.blueprint(question_bp)
     app.blueprint(todo_bp)
+    # 飞鹤正式系统登录代理 (前端 → Hub → traveldev.feiheair.com)
+    app.blueprint(auth_bp)
 
     _install_error_handler(app)
 

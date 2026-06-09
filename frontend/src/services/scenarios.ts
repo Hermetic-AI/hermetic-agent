@@ -4,12 +4,12 @@ import { http } from './http';
 import type { ScenarioSummary, ScenariosListResponse } from '../types';
 
 const SCENARIO_BASE = '/agent/scenarios';
+const SCENARIO_LIST_PATH = '/agent/scenarios/';
 
 export const scenarioService = {
-  /** List all registered scenarios, optionally filtered by tag. */
-  list(tag?: string, signal?: AbortSignal) {
-    return http.get<ScenariosListResponse>(SCENARIO_BASE, {
-      query: tag ? { tag } : undefined,
+  /** List all registered scenarios. */
+  list(signal?: AbortSignal) {
+    return http.get<ScenariosListResponse>(SCENARIO_LIST_PATH, {
       signal,
     });
   },

@@ -45,7 +45,7 @@ export function OrderSuccessCard({ card, suspended, submitted, onSubmit }: Order
         <button
           type="button"
           className="aui-action aui-action-secondary"
-          disabled={suspended || submitted}
+          disabled={submitted}
           onClick={() => onSubmit({ acknowledged: true }, 'ack')}
         >
           完成

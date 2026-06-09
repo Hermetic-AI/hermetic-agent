@@ -4,7 +4,9 @@ import { ChatPage } from './components/chat/ChatPage';
 import { SearchPage } from './components/flight/SearchPage';
 import { OrdersPage } from './components/order/OrdersPage';
 import { RulesPage } from './components/order/RulesPage';
+import { LoginPage } from './components/auth';
 import { HealthProvider } from './contexts/HealthContext';
+import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { logger } from './utils/logger';
 
 type NavId = 'chat' | 'search' | 'orders' | 'rules';
@@ -25,23 +27,23 @@ function clearLocalSession(): void {
   }
 }
 
-function App() {
-  const [activeNav, setActiveNav] = useState<NavId>('chat');
-  // A prompt injected from another page into the chat.  The ChatPage
-  // consumes it and calls `onPendingPromptConsumed` to clear it.
-  const [pendingPrompt, setPendingPrompt] = useState<string | null>(null);
-  // The active scenario routing hint.  Persists across navigations so
-  // going "chat → search → chat" stays in the same flow.
-  const [scenario, setScenario] = useState<string | undefined>('flight_query');
+interface AppContentProps {
+  /** 顶栏显示的当前用户标识 (用户名 / 工号) */
+  userLabel?: string;
+  /** 顶栏登出按钮回调 */
+  onLogout: () => void;
+}
 
-  /**
-   * 会话重置钥匙 — bump 即触发 ChatPage 整树 remount.
-   * 触发条件 (3 种,都走同一路径):
-   *   a) 用户在 sidebar 切换场景           → handleScenarioChange
-   *   b) 用户在 ChatPage 顶部点「新建对话」 → handleNewChat (透传 from ChatPage)
-   *   c) 用户从 SearchPage/OrdersPage「让 AI 帮我查」切到不同场景
-   *      → handleAskAI (同场景则不重置,继续上轮对话)
-   */
+/**
+ * 已登录态下的真实 UI. 拆出来是为了把"路由守卫"和"业务内容"分清.
+ */
+function AppContent({ userLabel, onLogout }: AppContentProps) {
+  const [activeNav, setActiveNav] = useState<NavId>('chat');
+  // A prompt injected from another page into the chat.
+  const [pendingPrompt, setPendingPrompt] = useState<string | null>(null);
+  // The active scenario routing hint.
+  const [scenario, setScenario] = useState<string | undefined>('flight_query');
+  // 会话重置钥匙 — bump 即触发 ChatPage 整树 remount
   const [chatKey, setChatKey] = useState(0);
 
   const handleNavChange = useCallback((id: string) => {
@@ -54,7 +56,6 @@ function App() {
       logger.info('Cross-page prompt to AI', { prompt, hintScenario });
       const scenarioChanged = hintScenario !== undefined && hintScenario !== scenario;
       if (scenarioChanged) {
-        // 跨场景 → 老会话作废, 重新开
         clearLocalSession();
         setChatKey((k) => k + 1);
         setScenario(hintScenario);
@@ -104,19 +105,9 @@ function App() {
           />
         );
       case 'search':
-        return (
-          <SearchPage
-            onAskAI={handleAskAI}
-            hintScenario="flight_query"
-          />
-        );
+        return <SearchPage onAskAI={handleAskAI} hintScenario="flight_query" />;
       case 'orders':
-        return (
-          <OrdersPage
-            onAskAI={handleAskAI}
-            hintScenario="flight_booking"
-          />
-        );
+        return <OrdersPage onAskAI={handleAskAI} hintScenario="flight_booking" />;
       case 'rules':
         return <RulesPage />;
       default:
@@ -133,15 +124,42 @@ function App() {
   };
 
   return (
+    <MainLayout
+      activeNav={activeNav}
+      onNavChange={handleNavChange}
+      scenario={scenario}
+      onScenarioChange={handleScenarioChange}
+      userLabel={userLabel}
+      onLogout={onLogout}
+    >
+      {renderContent()}
+    </MainLayout>
+  );
+}
+
+/**
+ * 路由守卫: 没登录 → LoginPage 占满屏幕
+ * 登出 → 自动回到 LoginPage (因为 isAuthenticated → false)
+ */
+function AuthedShell() {
+  const { isAuthenticated, loginInfo, logout } = useAuth();
+  if (!isAuthenticated) {
+    return <LoginPage />;
+  }
+  return (
+    <AppContent
+      userLabel={loginInfo?.displayName ?? loginInfo?.userCode}
+      onLogout={logout}
+    />
+  );
+}
+
+function App() {
+  return (
     <HealthProvider intervalMs={30_000}>
-      <MainLayout
-        activeNav={activeNav}
-        onNavChange={handleNavChange}
-        scenario={scenario}
-        onScenarioChange={handleScenarioChange}
-      >
-        {renderContent()}
-      </MainLayout>
+      <AuthProvider>
+        <AuthedShell />
+      </AuthProvider>
     </HealthProvider>
   );
 }

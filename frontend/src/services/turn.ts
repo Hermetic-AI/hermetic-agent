@@ -12,7 +12,7 @@
 // The streaming variant (`resumeStream`) reuses the SSE parser and
 // supports an `AbortSignal` for cancellation.
 
-import { http, ApiError } from './http';
+import { http, ApiError, resolveAuthToken } from './http';
 import { joinUrl } from './chat';
 import { parseSSE } from './sse';
 import { config } from '../config';
@@ -55,15 +55,23 @@ export const turnService = {
 
   /** Stream the resume as SSE — receives `resume`, `tool_result`, next `card`, etc. */
   async resumeStream(turnId: string, body: ResumeRequest, opts: SendResumeStreamOptions): Promise<void> {
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      Accept: 'text/event-stream',
+    };
+    // 跟 chat.ts 保持一致: 运行时 login token 优先, build-time 兜底
+    const runtimeToken = resolveAuthToken();
+    if (runtimeToken) {
+      headers['X-MCP-Token'] = runtimeToken;
+      headers.Authorization = `Bearer ${runtimeToken}`;
+    } else if (config.mcpToken) {
+      headers['X-MCP-Token'] = config.mcpToken;
+    }
     let res: Response;
     try {
       res = await fetch(buildResumeStreamUrl(turnId), {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Accept: 'text/event-stream',
-          ...(config.mcpToken ? { 'X-MCP-Token': config.mcpToken } : {}),
-        },
+        headers,
         body: JSON.stringify(body),
         signal: opts.signal,
         credentials: 'omit',

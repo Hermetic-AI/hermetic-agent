@@ -172,6 +172,20 @@ class Settings(BaseSettings):
         description="工作区根目录 (所有 ${WORK_ROOT}/${WORK_SHARED} 占位符的解析基准)",
     )
 
+    # 飞鹤正式系统 (login proxy 目标)
+    feihe_base_url: str = Field(
+        default="https://traveldev.feiheair.com",
+        description=(
+            "飞鹤正式系统 base URL. Hub /api/auth/logon 跟 /api/auth/captcha "
+            "会代为调 ${feihe_base_url}/api/sys/logonV2 + /api/sys/logon/getGraphicsCaptcha. "
+            "前端永远不直连这个域名 (避免密码泄露 + CORS)."
+        ),
+    )
+    feihe_request_timeout: float = Field(
+        default=10.0,
+        description="Hub 调 feihe 后端的 HTTP 超时秒数.",
+    )
+
 
 @lru_cache
 def get_settings() -> Settings:

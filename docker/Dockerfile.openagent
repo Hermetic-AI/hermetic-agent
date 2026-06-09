@@ -1,17 +1,22 @@
-# OpenAgent Hub 镜像 (Phase 1 — 合并 deps + runtime)
+# OpenAgent Hub 镜像 — 2 阶段, 最大化依赖缓存
 #
-# 简化为单 Dockerfile, 装依赖 + 复制源码 一次完成.
-# 改代码 → 镜像重建, 命中 .dockerignore 缓存的 pip 层 (前提: pyproject.toml 没改).
+# 阶段 A (deps):    装第三方依赖 (只 COPY requirements.txt)
+# 阶段 B (runtime): 装项目源码 (--no-deps, ~3-5s)
 #
-# 想拆 deps + runtime 两层缓存: 改回 v0.4 双 Dockerfile 设计, 但需要处理
-# setuptools build 需要 src/ 的问题. Phase 1 先用单文件.
+# **改 src/openagent/ 任何 .py → 阶段 A 缓存命中, 只跑阶段 B (~3-5s)**
+# **改 requirements.txt / pyproject.toml → 阶段 A 失效 → ~2-3 min 装新 deps**
+# **首次构建 → 全部重跑 → ~3-4 分钟**
+#
+# 维护: requirements.txt 必须跟 pyproject.toml [project.dependencies] 同步.
+# 改 deps 时: 改 pyproject.toml + 改 requirements.txt 一起, 否则 deploy 镜像用旧 deps.
+# 加一个 CI check (TODO) 验证一致.
 #
 # 构建: docker build -f docker/Dockerfile.openagent -t openagent:dev .
 #
 # 镜像源: Daocloud (免认证, 国内通用)
 # 想换回官方 Docker Hub: 去掉 docker.m.daocloud.io/ 前缀即可
 
-FROM docker.m.daocloud.io/library/python:3.11-slim
+FROM docker.m.daocloud.io/library/python:3.11-slim AS deps
 
 WORKDIR /app
 
@@ -21,15 +26,30 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# 升级 pip + setuptools
-RUN pip install --no-cache-dir -U pip setuptools wheel
+# 升级 pip + setuptools + wheel
+# 用 BuildKit cache mount 持久化 pip 下载缓存 (跨 build 命中)
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install -U pip setuptools wheel
 
-# 复制整个项目 (用 .dockerignore 排除 work/tests/.venv 等)
-COPY . /app
+# ===== 装第三方 deps (只 COPY requirements.txt, 不 COPY src/) =====
+# 改 src/ 任何 .py 不会让这层失效
+# 改 requirements.txt / pyproject.toml 会失效 (我们用 pyproject.toml 的 hash 当 cache key)
+COPY requirements.txt /app/requirements.txt
+COPY pyproject.toml /app/pyproject.toml
 
-# 装项目本身 + 所有依赖
-# 这一层在 pyproject.toml 不变时命中缓存, 代码改也重装 (Phase 1 接受)
-RUN pip install --no-cache-dir .
+# 装第三方依赖 — 加 --require-hashes 关掉 (我们没 lock, 用 loose version)
+# BuildKit cache mount 让重复 RUN 命中 pip cache, download 跳过
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install --no-cache-dir -r requirements.txt
+
+# ===== 阶段 B: 装项目源码 (--no-deps, ~3-5s) =====
+FROM deps AS runtime
+
+# 装我们自己的项目 (整个 src/) — --no-deps 跳过依赖解析 (deps 阶段已装), 几秒
+COPY src/ /app/src/
+# 同样用 cache mount 加速 (虽然 --no-deps 不下载, 但 setuptools build 自己的 wheel 会用 pip cache)
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install --no-cache-dir --no-deps .
 
 # 让容器内日志立刻刷出来
 ENV PYTHONUNBUFFERED=1 \

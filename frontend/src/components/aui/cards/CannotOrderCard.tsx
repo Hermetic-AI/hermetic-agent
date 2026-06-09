@@ -22,7 +22,7 @@ export function CannotOrderCard({ card, suspended, submitted, onSubmit }: Cannot
         <button
           type="button"
           className="aui-action aui-action-secondary"
-          disabled={suspended || submitted}
+          disabled={submitted}
           onClick={() => onSubmit({ acknowledged: true }, 'ack')}
         >
           我知道了

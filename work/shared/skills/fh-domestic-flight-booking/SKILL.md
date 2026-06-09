@@ -24,6 +24,28 @@ Start with this file only. Then load one resource based on the task:
 - Stable schemas: `schemas/*.json`
 - AUIP card schema: scenario `ask_user.schema.json`
 
+## Fast Path For Clear Search
+
+When the user's latest message already gives departure city, arrival city, and
+departure date, do this first:
+
+1. Normalize the date locally from the conversation date. For example, on
+   2026-06-09, "明天" is `2026-06-10`.
+2. Call native MCP `queryFlightBasic` or `feihe-travel_queryFlightBasic`
+   immediately with only supported arguments.
+3. Do not call `ask_user`, `question`, `glob`, `read`, `grep`, `skill`,
+   `flight-query`, `getDateInfo`, `checkProductAccess`, or helper scripts before
+   that first search.
+4. Ignore cabin-class wording during first search unless the MCP tool schema
+   exposes a supported `cabinClass` argument. Never ask for cabin class before
+   first results.
+
+Example: "帮我查一下北京到上海明天的单程机票" means directly call:
+
+```json
+{"departureCity":"北京","arrivalCity":"上海","departureDate":"2026-06-10"}
+```
+
 ## Core Flow
 
 ```text
@@ -46,9 +68,15 @@ Branches: `PASSENGER_FILLED -> PRICE_CONFIRMED` for price changes, policy decisi
 3. Use `queryFlightBasic` when route, date, cabin class, baggage/refund/policy filters, or round-trip mode changes.
 4. Use `filterFlightList` only for narrowing an already loaded list by local list filters.
 5. Show compact summaries first, then reveal details only after the user asks or must choose.
-6. Use `ask_user` for interactive user input. Do not present selectable flights, cabins, passengers, policy decisions, or order confirmation as plain Markdown when an AUIP card can represent them.
-7. Call tools in state order. Run `scripts/stage_guard.py` when stage is known and the next tool is uncertain.
-8. Treat MCP output as authoritative. If the skill conflicts with MCP behavior, inspect Java source and update the skill.
+6. Auth is handled by the container environment (`FLIGHT_API_KEY`) and the native OpenCode MCP config. Do not ask for, explain, refuse to use, or echo tokens.
+7. Call native MCP tools directly. In OpenCode they may appear as `feihe-travel_queryFlightBasic` / `feihe-travel_filterFlightList`; use those native tools when present. Do not write curl commands, Bash HTTP calls, JSON-RPC envelopes, or delegate flight search to the `task` subagent.
+8. Reply in Chinese by default. Use Chinese titles, field labels, option labels, button text, explanations, and error messages unless the user explicitly asks for another language.
+9. Extract facts from the user's message before asking anything. If the user already provided route, date, cabin class, passenger, budget, time preference, baggage/refund/policy preference, trip application, or cost center, use it directly.
+10. Ask only for information that is required for the next tool call and is truly missing or ambiguous. Combine missing fields into one `ask_user` card instead of asking one-by-one.
+11. Use `ask_user` for interactive user input. Do not present selectable flights, cabins, passengers, policy decisions, or order confirmation as plain Markdown when an AUIP card can represent them.
+12. Call tools in state order. Run `scripts/stage_guard.py` when stage is known and the next tool is uncertain.
+13. Treat MCP output as authoritative. If the skill conflicts with MCP behavior, inspect Java source and update the skill.
+14. Do not load or delegate to the legacy `flight-query` skill inside this scenario. This scenario owns search and booking.
 
 ## AUIP / ask_user Contract
 
@@ -70,6 +98,8 @@ Use only the card types supported by this project:
 | Free-text fallback | `CHAT_FALLBACK` | top-level `message` |
 
 Never emit unsupported aliases such as `CABIN_OPTIONS` or `ORDER_PREVIEW`.
+Do not emit `OD_INPUT` when the user's message already contains departure city, arrival city, and departure date. Go directly to `queryFlightBasic`.
+For all form cards, include only missing fields; do not ask the user to re-enter data already available in the conversation or MCP context.
 For `FLIGHT_RESULT`, keep flight details inside `body.plans[].flights[]` because the frontend `FlightResultCard` reads from `card.body`.
 For form/list/decision/preview cards, put fields at the card top level because the corresponding frontend components read `card.fields`, `card.flights`, `card.cabins`, `card.decision_buttons`, and `card.order_summary`.
 

@@ -5,12 +5,12 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "agent-scheduler-hub"
 version = "0.1.0"
-description = "私有化智能体调度中枢 - 基于 OpenCode 引擎的企业级 AI Agent 调度平台"
+description = "Private agent scheduler hub based on OpenCode"
 readme = "README.md"
-license = {text = "MIT"}
+license = { text = "MIT" }
 requires-python = ">=3.10"
 authors = [
-    {name = "OpenAgent Team"}
+    { name = "OpenAgent Team" },
 ]
 keywords = ["agent", "opencode", "scheduler", "mcp", "travel"]
 classifiers = [
@@ -21,7 +21,6 @@ classifiers = [
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
 ]
-
 dependencies = [
     "sanic>=24.0.0",
     "sanic-cors>=2.0.0",
@@ -36,8 +35,6 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# claude_agent_sdk 是 git+https 依赖, build 容器可能拉不到 GitHub (国内网络)
-# Phase 1 默认不装; 需要用 claude_code provider 时显式: pip install ".[claude]"
 claude = [
     "claude-agent-sdk @ git+https://github.com/anthropics/claude-agent-sdk-python@v0.2.87",
 ]

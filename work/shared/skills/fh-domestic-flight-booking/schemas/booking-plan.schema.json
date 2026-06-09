@@ -3,7 +3,7 @@
   "title": "FH Domestic Flight Booking Plan",
   "type": "object",
   "additionalProperties": true,
-  "required": ["sessionId", "departureCity", "arrivalCity", "departureDate"],
+  "required": ["departureCity", "arrivalCity", "departureDate"],
   "properties": {
     "sessionId": {"type": "string", "minLength": 1},
     "departureCity": {"type": "string", "minLength": 1},

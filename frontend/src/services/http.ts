@@ -4,6 +4,14 @@
 // - Prepend the configured base URL (VITE_API_BASE_URL or /api proxy).
 // - Parse JSON, normalise error responses to a typed `ApiError`.
 // - Support AbortController for cancellation.
+//
+// Token injection:
+// - `registerTokenGetter(getter)` lets AuthContext register a function
+//   that returns the current login token.  Every request then forwards it
+//   as `X-MCP-Token` (Hub `_extract_mcp_token` reads this header).
+// - Falls back to `X-CRM-Token` from the legacy settings panel path.
+// - A `Authorization: Bearer <token>` is also added so backend OAuth
+//   parsers can use it as a last-resort option.
 
 import { config } from '../config';
 
@@ -28,6 +36,12 @@ interface RequestOptions extends Omit<RequestInit, 'body' | 'signal'> {
   path: string;
   /** Query string params, encoded into the URL. */
   query?: Record<string, string | number | boolean | undefined | null>;
+  /**
+   * Skip token injection for this request.  Used for the auth endpoints
+   * themselves (logon / captcha), where sending an unrelated token would
+   * be misleading.
+   */
+  skipAuth?: boolean;
 }
 
 function buildUrl(baseUrl: string, path: string, query?: RequestOptions['query']): string {
@@ -77,21 +91,63 @@ function extractErrorMessage(body: unknown, status: number): string {
   return `Request failed (HTTP ${status})`;
 }
 
+// ---------------------------------------------------------------------------
+// Token injection
+// ---------------------------------------------------------------------------
+
+type TokenGetter = () => string | null | undefined;
+
+let _tokenGetter: TokenGetter | null = null;
+
+/**
+ * Register a function that returns the current login token.
+ *
+ * Called once at app startup (by AuthContext wiring).  The getter is
+ * invoked on every request, so token changes (login / logout) take
+ * effect immediately without re-binding the fetch wrapper.
+ */
+export function registerTokenGetter(getter: TokenGetter | null): void {
+  _tokenGetter = getter;
+}
+
+/**
+ * Resolve the current login token (read-only convenience for callers
+ * that bypass `http`, e.g. SSE streams and direct fetch in chat service).
+ * Returns an empty string when not authenticated.
+ */
+export function resolveAuthToken(): string {
+  if (_tokenGetter) {
+    const t = _tokenGetter();
+    if (t) return t;
+  }
+  return config.getCrmToken();
+}
+
+function buildAuthHeaders(): Record<string, string> {
+  const token = resolveAuthToken();
+  if (!token) return {};
+  return {
+    // 优先 X-MCP-Token — Hub `_extract_mcp_token` 第一个读的就是这个.
+    'X-MCP-Token': token,
+    // 兜底 Authorization Bearer, 给 OAuth 风格的中间件 (e.g. nginx auth_request)
+    Authorization: `Bearer ${token}`,
+  };
+}
+
 export async function request<T = unknown>({
   path,
   body,
   query,
   baseUrl = config.apiBaseUrl,
   headers,
+  skipAuth = false,
   ...init
 }: RequestOptions): Promise<T> {
   const url = buildUrl(baseUrl, path, query);
 
   const finalHeaders: Record<string, string> = {
     Accept: 'application/json',
-    // 读取"最新"的 CRM token, 不是模块加载时的快照.
-    // 用户在设置面板修改 token 后, 下一次请求立刻生效.
-    ...(config.getCrmToken() ? { 'X-CRM-Token': config.getCrmToken() } : {}),
+    ...(skipAuth ? {} : buildAuthHeaders()),
     ...(headers as Record<string, string> | undefined),
   };
   let payload: BodyInit | undefined;

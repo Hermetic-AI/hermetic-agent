@@ -522,7 +522,7 @@ export function useChatStream(options: UseChatStreamOptions = {}): UseChatStream
           turnId: tid,
           pendingCorrelationId: correlationId,
           cards: (m.cards ?? []).map((c) =>
-            c.card_id === card.card_id ? { ...c, suspendido: true } : c,
+            c.card_id === card.card_id ? { ...c, suspended: true } : c,
           ),
           events: suspendCard(m.events ?? [], card.card_id),
         }));

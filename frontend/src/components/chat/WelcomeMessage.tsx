@@ -173,7 +173,7 @@ function pickActions(label?: string, backendReady = true): QuickAction[] {
   }
   // flight_query + 通用 (含 v3) — 主推"查 + 查+订"
   return [
-    { label: '查机票', value: '帮我查一下北京到上海的机票', icon: <SearchIcon />, hint: '用城市名查, 不用三字码' },
+    { label: '查机票', value: '帮我查一下北京到上海明天的单程机票', icon: <SearchIcon />, hint: '用城市名查, 不用三字码' },
     { label: '订机票', value: '帮我订明天北京到上海的经济舱', icon: <PlaneIcon />, hint: '跳到预订流程' },
     { label: '我的订单', value: '查看我的订单', icon: <TicketIcon />, hint: '差旅订单状态' },
     { label: '差旅规则', value: '差旅规则是什么', icon: <BookIcon />, hint: '公司差旅标准' },

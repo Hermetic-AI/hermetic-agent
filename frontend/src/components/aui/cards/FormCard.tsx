@@ -14,6 +14,7 @@ export interface FormCardProps {
 export function FormCard({ card, suspended, submitted, onSubmit }: FormCardProps) {
   const fields = card.fields ?? [];
   const [values, setValues] = useState<Record<string, unknown>>(() => initialValues(fields));
+  const complete = requiredFieldsComplete(fields, values);
 
   const update = (id: string, value: unknown) => {
     setValues((prev) => ({ ...prev, [id]: value }));
@@ -21,7 +22,7 @@ export function FormCard({ card, suspended, submitted, onSubmit }: FormCardProps
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (suspended || submitted) return;
+    if (submitted || !complete) return;
     onSubmit(values, 'submit');
   };
 
@@ -35,7 +36,7 @@ export function FormCard({ card, suspended, submitted, onSubmit }: FormCardProps
           type="submit"
           form={`aui-form-${card.card_id}`}
           className="aui-action aui-action-primary"
-          disabled={suspended || submitted}
+          disabled={submitted || !complete}
         >
           {submitted ? '已提交' : '确认'}
         </button>
@@ -117,4 +118,18 @@ function initialValues(fields: CardField[]): Record<string, unknown> {
     if (f.default !== undefined) out[f.id] = f.default;
   }
   return out;
+}
+
+function requiredFieldsComplete(
+  fields: CardField[],
+  values: Record<string, unknown>,
+): boolean {
+  return fields.every((field) => {
+    if (!field.required) return true;
+    const value = values[field.id];
+    if (value == null) return false;
+    if (typeof value === 'string') return value.trim().length > 0;
+    if (typeof value === 'number') return Number.isFinite(value);
+    return true;
+  });
 }

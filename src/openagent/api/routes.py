@@ -249,9 +249,12 @@ def _resolve_session_directory(request: Request) -> str | None:
 def _extract_mcp_token(request: Request) -> str | None:
     """从请求 header 提取 MCP 认证 token (per-request, 不持久化).
 
-    支持两种 header 写法 (MCP 服务端两种都接受):
-    - ``X-MCP-Token: yyyy``  (OpenAgent 推荐形式, 显式)
-    - ``Authorization: Bearer yyyy``  (标准 OAuth 形式, 兜底)
+    支持的 header 写法 (按优先级):
+    - ``X-MCP-Token: yyyy``        OpenAgent 推荐形式, 显式
+    - ``Authorization: Bearer yyyy``  标准 OAuth 形式, 兜底
+    - ``token: yyyy``              飞鹤 traveldev 后端 logonV2 响应头,
+                                   前端透传时也叫这个名 (单 `token` 头),
+                                   是 feihe-travel MCP HTTP 调用的真实 header
 
     返回 ``None`` 时: 当前请求不带 token, 下游走 token-less 路径
     (MCP 工具调用会 401, SKILL.md 错误处理有兜底话术)。
@@ -265,6 +268,12 @@ def _extract_mcp_token(request: Request) -> str | None:
     if auth.lower().startswith("bearer "):
         token = auth[7:].strip() or None
         logger.info("mcp_token_extracted", source="Authorization-Bearer", token_present=bool(token), token_len=len(token) if token else 0)
+        return token
+    # 飞鹤 traveldev 风格: 单 `token` header (跟 logonV2 响应头同名)
+    feihe = request.headers.get("token")
+    if feihe:
+        token = feihe.strip() or None
+        logger.info("mcp_token_extracted", source="token", token_present=bool(token), token_len=len(token) if token else 0)
         return token
     logger.info("mcp_token_extracted", source="none", token_present=False)
     return None

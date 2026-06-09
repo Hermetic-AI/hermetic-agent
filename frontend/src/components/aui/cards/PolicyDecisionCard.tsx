@@ -28,7 +28,7 @@ export function PolicyDecisionCard({ card, suspended, submitted, onSubmit }: Pol
               key={btn.id}
               type="button"
               className={`aui-action aui-action-${styleClass(style)}`}
-              disabled={suspended || submitted}
+              disabled={submitted}
               onClick={() =>
                 onSubmit(
                   {

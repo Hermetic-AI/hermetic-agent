@@ -12,7 +12,7 @@
 // The MCP token (from `VITE_MCP_TOKEN`) is forwarded as `X-MCP-Token` so
 // per-tenant MCP servers can authorise the call.
 
-import { http, ApiError } from './http';
+import { http, ApiError, resolveAuthToken } from './http';
 import { parseSSE } from './sse';
 import { config } from '../config';
 import type { StreamEvent } from '../types';
@@ -180,7 +180,13 @@ function buildHeaders(
   if (payload.scenario) {
     headers['X-Scenario'] = payload.scenario;
   }
-  if (config.mcpToken) {
+  // 运行时 login token 优先, build-time VITE_MCP_TOKEN 兜底.
+  // 同一 header 不重复塞, 后写的覆盖先写的.
+  const runtimeToken = resolveAuthToken();
+  if (runtimeToken) {
+    headers['X-MCP-Token'] = runtimeToken;
+    headers.Authorization = `Bearer ${runtimeToken}`;
+  } else if (config.mcpToken) {
     headers['X-MCP-Token'] = config.mcpToken;
   }
   return headers;

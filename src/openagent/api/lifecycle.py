@@ -2,16 +2,13 @@
 
 from __future__ import annotations
 
-from dataclasses import asdict
-from typing import Any, Iterable
+from collections.abc import Iterable
+from pathlib import Path
+from typing import Any
 
 import structlog
 from sanic import Sanic
 
-from openagent.api.controllers.chat_controller import chat_bp
-from openagent.api.controllers.pool_controller import pool_bp
-from openagent.api.controllers.registry_controller import registry_bp
-from openagent.api.controllers.session_controller import session_bp
 from openagent.mcp.registry import MCPRegistry
 from openagent.providers.agent_bridge import AgentBridge
 from openagent.providers.base import AgentConfig
@@ -19,6 +16,38 @@ from openagent.skills.registry import SkillRegistry
 from openagent.store import SessionRepositoryFactory
 
 logger = structlog.get_logger(__name__)
+
+
+def _skill_paths_with_fallbacks(settings: Any) -> list[str]:
+    """Return configured skill paths plus existing repo/work shared fallbacks."""
+    def _key(path: Path) -> str:
+        try:
+            return str(path.resolve()) if path.exists() else str(path)
+        except OSError:
+            return str(path)
+
+    paths: list[str] = []
+    seen: set[str] = set()
+    for raw in getattr(settings, "skill_paths", None) or []:
+        path = Path(str(raw))
+        key = _key(path)
+        if key not in seen:
+            paths.append(key)
+            seen.add(key)
+    candidates = [
+        Path("src/openagent/.skills"),
+        Path("work/shared/skills"),
+        Path("/app/src/openagent/.skills"),
+        Path("/app/work/shared/skills"),
+    ]
+    for candidate in candidates:
+        if not candidate.exists():
+            continue
+        item = _key(candidate)
+        if item not in seen:
+            paths.append(item)
+            seen.add(item)
+    return paths
 
 
 def _default_agent_configs(settings: Any) -> list[AgentConfig]:
@@ -106,12 +135,13 @@ async def startup(app: Sanic, settings: Any) -> None:
         raise
 
     skill_registry = SkillRegistry()
-    if settings.skill_paths:
-        skill_registry.load_from_paths(*settings.skill_paths)
+    skill_paths = _skill_paths_with_fallbacks(settings)
+    if skill_paths:
+        skill_registry.load_from_paths(*skill_paths)
     logger.info(
         "skills_loaded",
         skills_count=len(skill_registry.list_all()),
-        skill_paths=list(settings.skill_paths or []),
+        skill_paths=skill_paths,
     )
 
     # P0-1: 渐进式 SKILL 加载器. PromptBuilder 持有 FragmentLoader, 由

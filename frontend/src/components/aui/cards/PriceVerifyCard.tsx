@@ -26,7 +26,7 @@ export function PriceVerifyCard({ card, suspended, submitted, onSubmit }: PriceV
           <button
             type="button"
             className="aui-action aui-action-ghost"
-            disabled={suspended || submitted}
+            disabled={submitted}
             onClick={() => onSubmit({ confirmed: false, accept: false }, 'reject')}
           >
             暂不预订
@@ -34,7 +34,7 @@ export function PriceVerifyCard({ card, suspended, submitted, onSubmit }: PriceV
           <button
             type="button"
             className="aui-action aui-action-primary"
-            disabled={suspended || submitted}
+            disabled={submitted}
             onClick={() => onSubmit({ confirmed: true, accept: true }, 'confirm')}
           >
             {overrun ? '确认超额并继续' : '确认价格'}

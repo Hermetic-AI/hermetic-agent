@@ -3,18 +3,10 @@
 直接测 chat_controller / turn_routes 内部函数, 验证 scenario + injection + HITL 串通.
 """
 import asyncio
-import json
-from pathlib import Path
-from typing import Any
-from uuid import uuid4
-
-import pytest
-from sanic import Sanic
 
 from openagent.core.suspendable_scheduler import SuspendableScheduler, UserInput
 from openagent.core.turn_store import InMemoryTurnStore
 from openagent.skill_runtime.manifest import SkillManifest, StateSpec
-
 
 # ---------------------------------------------------------------------------
 # 验证 1: chat_controller 真的用 injection.final_*
@@ -23,9 +15,10 @@ from openagent.skill_runtime.manifest import SkillManifest, StateSpec
 
 def test_chat_uses_injection_final_system_prompt():
     """验证: chat_controller 的 _effective_params 从 injection 取 final_*, 而不是从 body."""
+    from types import SimpleNamespace
+
     from openagent.api.controllers.chat_controller import _effective_params
     from openagent.api.schemas import ChatRequest
-    from types import SimpleNamespace
 
     # 构造 mock injection (有 final_* 字段)
     injection = SimpleNamespace(
@@ -52,10 +45,22 @@ def test_chat_falls_back_to_body_when_no_injection():
     assert params["tools"] == ["t"]
 
 
+def test_scenario_model_reads_resources_model():
+    from types import SimpleNamespace
+
+    from openagent.api.controllers.chat_controller import _scenario_model
+
+    scenario = SimpleNamespace(resources=SimpleNamespace(model="MiniMax-M3"))
+    assert _scenario_model(scenario) == "MiniMax-M3"
+    assert _scenario_model(SimpleNamespace(resources=SimpleNamespace(model=None))) is None
+    assert _scenario_model(None) is None
+
+
 def test_chat_response_includes_scenario_info():
     """_build_chat_response 真的把 scenario / routing 字段塞进 response."""
-    from openagent.api.controllers.chat_controller import _build_chat_response
     from types import SimpleNamespace
+
+    from openagent.api.controllers.chat_controller import _build_chat_response
 
     msg = SimpleNamespace(role="assistant", content="reply")
     result = SimpleNamespace(
@@ -83,8 +88,9 @@ def test_chat_response_includes_scenario_info():
 
 
 def test_build_scenario_dict_with_routing_ctx():
-    from openagent.api.controllers.chat_controller import _build_scenario_dict
     from types import SimpleNamespace
+
+    from openagent.api.controllers.chat_controller import _build_scenario_dict
 
     scenario = SimpleNamespace(name="fb", version="1.0.0", execution=SimpleNamespace(orchestration="hitl"))
     routing_ctx = SimpleNamespace(matched_by="header")
@@ -106,8 +112,8 @@ def test_build_scenario_dict_with_no_scenario():
 
 def test_turn_event_to_sse_all_11_types():
     """_turn_event_to_sse 翻译 11 种 TurnEventType 为 StreamEvent."""
-    from openagent.auip import TurnEvent, TurnEventType
     from openagent.api.controllers.chat_controller import _turn_event_to_sse
+    from openagent.auip import TurnEvent, TurnEventType
 
     samples = [
         (TurnEvent(seq=0, turn_id="t", type=TurnEventType.SESSION,
@@ -138,6 +144,23 @@ def test_turn_event_to_sse_all_11_types():
     for evt, expected_type in samples:
         sse = _turn_event_to_sse(evt)
         assert sse.type == expected_type, f"expected {expected_type}, got {sse.type}"
+        if expected_type == "suspend":
+            assert sse.data["turn_id"] == evt.turn_id
+
+
+def test_fh_domestic_clear_query_bypasses_hitl_placeholder():
+    from types import SimpleNamespace
+
+    from openagent.api.controllers.chat_controller import (
+        _should_bypass_hitl_placeholder,
+    )
+
+    scenario = SimpleNamespace(name="fh_domestic_flight_booking")
+    assert _should_bypass_hitl_placeholder(
+        scenario,
+        "帮我查询明天6.9 从北京到上海的单程机票",
+    )
+    assert not _should_bypass_hitl_placeholder(scenario, "帮我查询北京出发的机票")
 
 
 # ---------------------------------------------------------------------------
@@ -221,6 +244,15 @@ def test_stream_event_scenario_card_state_suspend():
     assert e.data["checkpoint_id"] == "ck1"
 
 
+def test_bridge_session_event_is_private_to_controller():
+    from openagent.api.controllers.chat_controller import _should_skip_bridge_event
+    from openagent.streaming import StreamEvent
+
+    assert _should_skip_bridge_event(StreamEvent.session("ses_1"), "ses_1")
+    assert not _should_skip_bridge_event(StreamEvent.session("ses_2"), "ses_1")
+    assert not _should_skip_bridge_event(StreamEvent.text("hello"), "ses_1")
+
+
 # ---------------------------------------------------------------------------
 # 验证 6: lifecycle 挂的 hitl_factory 真的能工作
 # ---------------------------------------------------------------------------
@@ -228,9 +260,9 @@ def test_stream_event_scenario_card_state_suspend():
 
 def test_lifecycle_hitl_factory_creates_working_scheduler():
     """lifecycle._init_turn_subsystem 里的 hitl_factory 构造的 SuspendableScheduler 真的能跑."""
-    from openagent.skill_runtime.manifest import SkillManifest, StateSpec
     from openagent.core.suspendable_scheduler import SuspendableScheduler
     from openagent.core.turn_store import InMemoryTurnStore
+    from openagent.skill_runtime.manifest import SkillManifest, StateSpec
 
     # 模拟 lifecycle 里的 hitl_factory 内部
     def _default_manifest(scenario):
@@ -268,8 +300,8 @@ def test_lifecycle_hitl_factory_creates_working_scheduler():
 
 def test_six_scenarios_load_route_inject():
     """6 scenario 完整链路: load → route → inject."""
-    from openagent.scenarios import ScenarioRegistry, ScenarioRouter, ScenarioInjector
-    from types import SimpleNamespace
+
+    from openagent.scenarios import ScenarioInjector, ScenarioRegistry, ScenarioRouter
 
     ctx = {
         "WORK_ROOT": "work",

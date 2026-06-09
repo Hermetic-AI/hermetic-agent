@@ -292,9 +292,9 @@ class SuspendableScheduler:
                 "prompt": prompt,
             },
             "fields": [
-                {"id": "departureCity", "label": "Departure city", "type": "text", "required": True},
-                {"id": "arrivalCity", "label": "Arrival city", "type": "text", "required": True},
-                {"id": "departureDate", "label": "Departure date", "type": "date", "required": True},
+                {"id": "departureCity", "label": "出发城市", "type": "text", "required": True},
+                {"id": "arrivalCity", "label": "到达城市", "type": "text", "required": True},
+                {"id": "departureDate", "label": "出发日期", "type": "date", "required": True},
             ],
         }
 __all__ = ["ASK_USER_TOOL", "SuspendPoint", "SuspendableScheduler", "UserInput"]

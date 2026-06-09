@@ -75,12 +75,12 @@ export function FlightResultCard({
                 'select_flight',
               )
             }
-            disabled={Boolean(suspended || submitted)}
+            disabled={Boolean(submitted)}
           />
         ))}
       </div>
 
-      {!suspended && !submitted && plans.length > 0 && (
+      {!submitted && plans.length > 0 && (
         <div className="frc-footer-hint">
           点击「选这班」可直接进入预订流程; 或继续对话调整筛选条件。
         </div>

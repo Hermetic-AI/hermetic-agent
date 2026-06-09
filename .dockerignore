@@ -8,7 +8,7 @@ __pycache__/
 .Python
 build/
 dist/
-*.egg-info/
+*.egg-info/agent_scheduler_hub.egg-info/
 
 # Node (frontend/) — pnpm 路径里带 + 和 @, 触发 docker build context
 # 的特殊字符处理, 必须排除. 另: 前端不进 Hub 镜像.

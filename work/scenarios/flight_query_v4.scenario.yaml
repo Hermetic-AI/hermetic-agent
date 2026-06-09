@@ -53,7 +53,7 @@ execution:
   skills:
     - flight-query-v4                              # 核心层 (必读, 110 行, 3 步固定流程)
     - flight-query-v4.iata_icao_codes              # on-demand: IATA/ICAO 翻译
-  tools: [queryFlightBasic, filterFlightList]      # 来自 MCP server, opencode 启动时加载
+  tools: [ask_user, queryFlightBasic, filterFlightList]   # ask_user=AUIP 卡片; queryFlightBasic/filterFlightList=MCP 工具, opencode 启动时加载
   orchestration: single                            # 单步聊天
 
 # ============================================================

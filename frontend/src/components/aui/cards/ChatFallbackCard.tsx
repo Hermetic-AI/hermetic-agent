@@ -23,7 +23,7 @@ export function ChatFallbackCard({ card, suspended, submitted, onSubmit }: ChatF
         <button
           type="button"
           className="aui-action aui-action-primary"
-          disabled={!text.trim() || suspended || submitted}
+          disabled={!text.trim() || submitted}
           onClick={() => onSubmit({ _text: text.trim() }, 'submit')}
         >
           {submitted ? '已发送' : '发送'}
@@ -36,7 +36,7 @@ export function ChatFallbackCard({ card, suspended, submitted, onSubmit }: ChatF
         value={text}
         onChange={(e) => setText(e.target.value)}
         placeholder="请输入您的回答…"
-        disabled={suspended || submitted}
+        disabled={submitted}
       />
     </CardShell>
   );

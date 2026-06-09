@@ -111,7 +111,7 @@ frontend/src
 
 ```
 VITE_API_BASE_URL=                              # 留空 → 走 /api 代理
-VITE_MCP_TOKEN=u6lnte53n7i1oej1tt5f             # 透传为 X-MCP-Token
+VITE_MCP_TOKEN=a6lo2skom9tb8cfa9bpn             # 透传为 X-MCP-Token
 ```
 
 `vite.config.ts` (已存在) 代理 `/api/*` → `http://localhost:18000`。

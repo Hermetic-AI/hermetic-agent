@@ -21,10 +21,16 @@ Let the OpenCode execution engine convert this to the actual MCP request. Keep t
 
 ## Before Calling MCP
 
-1. Build a normalized plan matching `schemas/booking-plan.schema.json`.
-2. Run `scripts/normalize_request.py` if dates/cabin/time values need normalization.
-3. Run `scripts/stage_guard.py` when current stage is available.
-4. Pass only MCP-supported arguments. Do not include conversational explanations inside `arguments`.
+1. For a clear first search, call `queryFlightBasic` immediately after local
+   date normalization. Do not call helper scripts or other tools first.
+2. Build a normalized plan matching `schemas/booking-plan.schema.json` when the
+   request is not a simple clear first search.
+3. Run `scripts/normalize_request.py` only if dates/cabin/time values need
+   normalization beyond obvious relative dates.
+4. Run `scripts/stage_guard.py` when current stage is available and the next
+   tool is uncertain.
+5. Pass only MCP-supported arguments. Do not include conversational
+   explanations inside `arguments`.
 
 ## After Calling MCP
 

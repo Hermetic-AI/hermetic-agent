@@ -53,10 +53,16 @@ services:
       - AGENT_SCHEDULER_LOG_LEVEL=${AGENT_SCHEDULER_LOG_LEVEL:-INFO}
       - AGENT_SCHEDULER_LOG_FORMAT=${AGENT_SCHEDULER_LOG_FORMAT:-json}
       - AGENT_SCHEDULER_LOG_LLM_PAYLOAD=${AGENT_SCHEDULER_LOG_LLM_PAYLOAD:-true}
+      # ---- 场景资源 (Hub 容器内路径) ----
+      - AGENT_SCHEDULER_WORK_ROOT=/app/work
+      - AGENT_SCHEDULER_SCENARIO_PATHS=["/app/work/scenarios"]
     depends_on:
       opencode-1:
         condition: service_healthy
     networks: [sandbox-net]
+    volumes:
+      # Hub 需要读取场景 YAML、shared docs/skills/mcp 等资源.
+      - ./work:/app/work:ro
     # 开发模式 (挂源码 + 开 Sanic reload) 用 docker-compose.override.yml 覆盖
     # volumes:
     #   - ./:/app
@@ -96,7 +102,7 @@ services:
       - OPENAI_BASE_URL=${OPENAI_BASE_URL:-}
       - FLIGHT_API_KEY=${FLIGHT_API_KEY:-}
       # opencode 工作目录 (host 上 workspace 绝对路径, 容器内同样路径)
-      - WORKSPACE_CWD=${WORKSPACE_HOST_PATH:-/work/tenant-A/project-1}
+      - WORKSPACE_CWD=${WORKSPACE_CONTAINER_PATH:-/work/tenant-A/project-1}
       - OPENCODE_PORT=14096
       - OPENCODE_HOST=0.0.0.0
       - HEALTH_PORT=7777
@@ -104,7 +110,7 @@ services:
     volumes:
       # 主 workspace (rw) — host 绝对路径 bind 到容器同路径
       # agent 看到 /work/tenant-A/project-1, host 上也是这个路径
-      - ${WORKSPACE_HOST_PATH:-./work/tenant-A/project-1}:${WORKSPACE_HOST_PATH:-/work/tenant-A/project-1}
+      - ${WORKSPACE_HOST_PATH:-./work/tenant-A/project-1}:${WORKSPACE_CONTAINER_PATH:-/work/tenant-A/project-1}
       # skill 源 (ro, 中心服务的 skill 目录)
       - ${SKILLS_SHARED_DIR:-./work/shared/skills}:/work/shared/skills:ro
       # policy.json 走镜像 bake (Dockerfile COPY), 不再 bind mount:

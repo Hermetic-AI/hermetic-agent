@@ -1,8 +1,33 @@
 # Progressive Search Workflow
 
 Use for "find flights", "cheapest flight", "morning flight", "direct flight", and similar queries.
+Use native MCP tools only. Authentication is already configured by the runtime;
+do not ask for tokens, mention tokens, call MCP through Bash/curl, or delegate
+flight search to the `task` subagent.
 
-## 1. Gather Minimal Search Inputs
+## 0. Fast Path
+
+If the latest user message already contains departure city, arrival city, and a
+departure date or relative date, call `queryFlightBasic` first. Do not call
+`ask_user`, `question`, `skill`, `glob`, `read`, `grep`, `getDateInfo`,
+`checkProductAccess`, or helper scripts before the first search.
+
+For "帮我查一下北京到上海明天的单程机票" on 2026-06-09, call:
+
+```json
+{"departureCity":"北京","arrivalCity":"上海","departureDate":"2026-06-10"}
+```
+
+Treat cabin class as a result-selection concern unless the native MCP schema
+supports a `cabinClass` argument. Never ask for cabin class before this first
+search.
+
+## 1. Parse And Gather Minimal Search Inputs
+
+First parse the user's message and conversation history. Treat explicit city,
+date, cabin class, passenger, time bucket, airline, price, baggage, meal,
+refund, direct-flight, and policy preference as usable structured facts. Do not
+ask the user to repeat facts that are already present.
 
 Required:
 
@@ -22,14 +47,18 @@ Optional:
 - baggage/meal/refund/policy filters
 - sort preference
 
-Ask only for missing required fields. Normalize with:
+Ask only for missing required fields. If departure city, arrival city, and
+departure date are already known, skip `ask_user` and call `queryFlightBasic`
+directly. Use the helper only when normalization is not obvious from the current
+conversation date:
 
 ```powershell
 python skills\fh-domestic-flight-booking\scripts\normalize_request.py plan.json
 ```
 
 If required fields are missing, call `ask_user` with `card_type=OD_INPUT`.
-Use top-level `fields[]` with ids such as `departureCity`, `arrivalCity`, and
+Use Chinese card title and labels. Put only the missing fields in top-level
+`fields[]`, with ids such as `departureCity`, `arrivalCity`, and
 `departureDate`.
 
 ## 2. Call Search

@@ -38,7 +38,7 @@ export default defineConfig(({ mode }) => {
   return {
     plugins: [react()],
     server: {
-      port: 3000,
+      port: 13000,
       open: true,
       // 长流 SSE 需要更大的 hmr / file-watch buffer
       hmr: {

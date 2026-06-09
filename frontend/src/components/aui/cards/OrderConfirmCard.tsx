@@ -32,7 +32,7 @@ export function OrderConfirmCard({ card, suspended, submitted, onSubmit }: Order
           <button
             type="button"
             className="aui-action aui-action-ghost"
-            disabled={suspended || submitted}
+            disabled={submitted}
             onClick={() => onSubmit({ confirmed: false }, 'cancel')}
           >
             取消
@@ -40,7 +40,7 @@ export function OrderConfirmCard({ card, suspended, submitted, onSubmit }: Order
           <button
             type="button"
             className="aui-action aui-action-primary"
-            disabled={suspended || submitted}
+            disabled={submitted}
             onClick={() => onSubmit({ confirmed: true }, 'submit')}
           >
             确认下单

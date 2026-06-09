@@ -1,7 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { useHealth, useScenarios } from '../../hooks';
 import { friendlyScenarioName, friendlyScenarioDescription, loadUserSnapshot } from '../../lib';
-import type { ScenarioSummary } from '../../types';
 import './Sidebar.css';
 
 type NavItem = {
@@ -41,7 +40,7 @@ export function Sidebar({
   onScenarioChange,
 }: SidebarProps) {
   const { state } = useHealth();
-  const { scenarios } = useScenarios();
+  const { scenarios, loading: scenariosLoading, error: scenariosError } = useScenarios();
   const [open, setOpen] = useState(false);
   const [pendingCount, setPendingCount] = useState(0);
   const [confirmedCount, setConfirmedCount] = useState(0);
@@ -54,9 +53,7 @@ export function Sidebar({
     setConfirmedCount(STATIC_BADGE.confirmed ?? 0);
   }, []);
 
-  const pickable: ScenarioSummary[] = scenarios.filter(
-    (s) => s.enabled !== false,
-  );
+  const pickable = scenarios;
 
   const activeScenarioName = friendlyScenarioName(scenario);
   const activeScenarioDesc = scenario ? friendlyScenarioDescription(scenario) : '由后端按 keyword 推断';
@@ -68,7 +65,7 @@ export function Sidebar({
         <span className="sidebar-tagline">差旅 AI 调度中心</span>
       </div>
 
-      {onScenarioChange && pickable.length > 0 && (
+      {onScenarioChange && (
         <div className={`sidebar-scenario ${open ? 'is-open' : ''}`}>
           <button
             type="button"
@@ -120,6 +117,28 @@ export function Sidebar({
                   </li>
                 );
               })}
+              {scenariosLoading && (
+                <li>
+                  <div className="sidebar-scenario-item is-muted">
+                    <span className="sidebar-scenario-item-name">场景加载中</span>
+                  </div>
+                </li>
+              )}
+              {!scenariosLoading && scenariosError && (
+                <li>
+                  <div className="sidebar-scenario-item is-muted">
+                    <span className="sidebar-scenario-item-name">场景加载失败</span>
+                    <span className="sidebar-scenario-item-hint">{scenariosError}</span>
+                  </div>
+                </li>
+              )}
+              {!scenariosLoading && !scenariosError && pickable.length === 0 && (
+                <li>
+                  <div className="sidebar-scenario-item is-muted">
+                    <span className="sidebar-scenario-item-name">暂无场景</span>
+                  </div>
+                </li>
+              )}
             </ul>
           )}
         </div>

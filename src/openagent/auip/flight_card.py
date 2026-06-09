@@ -36,9 +36,20 @@ def _parse_minutes(duration: str | None) -> int:
     """``"2h20m"`` / ``"1h55m"`` → 175 / 115. 解析失败返 9999 (排到最后)."""
     if not duration:
         return 9999
-    h = re.search(r"(\d+)h", duration)
-    m = re.search(r"(\d+)m", duration)
-    return int(h.group(1)) * 60 + int(m.group(1)) if h or m else 9999
+    text = str(duration).strip()
+    hours = 0
+    minutes = 0
+    h = re.search(r"(\d+)\s*(?:h|小时)", text, re.IGNORECASE)
+    m = re.search(r"(\d+)\s*(?:m|分钟|分)", text, re.IGNORECASE)
+    if h:
+        hours = int(h.group(1))
+    if m:
+        minutes = int(m.group(1))
+    if h or m:
+        return hours * 60 + minutes
+    if text.isdigit():
+        return int(text)
+    return 9999
 
 
 def _aircraft_priority(aircraft: str | None) -> int:
@@ -169,13 +180,22 @@ def maybe_assemble_flight_card(tool_name: str, output: Any) -> Card | None:
     if not plans:
         return None
 
+    first_flight = flight_list[0] if isinstance(flight_list[0], dict) else {}
+    first_legs = first_flight.get("legs") if isinstance(first_flight.get("legs"), list) else []
+    first_leg = first_legs[0] if first_legs and isinstance(first_legs[0], dict) else {}
+    first_dep_date = (
+        first_flight.get("depDate")
+        or str(first_flight.get("outboundDepDate") or "").split(" ")[0]
+        or first_leg.get("depDate")
+        or ""
+    )
     summary = {
         "totalCount": int(data.get("flightCount") or data.get("totalCount") or 0),
         "filteredCount": int(data.get("filteredCount") or len(flight_list)),
         "searchType": data.get("searchType") or "全量查询",
-        "depCity": data.get("depCityName") or "",
-        "arrCity": data.get("arrCityName") or "",
-        "depDate": data.get("depDate") or "",
+        "depCity": data.get("depCityName") or first_flight.get("depCityName") or "",
+        "arrCity": data.get("arrCityName") or first_flight.get("arrCityName") or "",
+        "depDate": data.get("depDate") or first_dep_date,
     }
     return Card(
         card_id=f"card-{uuid.uuid4().hex[:12]}",

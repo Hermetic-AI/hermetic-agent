@@ -57,6 +57,8 @@ _TOOL_PERMISSIONS = {
     "safe": {
         "edit": "deny",
         "bash": "deny",
+        "task": "deny",
+        "todowrite": "deny",
         "webfetch": "deny",
     },
     "standard": {
@@ -143,6 +145,95 @@ def _build_skills_block(skills: list[str], workspace_cwd: str) -> dict:
     return {"skills": {"paths": paths}}
 
 
+def _flight_auth_header_value(header_name: str) -> str:
+    """Return the opencode config value for the flight MCP auth header."""
+    if header_name.lower() == "authorization":
+        prefix = os.environ.get("FLIGHT_API_KEY_AUTH_PREFIX", "Bearer").strip()
+        return f"{prefix} {{env:FLIGHT_API_KEY}}" if prefix else "{env:FLIGHT_API_KEY}"
+    return "{env:FLIGHT_API_KEY}"
+
+
+def _flight_mcp_server_from_env() -> dict | None:
+    """Build the default feihe-travel MCP server.
+
+    Always register the server. Auth is still read through
+    ``{env:FLIGHT_API_KEY}``, but the model must be able to see the native MCP
+    tools before the first per-request token write/reload succeeds.
+    """
+    header_name = os.environ.get("FLIGHT_API_KEY_HEADER", "token").strip() or "token"
+    endpoint = os.environ.get(
+        "FLIGHT_MCP_ENDPOINT",
+        "https://traveldev.feiheair.com/api/mcp",
+    ).strip()
+    return {
+        "type": "remote",
+        "url": endpoint,
+        "headers": {
+            "Accept": "application/json,text/event-stream",
+            header_name: _flight_auth_header_value(header_name),
+        },
+        "oauth": False,
+        "enabled": True,
+        "timeout": int(os.environ.get("FLIGHT_MCP_TIMEOUT_MS", "30000")),
+    }
+
+
+def _normalize_mcp_servers(raw: Any) -> dict:
+    """Normalize project MCP config into opencode's flat v1 ``mcp`` map."""
+    if not isinstance(raw, dict):
+        return {}
+    servers = raw.get("mcpServers") if isinstance(raw.get("mcpServers"), dict) else raw
+    out: dict = {}
+    for name, server in servers.items():
+        if not isinstance(server, dict):
+            continue
+        item = dict(server)
+        if item.get("type") == "http":
+            item["type"] = "remote"
+        if "disabled" in item and "enabled" not in item:
+            item["enabled"] = not bool(item.pop("disabled"))
+        out[str(name)] = item
+    return out
+
+
+def _build_mcp_servers(policy: dict) -> dict:
+    """Merge policy MCP servers with env-driven defaults."""
+    servers = _normalize_mcp_servers(policy.get("mcp_servers", {}))
+    flight = _flight_mcp_server_from_env()
+    if flight:
+        current = servers.get("feihe-travel", {})
+        if isinstance(current, dict):
+            merged = {**flight, **current}
+            merged_headers = {
+                **flight.get("headers", {}),
+                **(current.get("headers", {}) if isinstance(current.get("headers"), dict) else {}),
+            }
+            merged["headers"] = merged_headers
+            if merged.get("type") == "http":
+                merged["type"] = "remote"
+            servers["feihe-travel"] = merged
+        else:
+            servers["feihe-travel"] = flight
+    return servers
+
+
+def _build_tool_output(policy: dict, *, has_mcp_servers: bool) -> dict | None:
+    """Return opencode tool output limits.
+
+    Flight MCP search can return hundreds of KB. If opencode truncates that
+    output, Hub cannot assemble the AUIP FLIGHT_RESULT card from flightList.
+    """
+    raw = policy.get("tool_output")
+    if isinstance(raw, dict):
+        return raw
+    if not has_mcp_servers:
+        return None
+    return {
+        "max_lines": int(os.environ.get("OPENCODE_TOOL_OUTPUT_MAX_LINES", "12000")),
+        "max_bytes": int(os.environ.get("OPENCODE_TOOL_OUTPUT_MAX_BYTES", "1048576")),
+    }
+
+
 def render(policy: dict) -> dict:
     """policy → opencode config dict."""
     agent = policy.get("agent", {})
@@ -178,15 +269,17 @@ def render(policy: dict) -> dict:
         skill_paths = [f"{workspace_cwd}/.skills/{name}" for name in skills]
         cfg["skills"] = {"paths": skill_paths}
 
-    # MCP servers (Phase 1 v3: opencode 启动时加载, 把 LLM 调用 MCP 工具
-    # 当作原生 tool, 不再走 bash+curl). 翻译自 policy["mcp_servers"] 段,
-    # 严格遵循 opencode config schema (type: remote/local + url + headers).
-    mcp_servers = policy.get("mcp_servers", {})
+    # MCP servers: opencode loads these as native tools, so the model calls
+    # queryFlightBasic/filterFlightList directly instead of writing curl.
+    mcp_servers = _build_mcp_servers(policy)
     if mcp_servers:
         cfg["mcp"] = mcp_servers
         logger.info(
             f"mcp_servers_rendered count={len(mcp_servers)} names={list(mcp_servers.keys())}"
         )
+    tool_output = _build_tool_output(policy, has_mcp_servers=bool(mcp_servers))
+    if tool_output:
+        cfg["tool_output"] = tool_output
 
     return cfg
 
@@ -208,11 +301,8 @@ def main() -> int:
     baked = _read_policy(args.policy_baked)
     # 2. 读 runtime overlay (顶, admin API 写的, rw)
     #    args.policy 一般就是 runtime overlay
-    if args.policy == args.policy_baked:
-        # admin server 可能传同一个 baked 路径 (没 runtime 时), 别 merge 自己
-        runtime = {}
-    else:
-        runtime = _read_policy(args.policy)
+    # admin server 可能传同一个 baked 路径 (没 runtime 时), 别 merge 自己
+    runtime = {} if args.policy == args.policy_baked else _read_policy(args.policy)
     # 3. 合并: baked 上叠 runtime (deep merge, 浅覆深)
     policy = _deep_merge(baked, runtime)
     if runtime:

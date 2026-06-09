@@ -1,12 +1,14 @@
 {
   "mcpServers": {
     "feihe-travel": {
-      "type": "http",
+      "type": "remote",
       "url": "https://traveldev.feiheair.com/api/mcp",
       "headers": {
-        "Accept": "application/json,text/event-stream"
+        "Accept": "application/json,text/event-stream",
+        "token": "{env:FLIGHT_API_KEY}"
       },
-      "disabled": false
+      "oauth": false,
+      "enabled": true
     }
   }
 }

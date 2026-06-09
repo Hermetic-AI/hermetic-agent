@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-import asyncio
-from typing import Any, AsyncIterator
+from collections.abc import AsyncIterator
+from typing import Any
 
 import structlog
 
@@ -12,7 +12,6 @@ from openagent.providers.base import (
     AgentProvider,
     ChatMessage,
     ChatResult,
-    SDKType,
     SessionInfo,
 )
 from openagent.providers.claude_code_adapter import ClaudeCodeAdapter
@@ -110,6 +109,18 @@ class AgentBridge:
         """
         return self._agents[agent_name]
 
+    def _resolve_tools_for_adapter(self, tools: list[str] | None) -> list[Any] | None:
+        """Resolve Hub tools while preserving native provider tool names."""
+        if not tools:
+            return None
+        if not self._mcp_registry:
+            return list(tools)
+        resolved = {tool.name: tool for tool in self._mcp_registry.list_all_by_names(tools)}
+        out: list[Any] = []
+        for name in tools:
+            out.append(resolved.get(name, name))
+        return out
+
     def list_agents(self) -> dict[str, AgentConfig]:
         """返回当前注册的所有 Agent 配置的浅拷贝。
 
@@ -142,9 +153,10 @@ class AgentBridge:
         """
         adapter = self.get_provider(agent_name)
         config = self._agents[agent_name]
+        effective_model = model or config.default_model
         session_info = await adapter.create_session(
             agent_name=agent_name,
-            model=model,
+            model=effective_model,
             system_prompt=system_prompt,
             base_url=config.base_url,
             directory=directory,
@@ -207,6 +219,8 @@ class AgentBridge:
         if not agent_name:
             logger.error("chat_session_not_found", session_id=session_id)
             raise ValueError(f"Session '{session_id}' not found")
+        config = self._agents[agent_name]
+        effective_model = model or config.default_model
 
         logger.info(
             "chat_start",
@@ -273,19 +287,19 @@ class AgentBridge:
                 skill_count=len(skills),
             )
 
-        # Resolve tools to MCPTool objects
-        mcp_tools = None
-        if tools and self._mcp_registry:
-            mcp_tools = self._mcp_registry.list_all_by_names(tools)
+        # Resolve Hub-registered tools to MCPTool objects, but preserve native
+        # provider tool names such as feihe-travel_queryFlightBasic. Those
+        # tools are loaded by opencode's own MCP config, not Hub's MCPRegistry.
+        adapter_tools = self._resolve_tools_for_adapter(tools)
 
         adapter = self.get_provider(agent_name)
         try:
             result = await adapter.chat(
                 session_id=session_id,
                 messages=messages,
-                model=model,
+                model=effective_model,
                 system_prompt=system_prompt,
-                tools=mcp_tools,
+                tools=adapter_tools,
                 timeout=timeout,
                 stream=stream,
                 mcp_token=mcp_token,

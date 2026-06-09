@@ -12,6 +12,7 @@
 from __future__ import annotations
 
 import json
+from copy import deepcopy
 
 from openagent.auip.cards import CARD_TYPES_SET, Card, CardType
 from openagent.auip.flight_card import maybe_assemble_flight_card
@@ -197,3 +198,37 @@ def test_summary_fields() -> None:
     assert s["depDate"] == "2026-06-06"
     assert s["searchType"] == "经济舱最低价"
     assert s["filteredCount"] == 3
+
+
+def test_summary_falls_back_to_first_flight_fields() -> None:
+    output = deepcopy(_SAMPLE_MCP_OUTPUT)
+    output.pop("depCityName")
+    output.pop("arrCityName")
+    output.pop("depDate")
+    output["flightList"][0]["outboundDepDate"] = "2026-06-06 08:00"
+
+    card = maybe_assemble_flight_card(
+        "feihe-travel_queryFlightBasic",
+        output,
+    )
+
+    assert card is not None
+    assert "北京" in card.title
+    assert "上海" in card.title
+    assert card.body["summary"]["depDate"] == "2026-06-06"
+
+
+def test_partial_duration_formats_do_not_break_fastest_plan() -> None:
+    output = deepcopy(_SAMPLE_MCP_OUTPUT)
+    output["flightList"][0]["totalDuration"] = "2h"
+    output["flightList"][1]["totalDuration"] = "55m"
+    output["flightList"][2]["totalDuration"] = "125"
+
+    card = maybe_assemble_flight_card(
+        "feihe-travel_queryFlightBasic",
+        json.dumps(output, ensure_ascii=False),
+    )
+
+    assert card is not None
+    fastest = next(plan for plan in card.body["plans"] if plan["id"] == "fastest")
+    assert fastest["flights"][0]["flightNo"] == "MU5102"

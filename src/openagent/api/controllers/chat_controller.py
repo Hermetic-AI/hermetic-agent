@@ -20,6 +20,8 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import os
+import re
 import traceback as _tb
 from typing import Any
 from uuid import uuid4
@@ -108,7 +110,6 @@ def _resolve_injection(request: Request, body: ChatRequest) -> tuple:
         return None, None, _scenario_error_response(scen_err)
     scenario = getattr(request.ctx, "scenario", None)
     injection = getattr(request.ctx, "injection", None)
-    routing_ctx = getattr(request.ctx, "routing_context", None)
     if scenario is None or injection is None:
         # middleware 没跑 (例如直接 unit test), 兜底用 raw body
         logger.warning(
@@ -134,7 +135,50 @@ def _effective_params(body: ChatRequest, injection: Any) -> dict:
     }
 
 
-async def _resolve_or_create_session(bridge, body: ChatRequest) -> tuple:
+def _scenario_model(scenario: Any) -> str | None:
+    resources = getattr(scenario, "resources", None)
+    model = getattr(resources, "model", None) if resources is not None else None
+    return str(model).strip() or None if model else None
+
+
+def _extract_effective_mcp_token(request: Request) -> str | None:
+    """Read request token, falling back to the container-level flight token."""
+    token = _extract_mcp_token(request)
+    if token:
+        return token
+    env_token = os.environ.get("FLIGHT_API_KEY", "").strip() or None
+    if env_token:
+        logger.info(
+            "mcp_token_extracted",
+            source="FLIGHT_API_KEY",
+            token_present=True,
+            token_len=len(env_token),
+        )
+    return env_token
+
+
+_FH_ROUTE_RE = re.compile(
+    r"(?:从\s*)?[\u4e00-\u9fffA-Za-z]{2,12}\s*(?:到|至|飞)\s*[\u4e00-\u9fffA-Za-z]{2,12}"
+)
+_FH_DATE_RE = re.compile(
+    r"(今天|明天|后天|大后天|周[一二三四五六日天]|星期[一二三四五六日天]|"
+    r"\d{4}[-/.年]\d{1,2}[-/.月]\d{1,2}日?|\d{1,2}[-/.月]\d{1,2}日?)"
+)
+
+
+def _should_bypass_hitl_placeholder(scenario: Any, message: str) -> bool:
+    """Avoid the P5 HITL placeholder when FH search inputs are already clear."""
+    if getattr(scenario, "name", "") != "fh_domestic_flight_booking":
+        return False
+    return bool(_FH_ROUTE_RE.search(message) and _FH_DATE_RE.search(message))
+
+
+async def _resolve_or_create_session(
+    bridge,
+    body: ChatRequest,
+    *,
+    model_hint: str | None = None,
+) -> tuple:
     if body.session_id:
         agent_name = bridge.get_agent_for_session(body.session_id)
         if agent_name is None:
@@ -155,7 +199,10 @@ async def _resolve_or_create_session(bridge, body: ChatRequest) -> tuple:
         agent_name = next(iter(agents))
 
     try:
-        session_info = await bridge.create_session(agent_name=agent_name)
+        session_info = await bridge.create_session(
+            agent_name=agent_name,
+            model=body.model or model_hint,
+        )
     except Exception as e:
         return None, None, _format_500(e, "chat_create_session_failed")
     return session_info.session_id, agent_name, None
@@ -247,6 +294,7 @@ def _turn_event_to_sse(turn_event) -> StreamEvent:
             card=d.get("card", {}),
             correlation_id=d.get("correlation_id", ""),
             input_schema=d.get("input_schema", {}),
+            turn_id=turn_event.turn_id,
         )
     if t == TurnEventType.RESUME:
         return StreamEvent.resume(checkpoint_id=d.get("checkpoint_id", ""))
@@ -359,6 +407,11 @@ async def _stream_with_ask_user_intercept(iterator, *, allowed_card_types: set |
 
 # 心跳间隔 (秒): 15s 是 Vite / Nginx / Cloud LB / 浏览器侧 SSE 实现都接受的
 # "足够安静 + 不被杀" 的平衡点. 短了浪费带宽, 长了对端可能误判 idle.
+def _should_skip_bridge_event(event: StreamEvent, session_id: str) -> bool:
+    """Return True for adapter-private events already emitted by controller."""
+    return event.type == "session" and event.data.get("session_id") == session_id
+
+
 DEFAULT_SSE_KEEPALIVE_INTERVAL = 15.0
 
 
@@ -433,6 +486,7 @@ async def chat(request: Request) -> JSONResponse:
         return err
     scenario_dict = _build_scenario_dict(scenario, getattr(request.ctx, "routing_context", None))
     params = _effective_params(json_body, injection)
+    model_hint = _scenario_model(scenario)
 
     logger.info(
         "chat_request",
@@ -449,19 +503,23 @@ async def chat(request: Request) -> JSONResponse:
     )
 
     try:
-        session_id, agent_name, err = await _resolve_or_create_session(bridge, json_body)
+        session_id, agent_name, err = await _resolve_or_create_session(
+            bridge,
+            json_body,
+            model_hint=model_hint,
+        )
         if err is not None:
             return err
 
         result = await bridge.chat(
             session_id=session_id,
             messages=[ChatMessage(role="user", content=json_body.message)],
-            model=json_body.model,
+            model=json_body.model or model_hint,
             system_prompt=params["system_prompt"],
             skills=params["skills"],
             tools=params["tools"],
             timeout=json_body.timeout,
-            mcp_token=_extract_mcp_token(request),
+            mcp_token=_extract_effective_mcp_token(request),
         )
         logger.info(
             "chat_completed",
@@ -551,10 +609,19 @@ async def chat_stream(request: Request) -> ResponseStream:
             await resp.eof()
         return ResponseStream(_err, status=400, content_type="text/event-stream")
     params = _effective_params(json_body, injection)
+    model_hint = _scenario_model(scenario)
     routing_ctx = getattr(request.ctx, "routing_context", None)
     matched_by = routing_ctx.matched_by if routing_ctx else "default"
 
-    is_hitl = scenario is not None and scenario.execution.orchestration == "hitl"
+    bypass_hitl = (
+        scenario is not None
+        and _should_bypass_hitl_placeholder(scenario, json_body.message)
+    )
+    is_hitl = (
+        scenario is not None
+        and scenario.execution.orchestration == "hitl"
+        and not bypass_hitl
+    )
     turn_store = getattr(request.app.ctx, "turn_store", None)
     hitl_factory = getattr(request.app.ctx, "hitl_factory", None)
 
@@ -563,6 +630,7 @@ async def chat_stream(request: Request) -> ResponseStream:
         scenario=scenario.name if scenario else None,
         matched_by=matched_by,
         is_hitl=is_hitl,
+        bypass_hitl=bypass_hitl,
         session_id=json_body.session_id,
         agent_name=json_body.agent_name,
         model=json_body.model,
@@ -570,8 +638,13 @@ async def chat_stream(request: Request) -> ResponseStream:
     )
 
     async def streaming_fn(resp: ResponseStream) -> None:
+        done_written = False
         try:
-            session_id, agent_name, err = await _resolve_or_create_session(bridge, json_body)
+            session_id, agent_name, err = await _resolve_or_create_session(
+                bridge,
+                json_body,
+                model_hint=model_hint,
+            )
             if err is not None:
                 await resp.write(
                     StreamEvent.error(
@@ -595,8 +668,7 @@ async def chat_stream(request: Request) -> ResponseStream:
 
             # 3. Branch: HITL goes through SuspendableScheduler
             if is_hitl and turn_store is not None and hitl_factory is not None:
-                turn_id = f"turn-{uuid4().hex[:12]}"
-                await turn_store.create_turn(
+                turn_id = await turn_store.create_turn(
                     session_id=session_id,
                     skill_name=scenario.name,
                     skill_version=scenario.version,
@@ -645,12 +717,12 @@ async def chat_stream(request: Request) -> ResponseStream:
             iterator = await bridge.chat(
                 session_id=session_id,
                 messages=[ChatMessage(role="user", content=json_body.message)],
-                model=json_body.model,
+                model=json_body.model or model_hint,
                 system_prompt=params["system_prompt"],
                 skills=params["skills"],
                 tools=scenario_tools,
                 timeout=json_body.timeout,
-                mcp_token=_extract_mcp_token(request),
+                mcp_token=_extract_effective_mcp_token(request),
                 stream=True,
                 prompt_builder=prompt_builder,
                 scenario=scenario,
@@ -667,8 +739,14 @@ async def chat_stream(request: Request) -> ResponseStream:
                     # 心跳注释行, 直接写裸字符串 (SSE 协议)
                     await resp.write(chunk)
                 else:
+                    if _should_skip_bridge_event(chunk, session_id):
+                        continue
+                    if chunk.type == "done":
+                        done_written = True
                     await resp.write(chunk.to_sse())
-            await resp.write(StreamEvent.done().to_sse())
+            if not done_written:
+                await resp.write(StreamEvent.done().to_sse())
+                done_written = True
             logger.info(
                 "chat_stream_completed",
                 scenario=scenario.name if scenario else None,
@@ -698,7 +776,9 @@ async def chat_stream(request: Request) -> ResponseStream:
             # P8: 写一个 done 哨兵让前端知道流真的结束 (之前是 silent close).
             # 但只在非错误路径下写 — 错误路径已经发了 error 事件.
             with contextlib.suppress(Exception):
-                await resp.write(StreamEvent.done().to_sse())
+                if not done_written:
+                    await resp.write(StreamEvent.done().to_sse())
+                    done_written = True
             with contextlib.suppress(Exception):
                 await resp.eof()
 

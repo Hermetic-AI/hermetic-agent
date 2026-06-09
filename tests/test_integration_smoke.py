@@ -13,13 +13,12 @@
 
 from __future__ import annotations
 
-import asyncio
 import tempfile
 from pathlib import Path
 
 import pytest
 
-from openagent.auip import Card, CardType, TurnEvent, TurnEventType
+from openagent.auip import CardType, TurnEventType
 from openagent.auip.events import assert_seq_increasing
 from openagent.core.suspendable_scheduler import (
     SuspendableScheduler,
@@ -31,18 +30,8 @@ from openagent.scenarios import (
     ScenarioRegistry,
     ScenarioRouter,
 )
-from openagent.scenarios.config import (
-    A2UIConfig,
-    ExecutionConfig,
-    ProgressiveSkillConfig,
-    RoutingConfig,
-    ScenarioConfig,
-    SecurityConfig,
-    WorkspaceConfig,
-)
 from openagent.scenarios.errors import RoutingFailedError
 from openagent.scenarios.injector import InMemoryAuditLogger
-from openagent.scenarios.loader import load_scenario
 from openagent.skill_runtime import (
     FragmentLoader,
     PromptBuilder,
@@ -51,7 +40,6 @@ from openagent.skill_runtime import (
     StateSpec,
 )
 from openagent.skill_runtime.errors import (
-    FragmentNotFoundError,
     SkillBudgetExceeded,
     StateGuardViolation,
 )
@@ -111,10 +99,10 @@ def test_all_seven_scenarios_load(scenarios):
     expected = {
         "_generic", "_default", "flight_booking", "flight_query",
         "expense_audit", "customer_service", "code_review",
-        "flight_query_v3", "flight_query_v4",
+        "flight_query_v3", "flight_query_v4", "fh_domestic_flight_booking",
     }
     assert expected.issubset(names), f"missing: {expected - names}"
-    assert len(reg.list_enabled()) == 9
+    assert len(reg.list_enabled()) == 10
 
 
 def test_flight_booking_is_hitl(scenarios):

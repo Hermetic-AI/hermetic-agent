@@ -15,22 +15,21 @@
 """
 from __future__ import annotations
 
+import contextlib
 import time
 from typing import Any
 
 import structlog
+from pydantic import BaseModel, Field
 from sanic import Blueprint
 from sanic.request import Request
 from sanic.response import JSONResponse
 from sanic.response.types import ResponseStream
-from pydantic import BaseModel, Field
-
 from sanic_ext import openapi as sanic_openapi
 
 from openagent.auip import TurnEvent, TurnEventType
 from openagent.auip.errors import TurnNotFound
 from openagent.core.suspendable_scheduler import UserInput
-from openagent.core.turn_store import InMemoryTurnStore
 from openagent.streaming import StreamEvent
 
 logger = structlog.get_logger(__name__)
@@ -97,6 +96,7 @@ def _turn_event_to_sse(turn_evt: TurnEvent) -> StreamEvent:
             card=d.get("card", {}),
             correlation_id=d.get("correlation_id", ""),
             input_schema=d.get("input_schema", {}),
+            turn_id=turn_evt.turn_id,
         )
     if t == TurnEventType.RESUME:
         return StreamEvent.resume(checkpoint_id=d.get("checkpoint_id", ""))
@@ -228,17 +228,13 @@ async def resume_turn(request: Request, turn_id: str) -> ResponseStream:
                 )
         except Exception as e:
             logger.error("resume_turn_failed", turn_id=turn_id, error=str(e))
-            try:
+            with contextlib.suppress(Exception):
                 await resp.write(
                     StreamEvent.error(message=f"{type(e).__name__}: {e}").to_sse()
                 )
-            except Exception:
-                pass
         finally:
-            try:
+            with contextlib.suppress(Exception):
                 await resp.eof()
-            except Exception:
-                pass
 
     return ResponseStream(
         _stream,
@@ -313,17 +309,13 @@ async def get_turn_events(request: Request, turn_id: str) -> ResponseStream:
             await resp.write(StreamEvent.done(reason="replay_end", replayed=len(events)).to_sse())
         except Exception as e:
             logger.error("get_turn_events_failed", turn_id=turn_id, error=str(e))
-            try:
+            with contextlib.suppress(Exception):
                 await resp.write(
                     StreamEvent.error(message=f"{type(e).__name__}: {e}").to_sse()
                 )
-            except Exception:
-                pass
         finally:
-            try:
+            with contextlib.suppress(Exception):
                 await resp.eof()
-            except Exception:
-                pass
 
     return ResponseStream(
         _stream,

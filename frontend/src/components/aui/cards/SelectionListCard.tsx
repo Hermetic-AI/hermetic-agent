@@ -33,7 +33,7 @@ export function SelectionListCard({
   };
 
   const handleConfirm = () => {
-    if (!picked || busy || suspended || submitted) return;
+    if (!picked || busy || submitted) return;
     setBusy(true);
     onSubmit({ selectedId: picked, [resolveIdKey(card.card_type)]: picked }, 'select');
   };
@@ -47,7 +47,7 @@ export function SelectionListCard({
         <button
           type="button"
           className="aui-action aui-action-primary"
-          disabled={!picked || suspended || submitted}
+          disabled={!picked || submitted}
           onClick={handleConfirm}
         >
           {submitted ? '已选择' : '确认选择'}
@@ -72,7 +72,7 @@ export function SelectionListCard({
               key={id || idx}
               className={`aui-list-item ${selected ? 'selected' : ''}`}
               onClick={() => setPicked(id)}
-              disabled={suspended || submitted}
+              disabled={submitted}
             >
               <div className="aui-list-item-main">
                 <div className="aui-list-item-title">{title}</div>

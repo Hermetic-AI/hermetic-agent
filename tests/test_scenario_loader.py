@@ -301,7 +301,7 @@ def test_reload_work_scenarios_loads_all() -> None:
     loaded = reg.reload(scenarios_dir)
 
     names = sorted(cfg.name for cfg in loaded)
-    assert len(loaded) == 9, f"expected 9 scenarios, got {len(loaded)}: {names}"
+    assert len(loaded) == 10, f"expected 10 scenarios, got {len(loaded)}: {names}"
     # 关键: 软警告 (readonly_dir / cards_dir 缺失) 不该阻断任何场景
     for expected in (
         "_default",

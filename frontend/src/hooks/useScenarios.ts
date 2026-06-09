@@ -12,7 +12,7 @@ export interface UseScenariosResult {
   reload: () => void;
 }
 
-export function useScenarios(tag?: string): UseScenariosResult {
+export function useScenarios(): UseScenariosResult {
   const [scenarios, setScenarios] = useState<ScenarioSummary[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -23,7 +23,7 @@ export function useScenarios(tag?: string): UseScenariosResult {
     setLoading(true);
     setError(null);
     scenarioService
-      .list(tag, ctrl.signal)
+      .list(ctrl.signal)
       .then((res) => {
         setScenarios(res.scenarios ?? []);
       })
@@ -34,7 +34,7 @@ export function useScenarios(tag?: string): UseScenariosResult {
       })
       .finally(() => setLoading(false));
     return () => ctrl.abort();
-  }, [tag, tick]);
+  }, [tick]);
 
   const reload = useCallback(() => setTick((n) => n + 1), []);
 
