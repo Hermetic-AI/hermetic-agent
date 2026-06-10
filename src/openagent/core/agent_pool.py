@@ -68,10 +68,27 @@ class AgentPoolService:
     """
 
     def __init__(self) -> None:
-        """初始化实例池，状态为空。"""
+        """初始化实例池，状态为空。
+
+        健康检查间隔 / HTTP 探活超时 / 连续失败阈值 全部从 settings 读
+        (health_check_interval / agent_pool_health_check_http_timeout /
+        max_retries). 保留字面量默认作为兜底 (settings 不可用场景).
+        """
         self._instances: dict[str, AgentInstance] = {}
         self._lock = asyncio.Lock()
-        self._health_check_interval: float = 30.0  # 秒
+        try:
+            from openagent.config.settings import get_settings
+
+            s = get_settings()
+            self._health_check_interval: float = float(s.health_check_interval)
+            self._health_check_http_timeout: float = float(
+                s.agent_pool_health_check_http_timeout
+            )
+            self._max_health_check_failures: int = int(s.max_retries)
+        except Exception:  # pragma: no cover
+            self._health_check_interval = 30.0
+            self._health_check_http_timeout = 5.0
+            self._max_health_check_failures = 3
         self._health_check_task: Optional[asyncio.Task[None]] = None
 
     @property
@@ -214,7 +231,9 @@ class AgentPoolService:
         instance = self._instances[name]
 
         try:
-            async with httpx.AsyncClient(timeout=5.0) as client:
+            async with httpx.AsyncClient(
+                timeout=self._health_check_http_timeout
+            ) as client:
                 response = await client.get(f"{instance.base_url}/health")
 
                 if response.status_code == 200:
@@ -243,7 +262,7 @@ class AgentPoolService:
                 failures=instance.health_check_failures,
             )
 
-            if instance.health_check_failures >= 3:
+            if instance.health_check_failures >= self._max_health_check_failures:
                 self.mark_offline(name)
 
             return False

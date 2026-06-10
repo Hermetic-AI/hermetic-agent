@@ -53,6 +53,11 @@ services:
       - AGENT_SCHEDULER_LOG_LEVEL=${AGENT_SCHEDULER_LOG_LEVEL:-INFO}
       - AGENT_SCHEDULER_LOG_FORMAT=${AGENT_SCHEDULER_LOG_FORMAT:-json}
       - AGENT_SCHEDULER_LOG_LLM_PAYLOAD=${AGENT_SCHEDULER_LOG_LLM_PAYLOAD:-true}
+      # 容器 stdout 不是 TTY, Rich 默认关色。强制开 ANSI 颜色, 让
+      # ``docker logs -f`` 在 iTerm2 / VSCode / Windows Terminal 等
+      # 智能终端里直接渲染颜色。json 模式 renderer 不输出 ANSI, 无害。
+      - FORCE_COLOR=1
+      - TERM=xterm-256color
       # ---- 场景资源 (Hub 容器内路径) ----
       - AGENT_SCHEDULER_WORK_ROOT=/app/work
       - AGENT_SCHEDULER_SCENARIO_PATHS=["/app/work/scenarios"]
@@ -95,6 +100,11 @@ services:
       # opencode 自己的运行时目录 (config.json + session-db 等)
       - /root/.config:size=50m,mode=0755
       - /root/.local:size=100m,mode=0755
+      # opencode plugin 系统 init 时拉 npm 包, 写 ~/.npm 缓存; 同时
+      # 拉 models.dev 模型索引, 写 ~/.cache/opencode/. 容器根 FS 是
+      # read_only, 这两个目录必须进 tmpfs, 否则 EROFS 拉崩 plugin install.
+      - /root/.npm:size=200m,mode=0755
+      - /root/.cache:size=200m,mode=0755
     # LLM 凭证 (跟 hub 同源, opencode serve 容器内自己读)
     environment:
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}

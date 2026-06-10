@@ -92,7 +92,7 @@ resource_dirs:
 
 resources:
   agent: null
-  model: null
+  model: MiniMax-M2.7-highspeed
   timeout: 30
 
 metadata:

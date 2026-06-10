@@ -47,5 +47,5 @@ workspace:
 a2ui: { enabled: false, protocol: auip }
 progressive_skill: { strategy: none, budget_tokens: 500, budget_policy: error, initial_skills: [], load_on_state: {} }
 resource_dirs: { prompts: ${WORK_SHARED}/prompts/_generic, skills: ${WORK_SHARED}/skills/_generic }
-resources: { agent: null, model: null, timeout: 30 }
+resources: { agent: null, model: MiniMax-M2.7-highspeed, timeout: 30 }
 metadata: { cost_center: O-0001, ab_group: control, sla_tier: bronze, is_fallback: true }

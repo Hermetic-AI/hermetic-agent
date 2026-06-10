@@ -19,7 +19,11 @@ logger = structlog.get_logger(__name__)
 
 
 def _skill_paths_with_fallbacks(settings: Any) -> list[str]:
-    """Return configured skill paths plus existing repo/work shared fallbacks."""
+    """Return configured skill paths plus existing repo/work shared fallbacks.
+
+    Fallback 候选目录全部从 ``settings.skill_path_fallbacks`` 读
+    (默认 4 个: 源码内 / work_shared / 容器内 / 容器内 work_shared).
+    """
     def _key(path: Path) -> str:
         try:
             return str(path.resolve()) if path.exists() else str(path)
@@ -35,10 +39,8 @@ def _skill_paths_with_fallbacks(settings: Any) -> list[str]:
             paths.append(key)
             seen.add(key)
     candidates = [
-        Path("src/openagent/.skills"),
-        Path("work/shared/skills"),
-        Path("/app/src/openagent/.skills"),
-        Path("/app/work/shared/skills"),
+        Path(c)
+        for c in (getattr(settings, "skill_path_fallbacks", None) or [])
     ]
     for candidate in candidates:
         if not candidate.exists():
@@ -89,7 +91,7 @@ def _default_agent_configs(settings: Any) -> list[AgentConfig]:
 def _auto_register_defaults(bridge: AgentBridge, settings: Any) -> list[str]:
     """如果 ``auto_register_default_agents`` 开启则注册默认 Agent；返回已注册名。"""
     if not getattr(settings, "auto_register_default_agents", False):
-        logger.info("auto_register_skipped", reason="setting_disabled")
+        logger.debug("auto_register_skipped", reason="setting_disabled")
         return []
     configs = _default_agent_configs(settings)
     registered: list[str] = []
@@ -99,13 +101,13 @@ def _auto_register_defaults(bridge: AgentBridge, settings: Any) -> list[str]:
             registered.append(cfg.name)
         except ValueError as e:
             # Already-registered is the expected "idempotent" case during a
-            # hot reload. Log at info, not error.
-            logger.info(
+            # hot reload. Log at debug, not error.
+            logger.debug(
                 "default_agent_already_registered",
                 name=cfg.name,
                 detail=str(e),
             )
-    logger.info(
+    logger.debug(
         "default_agents_auto_registered",
         count=len(registered),
         names=registered,
@@ -120,7 +122,7 @@ async def startup(app: Sanic, settings: Any) -> None:
         app: 当前 Sanic 应用。
         settings: 应用配置。
     """
-    logger.info("application_startup", host=settings.host, port=settings.port)
+    logger.debug("application_startup", host=settings.host, port=settings.port)
 
     try:
         storage = SessionRepositoryFactory.create(settings.storage_backend, settings=settings)
@@ -138,7 +140,7 @@ async def startup(app: Sanic, settings: Any) -> None:
     skill_paths = _skill_paths_with_fallbacks(settings)
     if skill_paths:
         skill_registry.load_from_paths(*skill_paths)
-    logger.info(
+    logger.debug(
         "skills_loaded",
         skills_count=len(skill_registry.list_all()),
         skill_paths=skill_paths,
@@ -150,9 +152,13 @@ async def startup(app: Sanic, settings: Any) -> None:
     # progressive_skill 配了等于没配).
     from openagent.skill_runtime import FragmentLoader, PromptBuilder
 
-    fragment_loader = FragmentLoader(skill_registry, budget=4000, policy="error")
+    fragment_loader = FragmentLoader(
+        skill_registry,
+        budget=settings.fragment_budget_tokens,
+        policy=settings.fragment_budget_policy,
+    )
     prompt_builder = PromptBuilder(fragment_loader=fragment_loader)
-    logger.info(
+    logger.debug(
         "prompt_builder_ready",
         budget_tokens=fragment_loader.budget,
         policy=fragment_loader.policy,
@@ -163,7 +169,7 @@ async def startup(app: Sanic, settings: Any) -> None:
     except Exception as e:
         logger.error("mcp_registry_init_failed", error=str(e))
         raise
-    logger.info("mcp_registry_ready", tools_count=len(mcp_registry.list_all()))
+    logger.debug("mcp_registry_ready", tools_count=len(mcp_registry.list_all()))
 
     # AUIP: 注册合成工具 ask_user (LLM 用它推 UI 卡片, 框架在 stream 中拦截)
     # 必须放在 mcp_registry 初始化之后, 所有 scenario 共享
@@ -200,7 +206,7 @@ async def startup(app: Sanic, settings: Any) -> None:
         ),
         input_schema=ask_user_schema,
     )
-    logger.info("auip_ask_user_tool_registered", card_types=sorted(CARD_TYPES_SET))
+    logger.debug("auip_ask_user_tool_registered", card_types=sorted(CARD_TYPES_SET))
 
     # P0-2: read_skill 工具 — 渐进式 SKILL 加载的 LLM 入口.
     # Anthropic Skills 协议要求 LLM 能"按需加载"子 skill 片段, 否则
@@ -297,18 +303,18 @@ async def startup(app: Sanic, settings: Any) -> None:
         input_schema=read_skill_schema,
         handler=_read_skill_handler,
     )
-    logger.info("read_skill_tool_registered", skills_count=len(skill_registry.list_all()))
+    logger.debug("read_skill_tool_registered", skills_count=len(skill_registry.list_all()))
 
     bridge = AgentBridge(
         skill_registry=skill_registry,
         mcp_registry=mcp_registry,
         storage=storage,
     )
-    logger.info("agent_bridge_ready")
+    logger.debug("agent_bridge_ready")
 
     # 启动时自动注册默认 Agent（除非显式关闭）
     _auto_register_defaults(bridge, settings)
-    logger.info(
+    logger.debug(
         "bridge_agents_after_startup",
         count=len(bridge.list_agents()),
         names=list(bridge.list_agents().keys()),
@@ -323,7 +329,7 @@ async def startup(app: Sanic, settings: Any) -> None:
         mcp_registry=mcp_registry,
         default_timeout=settings.default_timeout,
     )
-    logger.info("scheduler_ready", default_timeout=settings.default_timeout)
+    logger.debug("scheduler_ready", default_timeout=settings.default_timeout)
 
     app.ctx.storage = storage
     app.ctx.bridge = bridge
@@ -342,9 +348,9 @@ async def startup(app: Sanic, settings: Any) -> None:
 
     logger.info(
         "application_ready",
-        skills_count=len(skill_registry.list_all()),
-        tools_count=len(mcp_registry.list_all()),
-        agents_count=len(bridge.list_agents()),
+        skills=len(skill_registry.list_all()),
+        tools=len(mcp_registry.list_all()),
+        agents=len(bridge.list_agents()),
     )
 
 
@@ -386,7 +392,7 @@ def _init_turn_subsystem(app: Sanic, settings: Any) -> None:
 
     store = InMemoryTurnStore()
     app.ctx.turn_store = store
-    logger.info("turn_store_ready", backend="in_memory")
+    logger.debug("turn_store_ready", backend="in_memory")
 
     # F4: 默认 manifest - 允许所有状态调所有工具, 让 P5 mock 模式可工作
     # 真实生产中应从 scenario.a2ui.state_machine 加载
@@ -417,4 +423,4 @@ def _init_turn_subsystem(app: Sanic, settings: Any) -> None:
         )
 
     app.ctx.hitl_factory = _hitl_factory
-    logger.info("hitl_factory_ready", strategy="default_manifest_all_states_all_tools")
+    logger.debug("hitl_factory_ready", strategy="default_manifest_all_states_all_tools")

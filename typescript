@@ -1,0 +1,7 @@
+脚本启动于 2026-06-10 14:07:20+08:00 [COMMAND="/usr/bin/python3 -c " from openagent.config.settings import Settings from openagent.api.logging_setup import configure_logging configure_logging(Settings(log_format='console', log_level='INFO')) import structlog structlog.get_logger('x').info('chat_completed', session_id='s1', duration_ms=42) "" <not executed on terminal>]
+Traceback (most recent call last):
+  File [35m"<string>"[0m, line [35m2[0m, in [35m<module>[0m
+    from openagent.config.settings import Settings
+[1;35mModuleNotFoundError[0m: [35mNo module named 'openagent'[0m
+
+脚本完成于 2026-06-10 14:07:20+08:00 [COMMAND_EXIT_CODE="1"]

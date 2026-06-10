@@ -93,6 +93,12 @@ class SandboxSpec:
     """启动一个沙箱节点需要的规格.
 
     跟 agent-sandbox-overview.md §1.4 / 设计 §3.1 对齐. Phase 1 只用最小集.
+
+    所有 *_port / *_limit / network 默认值都从 settings 读
+    (sandbox_network / sandbox_mem_limit / sandbox_cpu_limit /
+    sandbox_pids_limit / sandbox_health_port / sandbox_opencode_port).
+    这里保留 dataclass 字段级默认值 (字面量) 作为**兜底**, 让 dataclass
+    实例化在 settings 不可用时仍工作.
     """
 
     image: str  # e.g. "opencode-sandbox:dev"
@@ -108,6 +114,30 @@ class SandboxSpec:
     opencode_port: int = 14096
     # env 透传 (LLM key 之类). 不写日志, 不进返回值.
     env: dict[str, str] = field(default_factory=dict)
+
+
+def _sandbox_settings() -> tuple[str, str, float, int, int, int, float, int] | None:
+    """从 settings 读 sandbox 默认值, 失败返回 None.
+
+    返回 (network, mem_limit, cpu_limit, pids_limit, health_port,
+    opencode_port, health_check_timeout, health_check_retries).
+    """
+    try:
+        from openagent.config.settings import get_settings
+
+        s = get_settings()
+        return (
+            s.sandbox_network,
+            s.sandbox_mem_limit,
+            s.sandbox_cpu_limit,
+            s.sandbox_pids_limit,
+            s.sandbox_health_port,
+            s.sandbox_opencode_port,
+            s.sandbox_health_check_timeout,
+            s.sandbox_health_check_retries,
+        )
+    except Exception:  # pragma: no cover
+        return None
 
 
 @dataclass
@@ -145,19 +175,45 @@ class SandboxRuntime:
     """Sandbox 运行时 (Phase 1 单机版).
 
     包装 docker CLI 调用. 不持久化, 不并发, 适合 Hub 启动时 init.
+
+    DOCKER_BIN / HEALTH_CHECK_TIMEOUT / HEALTH_CHECK_RETRIES / 默认 network
+    全部从 settings 读 (docker_bin / sandbox_health_check_timeout /
+    sandbox_health_check_retries / sandbox_network). 类属性保留作为兜底.
     """
 
-    DOCKER_BIN: str = "docker"  # 可被环境变量覆盖
-    HEALTH_CHECK_TIMEOUT: float = 2.0  # 单次 /healthz 超时
-    HEALTH_CHECK_RETRIES: int = 3  # 连续失败 N 次 → unhealthy
+    DOCKER_BIN_FALLBACK: str = "docker"
+    HEALTH_CHECK_TIMEOUT_FALLBACK: float = 2.0
+    HEALTH_CHECK_RETRIES_FALLBACK: int = 3
+
+    # 向后兼容: 老代码 ``SandboxRuntime.DOCKER_BIN`` 仍可用 (兜底值).
+    DOCKER_BIN: str = DOCKER_BIN_FALLBACK
+    HEALTH_CHECK_TIMEOUT: float = HEALTH_CHECK_TIMEOUT_FALLBACK
+    HEALTH_CHECK_RETRIES: int = HEALTH_CHECK_RETRIES_FALLBACK
 
     def __init__(
         self,
         docker_bin: str | None = None,
-        network: str = "openagent-sandbox-net",
+        network: str | None = None,
     ) -> None:
-        self._docker_bin = docker_bin or os.environ.get("DOCKER_BIN", self.DOCKER_BIN)
-        self._network = network
+        sb = _sandbox_settings()
+        if docker_bin is not None:
+            self._docker_bin = docker_bin
+        else:
+            env_override = os.environ.get("DOCKER_BIN")
+            if env_override:
+                self._docker_bin = env_override
+            else:
+                try:
+                    from openagent.config.settings import get_settings
+                    self._docker_bin = get_settings().docker_bin
+                except Exception:  # pragma: no cover
+                    self._docker_bin = self.DOCKER_BIN_FALLBACK
+        if network is not None:
+            self._network = network
+        else:
+            self._network = (
+                sb[0] if sb is not None else "openagent-sandbox-net"
+            )
         if not shutil.which(self._docker_bin):
             raise DockerNotFound(
                 f"docker CLI not found: {self._docker_bin!r}. "
@@ -262,12 +318,17 @@ class SandboxRuntime:
         if node.container_state != ContainerState.RUNNING or not node.container_id:
             node.agent_state = AgentState.STOPPED
             return False
+        # 单次 /healthz 超时 (秒). 优先 settings, 兜底类常量.
+        sb = _sandbox_settings()
+        hc_timeout = (
+            sb[6] if sb is not None else self.HEALTH_CHECK_TIMEOUT_FALLBACK
+        )
         cmd = [
             self._docker_bin, "exec", node.container_id,
-            "curl", "-fsS", "--max-time", str(int(self.HEALTH_CHECK_TIMEOUT)),
+            "curl", "-fsS", "--max-time", str(int(hc_timeout)),
             f"http://127.0.0.1:{_node_health_port(node)}/healthz",
         ]
-        _, stderr, rc = await self._run(cmd, timeout=self.HEALTH_CHECK_TIMEOUT + 2)
+        _, stderr, rc = await self._run(cmd, timeout=hc_timeout + 2)
         ok = rc == 0
         node.last_health_check_at = time.time()
         node.last_health_check_ok = ok
@@ -332,11 +393,19 @@ class SandboxRuntime:
 
 
 def _node_health_port(node: OpencodeNode) -> int:
-    """从 health_url 解析端口. 走 http://host:port/healthz."""
+    """从 health_url 解析端口. 走 http://host:port/healthz.
+
+    port 缺失时从 settings.sandbox_health_port 读, 兜底 7777.
+    """
     from urllib.parse import urlparse
 
     p = urlparse(node.health_url)
-    return p.port or 7777
+    if p.port is not None:
+        return p.port
+    sb = _sandbox_settings()
+    if sb is not None:
+        return sb[4]
+    return 7777
 
 
 __all__ = [

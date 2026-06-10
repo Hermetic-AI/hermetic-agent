@@ -225,7 +225,7 @@ resource_dirs:
 
 resources:
   agent: opencode-default
-  model: MiniMax-M3
+  model: MiniMax-M2.7-highspeed
   timeout: 300
 
 metadata:

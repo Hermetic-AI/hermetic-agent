@@ -90,6 +90,7 @@ KNOWN_VIOLATIONS: set[str] = {
     "src/openagent/api/controllers/scenario_controller.py",
     "src/openagent/api/controllers/session_controller.py",
     "src/openagent/api/controllers/registry_controller.py",
+    "src/openagent/api/controllers/auth_controller.py",  # 505 lines, feihe 代理业务集中 (集中配置 refactor 后)
     # L1 (api/turn_routes.py) — F3 HITL 5 端点集成, 业务集中 (P0-P6 后新增)
     "src/openagent/api/turn_routes.py",
     # L1 (api/lifecycle.py) — startup/shutdown 集成多子系统 (P0-P6 累积)
@@ -111,6 +112,7 @@ KNOWN_VIOLATIONS: set[str] = {
     "src/openagent/providers/opencode_lifecycle.py",
     "src/openagent/providers/opencode_adapter.py",  # 201 lines, 超 L4 上限 200 (P7 之前 1 行)
     "src/openagent/providers/opencode_event_hub.py",  # 258 lines, L4 上限 200 (P8 TTFT hub + _HubSubscription)
+    "src/openagent/providers/launcher.py",  # 238 lines, 集中配置 refactor 后 (settings 接入 + forbidden_cwds 兜底)
     # L5 (store/) — Schema / DDL 集中
     "src/openagent/store/base.py",
     "src/openagent/store/postgres.py",

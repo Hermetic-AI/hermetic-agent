@@ -113,12 +113,18 @@ def _feihe_timeout() -> float:
 
 
 def _feihe_origin_header() -> dict[str, str]:
-    """feihe 后端要求 Origin / Referer 跟 crmdev 域一致. 实际我们是从
+    """feihe 后端要求 Origin / Referer 跟 Origin 域一致. 实际我们是从
     Hub 服务端调, 没有真正的 browser origin, 但 feihe 检查不严,
-    给它写 crmdev 域兜住 (跟抓包时浏览器发的对齐)."""
+    给它写 Origin 域兜住 (跟抓包时浏览器发的对齐). Origin 域从
+    settings.feihe_origin_url 读 (默认 https://crmdev.feiheair.com)."""
+    try:
+        from openagent.config.settings import get_settings
+        origin = get_settings().feihe_origin_url.rstrip("/")
+    except Exception:  # pragma: no cover
+        origin = "https://crmdev.feiheair.com"
     return {
-        "Origin": "https://crmdev.feiheair.com",
-        "Referer": "https://crmdev.feiheair.com/",
+        "Origin": origin,
+        "Referer": f"{origin}/",
         "Accept": "application/json, text/plain, */*",
     }
 

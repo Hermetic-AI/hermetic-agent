@@ -262,20 +262,20 @@ def _extract_mcp_token(request: Request) -> str | None:
     direct = request.headers.get("X-MCP-Token")
     if direct:
         token = direct.strip() or None
-        logger.info("mcp_token_extracted", source="X-MCP-Token", token_present=bool(token), token_len=len(token) if token else 0)
+        logger.debug("mcp_token_extracted", source="X-MCP-Token", token_present=bool(token), token_len=len(token) if token else 0)
         return token
     auth = request.headers.get("Authorization", "")
     if auth.lower().startswith("bearer "):
         token = auth[7:].strip() or None
-        logger.info("mcp_token_extracted", source="Authorization-Bearer", token_present=bool(token), token_len=len(token) if token else 0)
+        logger.debug("mcp_token_extracted", source="Authorization-Bearer", token_present=bool(token), token_len=len(token) if token else 0)
         return token
     # 飞鹤 traveldev 风格: 单 `token` header (跟 logonV2 响应头同名)
     feihe = request.headers.get("token")
     if feihe:
         token = feihe.strip() or None
-        logger.info("mcp_token_extracted", source="token", token_present=bool(token), token_len=len(token) if token else 0)
+        logger.debug("mcp_token_extracted", source="token", token_present=bool(token), token_len=len(token) if token else 0)
         return token
-    logger.info("mcp_token_extracted", source="none", token_present=False)
+    logger.debug("mcp_token_extracted", source="none", token_present=False)
     return None
 
 

@@ -107,6 +107,34 @@ def _resolve_provider(model_string: str) -> tuple[str, str]:
     return model_string, model_string
 
 
+# minimax 上游当前已知的 model 列表 — 当 policy.agent.models 没显式列时
+# 兜底使用. 升级 / 新增 model 时改这里 (或 policy.agent.models 覆盖).
+# 包含所有已部署的型号, 即便 policy 里 main model 只用 M2.7-highspeed, 也
+# 把 M3 / M2 等列上 — 避免客户端发"M3"过来时 opencode 报 Unknown.
+MINIMAX_KNOWN_MODELS = (
+    "MiniMax-M2.7-highspeed",
+    "MiniMax-M3",
+)
+
+
+def _resolve_known_models(agent: dict, *, default_model_id: str) -> list[str]:
+    """Return model ids to register in ``provider.<p>.models``.
+
+    优先级:
+    1. ``agent.models`` 显式列表 (policy 可完全控制)
+    2. ``MINIMAX_KNOWN_MODELS`` 兜底
+    3. 至少包含 ``default_model_id`` (policy.agent.model)
+    """
+    raw = agent.get("models")
+    if isinstance(raw, list) and raw:
+        models = [str(m).strip() for m in raw if str(m).strip()]
+    else:
+        models = list(MINIMAX_KNOWN_MODELS)
+    if default_model_id and default_model_id not in models:
+        models.append(default_model_id)
+    return models
+
+
 def _build_provider_block(policy: dict) -> dict:
     """从 env 构造 provider 配置 (OpenAI 兼容 + Anthropic).
 
@@ -249,8 +277,23 @@ def render(policy: dict) -> dict:
     if model_string:
         provider, model_id = _resolve_provider(model_string)
         cfg["model"] = f"{provider}/{model_id}" if "/" not in model_string else model_string
-        # 同时设 provider + model (opencode 两种格式都支持)
-        cfg["provider"] = {provider: {"models": {model_id: {"name": model_id}}}}
+        # opencode 1.16.2 在没列出 model 时会硬抛 ProviderModelNotFoundError
+        # (suggestions: []), 即便 OPENAI_BASE_URL 上游其实认 model. 因此我们
+        # 把 policy.agent.models (或 MINIMAX_KNOWN_MODELS 兜底列表) 写进
+        # provider.<provider>.models, 告诉 opencode "这些 model 我都认识".
+        # 上游模型升级时, 改 MINIMAX_KNOWN_MODELS / policy.agent.models 即可.
+        known_models = _resolve_known_models(agent, default_model_id=model_id)
+        cfg["provider"] = {provider: {"models": {m: {"name": m} for m in known_models}}}
+
+    # small_model: opencode 内置的 "title generator" / 轻量子任务 (例如
+    # 给新 session 起标题) 默认 fallback 到一个"它认为便宜"的模型,
+    # 在我们这里就是 gpt-5-nano (hardcoded fallback), minimax API 不识别
+    # → 500 拉崩整个 chat 流 (opencode POST /session/{id}/message 返 500).
+    # 显式把 small_model 设成 main model 同一型号, 避免 fallback.
+    # policy 里 agent.small_model 不存在时默认走 main model.
+    small_model_string = agent.get("small_model") or model_string
+    if small_model_string:
+        cfg["small_model"] = small_model_string
 
     # env-based provider 配置 (key, baseURL) — 浅更新会盖掉上面设的 models 块,
     # 这里 deep merge: 把 options 合并进已有 provider, models 保留.

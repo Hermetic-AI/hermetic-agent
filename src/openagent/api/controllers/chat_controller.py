@@ -142,15 +142,24 @@ def _scenario_model(scenario: Any) -> str | None:
 
 
 def _extract_effective_mcp_token(request: Request) -> str | None:
-    """Read request token, falling back to the container-level flight token."""
+    """Read request token, falling back to the container-level flight token.
+
+    fallback env var 名从 settings.flight_mcp_token_env 读 (默认
+    "FLIGHT_API_KEY"), 跟 docker/render_config.py 保持一致.
+    """
     token = _extract_mcp_token(request)
     if token:
         return token
-    env_token = os.environ.get("FLIGHT_API_KEY", "").strip() or None
+    try:
+        from openagent.config.settings import get_settings
+        env_name = get_settings().flight_mcp_token_env
+    except Exception:  # pragma: no cover
+        env_name = "FLIGHT_API_KEY"
+    env_token = os.environ.get(env_name, "").strip() or None
     if env_token:
-        logger.info(
+        logger.debug(
             "mcp_token_extracted",
-            source="FLIGHT_API_KEY",
+            source=env_name,
             token_present=True,
             token_len=len(env_token),
         )
@@ -415,10 +424,19 @@ def _should_skip_bridge_event(event: StreamEvent, session_id: str) -> bool:
 DEFAULT_SSE_KEEPALIVE_INTERVAL = 15.0
 
 
+def _sse_keepalive_interval() -> float:
+    """SSE 心跳间隔 (秒). 优先 settings.sse_keepalive_interval, 兜底模块常量."""
+    try:
+        from openagent.config.settings import get_settings
+        return float(get_settings().sse_keepalive_interval)
+    except Exception:  # pragma: no cover
+        return DEFAULT_SSE_KEEPALIVE_INTERVAL
+
+
 async def _stream_with_keepalive(
     iterator,
     *,
-    keepalive_interval: float = DEFAULT_SSE_KEEPALIVE_INTERVAL,
+    keepalive_interval: float | None = None,
 ):
     """SSE 心跳包装 — 在业务事件空闲时插入 SSE 注释行, 防止中间代理断连.
 
@@ -434,6 +452,8 @@ async def _stream_with_keepalive(
     loop = asyncio.get_event_loop()
     last_yield = loop.time()
     keepalive_text = ": keepalive\n\n"
+    if keepalive_interval is None:
+        keepalive_interval = _sse_keepalive_interval()
     async for event in iterator:
         yield event
         if event.type in ("done", "error"):
@@ -734,16 +754,31 @@ async def chat_stream(request: Request) -> ResponseStream:
             intercepted = _stream_with_ask_user_intercept(
                 iterator, allowed_card_types=card_schemas,
             )
-            async for chunk in _stream_with_keepalive(intercepted):
-                if isinstance(chunk, str):
-                    # 心跳注释行, 直接写裸字符串 (SSE 协议)
-                    await resp.write(chunk)
-                else:
-                    if _should_skip_bridge_event(chunk, session_id):
-                        continue
-                    if chunk.type == "done":
-                        done_written = True
-                    await resp.write(chunk.to_sse())
+            keepalived = _stream_with_keepalive(intercepted)
+            try:
+                async for chunk in keepalived:
+                    if isinstance(chunk, str):
+                        # 心跳注释行, 直接写裸字符串 (SSE 协议)
+                        await resp.write(chunk)
+                    else:
+                        if _should_skip_bridge_event(chunk, session_id):
+                            continue
+                        if chunk.type == "done":
+                            done_written = True
+                        await resp.write(chunk.to_sse())
+            except GeneratorExit:
+                # Sanic 取消这个 coroutine 时, async for 走 GeneratorExit 路径。
+                # 显式 aclose 底层 async generator, 让它走自己的 finally 收尾
+                # (cancel chat_task / 释放 hub 订阅), 避免下层 generator 在
+                # 处理 GeneratorExit 时被上层冒出的新异常 (例如 HTTPStatusError)
+                # 顶掉, 触发 "async generator ignored GeneratorExit"。
+                with contextlib.suppress(Exception):
+                    await keepalived.aclose()
+                with contextlib.suppress(Exception):
+                    await intercepted.aclose()
+                with contextlib.suppress(Exception):
+                    await iterator.aclose()
+                raise
             if not done_written:
                 await resp.write(StreamEvent.done().to_sse())
                 done_written = True

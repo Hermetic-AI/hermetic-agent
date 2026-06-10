@@ -5,6 +5,7 @@ Heavy lifting lives in:
   * `api.readiness` — /ready probe
   * `api.schemas`  — Pydantic request/response models
   * `api.controllers.*` — per-resource Blueprints
+  * `api.logging_setup` — structlog + Rich 配置
 """
 
 from __future__ import annotations
@@ -25,6 +26,7 @@ from openagent.api.controllers.scenario_controller import scenario_bp
 from openagent.api.controllers.session_controller import session_bp
 from openagent.api.controllers.todo_controller import todo_bp
 from openagent.api.lifecycle import shutdown, startup
+from openagent.api.logging_setup import configure_logging
 from openagent.api.readiness import build_ready_response
 from openagent.api.turn_routes import turn_bp
 from openagent.config.settings import Settings, get_settings
@@ -38,55 +40,12 @@ operation = sanic_openapi.operation
 
 
 def _configure_logging(settings: Settings) -> None:
-    """根据 settings 配置 structlog (JSON 或控制台渲染)。
+    """薄壳: 委托给 ``openagent.api.logging_setup.configure_logging``。
 
-    三个连环坑一次性治:
-
-    1. ``LoggerFactory()`` 把日志转给 stdlib logger, 但 stdlib root 默认
-       无 handler → 日志被静默丢弃。这里强制装一个 ``StreamHandler``。
-    2. ``Settings.__init__`` 会在 ``get_settings()`` 时就触发 structlog
-       logger (``storage_backend_registered``), 比本函数跑得还早; 一旦
-       ``cache_logger_on_first_use=True``, 后续 ``structlog.configure``
-       改的处理器全失效 → 先 ``structlog.reset_defaults()`` 抹掉旧 cache。
-    3. stdlib root 默认 level=WARNING, INFO 全被过滤 → 按 settings 设。
+    保留这个函数是为了不让外部 import 站点失效; 实际配置逻辑在
+    ``logging_setup`` 模块里, 加 Rich 主题 / 字段过滤都在那里。
     """
-    import logging
-    import sys
-
-    log_level = getattr(logging, settings.log_level.upper(), logging.INFO)
-
-    root = logging.getLogger()
-    for h in list(root.handlers):
-        root.removeHandler(h)
-    handler = logging.StreamHandler(sys.stdout)
-    handler.setLevel(log_level)
-    handler.setFormatter(logging.Formatter("%(message)s"))
-    root.addHandler(handler)
-    root.setLevel(log_level)
-
-    # structlog 25.x 没有 force= 参数, 用 reset_defaults() 清掉旧 cache.
-    structlog.reset_defaults()
-    structlog.configure(
-        processors=[
-            structlog.stdlib.filter_by_level,
-            structlog.stdlib.add_logger_name,
-            structlog.stdlib.add_log_level,
-            structlog.stdlib.PositionalArgumentsFormatter(),
-            structlog.processors.TimeStamper(fmt="iso"),
-            structlog.processors.StackInfoRenderer(),
-            structlog.processors.format_exc_info,
-            structlog.processors.UnicodeDecoder(),
-            # ensure_ascii=False 让中文等内容在 JSON 日志里直接以 UTF-8 字符出现，
-            # 而不是 查询... 这种 escape —— 终端、ELK、grep 中文都更友好。
-            structlog.processors.JSONRenderer(ensure_ascii=False)
-            if settings.log_format == "json"
-            else structlog.dev.ConsoleRenderer(),
-        ],
-        wrapper_class=structlog.stdlib.BoundLogger,
-        context_class=dict,
-        logger_factory=structlog.stdlib.LoggerFactory(),
-        cache_logger_on_first_use=True,
-    )
+    configure_logging(settings)
 
 
 def _install_error_handler(app: Sanic) -> None:
@@ -163,46 +122,43 @@ def create_app(settings: Settings | None = None) -> Sanic:
     """
     if settings is None:
         settings = get_settings()
-    logger.info("application_create_start", app_name="agent-scheduler-hub")
     _configure_logging(settings)
+    logger.debug("application_create_start", app_name="agent-scheduler-hub")
 
     app = Sanic("agent-scheduler-hub")
     app.config.FALLBACK_ERROR_FORMAT = "json"
     app.config.DEBUG = settings.debug
 
-    # P8: SSE 长连接超时 (P0 流式断流修复)
+    # P8: SSE 长连接超时 (P0 流式断流修复) — 全部从 settings 读
     # ------------------------------------------------------------------
     # Sanic 默认 10s RequestTimeout / 5s KEEP_ALIVE, 任何 < 1min 的 LLM
-    # 调用都会被打断. 这里统一抬到 10min, 让 chat/stream 和 turn/resume
+    # 调用都会被打断. settings.* 已抬到 10min, 让 chat/stream 和 turn/resume
     # 端点能撑过长 LLM 思考 + 多步工具调用.
     #
     # 这些是**上限**而不是**真实等待时间**: 业务流自然结束
     # (LLM done / 客户端断开) 会立即释放资源, 不会浪费.
     # ------------------------------------------------------------------
-    app.config.REQUEST_TIMEOUT = 600       # 10 min 接受完整请求体
-    app.config.REQUEST_MAX_SIZE = 50_000_000  # 50MB, 容纳大 system_prompt
-    app.config.KEEP_ALIVE_TIMEOUT = 120    # 2 min keep-alive 探活
-    app.config.KEEP_ALIVE = True           # 启用 HTTP/1.1 keep-alive
-    app.config.WEBSOCKET_PING_TIMEOUT = 60  # WebSocket ping 间隔 (后用)
-    app.config.WEBSOCKET_PONG_TIMEOUT = 60  # WebSocket pong 超时
-    logger.info(
+    app.config.REQUEST_TIMEOUT = settings.sanic_request_timeout
+    app.config.REQUEST_MAX_SIZE = settings.sanic_request_max_size
+    app.config.KEEP_ALIVE_TIMEOUT = settings.sanic_keep_alive_timeout
+    app.config.KEEP_ALIVE = True
+    app.config.WEBSOCKET_PING_TIMEOUT = settings.sanic_websocket_ping_timeout
+    app.config.WEBSOCKET_PONG_TIMEOUT = settings.sanic_websocket_pong_timeout
+    logger.debug(
         "sanic_timeouts_configured",
-        request_timeout=600,
-        keep_alive_timeout=120,
-        max_request_size=50_000_000,
+        request_timeout=settings.sanic_request_timeout,
+        keep_alive_timeout=settings.sanic_keep_alive_timeout,
+        max_request_size=settings.sanic_request_max_size,
     )
 
     CORS(app, resources={r"/*": {"origins": settings.cors_origins}}, automatic_options=True)
 
-    app.config.API_TITLE = "Agent Scheduler Hub"
-    app.config.API_VERSION = "0.1.0"
-    app.config.API_DESCRIPTION = (
-        "OpenCode Agent Scheduler Hub — 统一调度 OpenCode / Claude Code Agent 的 REST API。\n\n"
-        "支持会话管理、SSE 流式聊天、Skill 注册、MCP 工具管理、Agent Pool 注册。"
-    )
+    app.config.API_TITLE = settings.app_title
+    app.config.API_VERSION = settings.app_version
+    app.config.API_DESCRIPTION = settings.app_description
     app.config.API_TERMS_OF_SERVICE = ""
-    app.config.API_CONTACT_EMAIL = "dev@openagent.local"
-    app.config.API_LICENSE_NAME = "MIT"
+    app.config.API_CONTACT_EMAIL = settings.app_contact_email
+    app.config.API_LICENSE_NAME = settings.app_license_name
 
     # Mount per-resource controllers.
     app.blueprint(chat_bp)
@@ -259,5 +215,5 @@ def create_app(settings: Settings | None = None) -> Sanic:
         """Sanic 停止前钩子：委托给 lifecycle.shutdown。"""
         await shutdown(app)
 
-    logger.info("application_create_completed", app_name="agent-scheduler-hub")
+    logger.debug("application_create_completed", app_name="agent-scheduler-hub")
     return app

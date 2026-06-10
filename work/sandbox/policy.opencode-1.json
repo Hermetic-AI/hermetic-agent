@@ -4,7 +4,8 @@
   "scenario": "_default",
   "agent": {
     "name": "opencode",
-    "model": "openai/MiniMax-M2.7-highspeed"
+    "model": "openai/MiniMax-M2.7-highspeed",
+    "small_model": "openai/MiniMax-M2.7-highspeed"
   },
   "skills": [],
   "workspace_mode": "direct",

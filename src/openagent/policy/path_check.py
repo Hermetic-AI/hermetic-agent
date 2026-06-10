@@ -6,6 +6,9 @@
   3. workspace_dirs    — 用户配置的工作区（白名单前缀）
 
 判断顺序: BLOCKED_PATTERNS > deny_dirs > workspace_dirs.
+
+BLOCKED_PATTERNS 从 ``settings.path_blocked_patterns`` 读, 保留模块级
+``BLOCKED_PATTERNS_FALLBACK`` 作为兜底 (settings 不可用场景).
 """
 
 from __future__ import annotations
@@ -17,7 +20,7 @@ from pathlib import Path
 
 # 这些模式**永远**不允许, 跟用户配置无关.
 # 用 POSIX-style 路径模式（forward slashes）匹配, Windows 上也用 posixpath.
-BLOCKED_PATTERNS: list[str] = [
+BLOCKED_PATTERNS_FALLBACK: list[str] = [
     "**/.env",
     "**/.env.*",
     "**/id_rsa",
@@ -32,6 +35,21 @@ BLOCKED_PATTERNS: list[str] = [
     "**/secrets/**",
     "**/credentials/**",
 ]
+
+
+def _blocked_patterns() -> list[str]:
+    """从 settings 读 blocked patterns. 失败时返回模块常量."""
+    try:
+        from openagent.config.settings import get_settings
+
+        return list(get_settings().path_blocked_patterns)
+    except Exception:  # pragma: no cover
+        return list(BLOCKED_PATTERNS_FALLBACK)
+
+
+# 向后兼容: 老代码 ``from ... import BLOCKED_PATTERNS`` 仍能工作
+# (拿到的是兜底值). 真正校验走 ``_blocked_patterns()``.
+BLOCKED_PATTERNS: list[str] = list(BLOCKED_PATTERNS_FALLBACK)
 
 
 def _to_posix(p: str) -> str:
@@ -60,7 +78,7 @@ def is_blocked(path: str) -> bool:
     posix = _to_posix(path)
     # 拿 basename 和完整路径都试一下
     basename = posix.rsplit("/", 1)[-1]
-    for pattern in BLOCKED_PATTERNS:
+    for pattern in _blocked_patterns():
         if fnmatch.fnmatch(posix, pattern):
             return True
         if fnmatch.fnmatch(basename, pattern):

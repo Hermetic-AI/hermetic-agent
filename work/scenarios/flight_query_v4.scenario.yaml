@@ -146,7 +146,7 @@ resource_dirs:
 # ============================================================
 resources:
   agent: opencode-default
-  model: MiniMax-M3
+  model: MiniMax-M2.7-highspeed
   timeout: 90                                       # v3 是 120, v4 因为更快, 砍 25%
 
 # ============================================================

@@ -39,17 +39,27 @@ def find_project_root() -> Path:
 
 
 def _build_placeholder_ctx(settings: Any) -> dict[str, str]:
-    """构造 Scenario YAML 占位符解析所需的 ctx."""
+    """构造 Scenario YAML 占位符解析所需的 ctx.
+
+    PROJECT_DIR 兜底路径从 ``settings.project_dir_fallback`` 读
+    (默认 ``work/tenants/tenant-A/projects/project-1``, 跟 §4.1 一致).
+    相对路径以 work_root 为基准; 绝对路径直接用.
+    """
     project_root = find_project_root()
     work_root_rel = getattr(settings, "work_root", "work")
     work_root = project_root / work_root_rel
+    project_dir_fallback = getattr(
+        settings, "project_dir_fallback", "tenants/tenant-A/projects/project-1"
+    )
+    fallback_path = Path(project_dir_fallback)
+    project_dir = (
+        fallback_path if fallback_path.is_absolute() else work_root / fallback_path
+    )
     return {
         "WORK_ROOT": str(work_root),
         "WORK_SHARED": str(work_root / "shared"),
         # PROJECT_DIR 兜底: 第一个 tenant 工程的根 (与 §4.1 一致)
-        "PROJECT_DIR": str(
-            work_root / "tenants" / "tenant-A" / "projects" / "project-1"
-        ),
+        "PROJECT_DIR": str(project_dir),
     }
 
 

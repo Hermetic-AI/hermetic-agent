@@ -470,7 +470,7 @@ export function useChatStream(options: UseChatStreamOptions = {}): UseChatStream
         const cardView: CardView = {
           card_id: data.card_id,
           card_type: data.card_type,
-          card: data.card,
+          card: { ...data.card, card_type: data.card_type, card_id: data.card_id },
           correlation_id: data.correlation_id,
           at: new Date().toISOString(),
         };

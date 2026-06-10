@@ -68,7 +68,39 @@ _FLIGHT_TOKEN_LAST_WRITTEN: dict[str, str] = {}
 # 保持一致.
 FLIGHT_MCP_TOKEN_ENV = "FLIGHT_API_KEY"
 # Admin server 监听端口 (跟 docker/admin_server.py / docker-compose.yml 一致)
-OPENCODE_ADMIN_PORT = 7778
+# 历史硬编码: 7778. 现在从 settings.opencode_admin_port 读, 保留模块级常量
+# 作为兜底 (settings import 失败 / 单测不传 settings 的场景).
+OPENCODE_ADMIN_PORT_FALLBACK = 7778
+
+
+def _settings():
+    """懒加载 settings, 避免顶层 import 触发 .env 解析副作用."""
+    try:
+        from openagent.config.settings import get_settings
+        return get_settings()
+    except Exception:  # pragma: no cover
+        return None
+
+
+def _opencode_admin_port() -> int:
+    """OpenCode admin server 端口. 优先 settings, 兜底模块常量."""
+    s = _settings()
+    if s is not None:
+        return int(s.opencode_admin_port)
+    return OPENCODE_ADMIN_PORT_FALLBACK
+
+
+def _flight_mcp_token_env() -> str:
+    """feihe-travel MCP token env 名. 优先 settings, 兜底模块常量."""
+    s = _settings()
+    if s is not None:
+        return str(s.flight_mcp_token_env)
+    return FLIGHT_MCP_TOKEN_ENV
+
+
+# 向后兼容: 旧代码 ``OPENCODE_ADMIN_PORT`` / ``FLIGHT_MCP_TOKEN_ENV`` 直接
+# 引用模块名的也工作. 优先用上面的 _opencode_admin_port() / _flight_mcp_token_env().
+OPENCODE_ADMIN_PORT = OPENCODE_ADMIN_PORT_FALLBACK
 
 
 def _is_transient_opencode_error(exc: BaseException) -> bool:
@@ -94,11 +126,30 @@ def _is_transient_opencode_error(exc: BaseException) -> bool:
 async def _wait_opencode_health(
     base_url: str,
     *,
-    timeout_seconds: float = 8.0,
-    interval_seconds: float = 0.25,
+    timeout_seconds: float | None = None,
+    interval_seconds: float | None = None,
     client: httpx.AsyncClient | None = None,
 ) -> bool:
-    """Wait until opencode serve is ready after admin reload."""
+    """Wait until opencode serve is ready after admin reload.
+
+    ``timeout_seconds`` / ``interval_seconds`` 为 None 时从 settings 读
+    (opencode_wait_health_timeout / opencode_wait_health_interval), 再
+    兜底模块常量.
+    """
+    s = _settings()
+    if timeout_seconds is None:
+        timeout_seconds = (
+            float(s.opencode_wait_health_timeout)
+            if s is not None
+            else 8.0
+        )
+    if interval_seconds is None:
+        interval_seconds = (
+            float(s.opencode_wait_health_interval)
+            if s is not None
+            else 0.25
+        )
+
     deadline = asyncio.get_running_loop().time() + timeout_seconds
     if client is not None:
         while True:
@@ -107,7 +158,7 @@ async def _wait_opencode_health(
                 if resp.status_code < 400:
                     data = resp.json()
                     if not isinstance(data, dict) or data.get("healthy", True):
-                        logger.info("opencode_reload_health_ok", base_url=base_url)
+                        logger.debug("opencode_reload_health_ok", base_url=base_url)
                         return True
             except Exception as e:
                 logger.debug("opencode_reload_health_waiting", base_url=base_url, error=str(e))
@@ -145,7 +196,7 @@ async def _close_cached_opencode_client(
         except Exception as e:
             logger.debug("opencode_client_close_warn", key=key, error=str(e))
         break
-    logger.info("opencode_client_cache_invalidated", key=key)
+    logger.debug("opencode_client_cache_invalidated", key=key)
 
 
 async def _push_flight_token_to_opencode(
@@ -176,13 +227,13 @@ async def _push_flight_token_to_opencode(
         return False  # token 没变, 跳过
 
     # 从 base_url 推导 admin URL: http://host:14096 → http://host:7778
-    # base_url 形如 "http://opencode-1:14096", 切到 7778 端口即可
+    # base_url 形如 "http://opencode-1:14096", 切到 admin 端口即可
     try:
         from urllib.parse import urlparse, urlunparse
 
         parsed = urlparse(agent_base_url)
         admin_netloc = (
-            f"{parsed.hostname}:{OPENCODE_ADMIN_PORT}"
+            f"{parsed.hostname}:{_opencode_admin_port()}"
             if parsed.hostname
             else None
         )
@@ -193,8 +244,9 @@ async def _push_flight_token_to_opencode(
         logger.warning("push_flight_token_url_parse_failed", error=str(e))
         return False
 
+    token_env_name = _flight_mcp_token_env()
     headers = {"Content-Type": "application/json"}
-    env_body = {FLIGHT_MCP_TOKEN_ENV: mcp_token}
+    env_body = {token_env_name: mcp_token}
     reload_healthy = False
 
     try:
@@ -217,7 +269,7 @@ async def _push_flight_token_to_opencode(
                 "push_flight_token_env_written",
                 agent_base_url=agent_base_url,
                 admin_url=admin_url,
-                env=FLIGHT_MCP_TOKEN_ENV,
+                env=token_env_name,
                 token_len=len(mcp_token),
             )
             # 2) trigger reload (SIGTERM → supervisor ~1s 重启)
@@ -239,7 +291,12 @@ async def _push_flight_token_to_opencode(
                 agent_base_url=agent_base_url,
                 admin_url=admin_url,
             )
-            settle_seconds = float(os.environ.get("OPENCODE_RELOAD_SETTLE_SECONDS", "1.0"))
+            s = _settings()
+            settle_seconds = (
+                float(s.opencode_reload_settle_seconds)
+                if s is not None
+                else float(os.environ.get("OPENCODE_RELOAD_SETTLE_SECONDS", "1.0"))
+            )
             if settle_seconds > 0:
                 await asyncio.sleep(settle_seconds)
             reload_healthy = await _wait_opencode_health(
@@ -266,7 +323,7 @@ async def _push_flight_token_to_opencode(
     logger.info(
         "push_flight_token_ok",
         agent_base_url=agent_base_url,
-        env=FLIGHT_MCP_TOKEN_ENV,
+        env=token_env_name,
         token_len=len(mcp_token),
     )
     return True
@@ -331,19 +388,34 @@ def _build_http_client() -> httpx.AsyncClient:
     重要 — 不调这个会断流:
     - SDK ``AsyncOpencode(base_url=...)`` 默认 ``timeout=NOT_GIVEN``,
       httpx 兜底 5s; LLM 思考/MCP 调用稍微慢点就会 5s read timeout 断流.
-    - 这里显式给 ``connect=10, read=300, write=10, pool=5``:
+    - timeout / limits 全部从 settings 读
+      (opencode_client_timeout_*, opencode_client_max_*):
       * connect 10s 容忍 opencode serve 启动慢
       * read 300s 容忍长 LLM 调用 (含多步工具调用/MCP)
       * write 10s 容忍小 body 上传慢
       * pool 5s 容忍连接池紧张
     - limits 限并发 100 连接 + 100 keepalive, 避免单 agent 占用太多
     """
-    timeout = httpx.Timeout(connect=10.0, read=300.0, write=10.0, pool=5.0)
-    limits = httpx.Limits(
-        max_connections=100,
-        max_keepalive_connections=100,
-        keepalive_expiry=120.0,  # 跟 Sanic KEEP_ALIVE 错开 2 倍, 防止握手冲突
-    )
+    s = _settings()
+    if s is not None:
+        timeout = httpx.Timeout(
+            connect=s.opencode_client_timeout_connect,
+            read=s.opencode_client_timeout_read,
+            write=s.opencode_client_timeout_write,
+            pool=s.opencode_client_timeout_pool,
+        )
+        limits = httpx.Limits(
+            max_connections=s.opencode_client_max_connections,
+            max_keepalive_connections=s.opencode_client_max_keepalive,
+            keepalive_expiry=s.opencode_client_keepalive_expiry,
+        )
+    else:
+        timeout = httpx.Timeout(connect=10.0, read=300.0, write=10.0, pool=5.0)
+        limits = httpx.Limits(
+            max_connections=100,
+            max_keepalive_connections=100,
+            keepalive_expiry=120.0,
+        )
     return httpx.AsyncClient(timeout=timeout, limits=limits)
 
 
@@ -367,15 +439,24 @@ def get_client(adapter: OpenCodeAdapter, agent_name: str, base_url: str) -> Asyn
     """
     key = f"{agent_name}:{base_url}"
     if key not in adapter._clients:
+        s = _settings()
+        if s is not None:
+            logger.info(
+                "opencode_client_created",
+                key=key,
+                timeout_connect=s.opencode_client_timeout_connect,
+                timeout_read=s.opencode_client_timeout_read,
+            )
+        else:
+            logger.info(
+                "opencode_client_created",
+                key=key,
+                timeout_connect=10.0,
+                timeout_read=300.0,
+            )
         adapter._clients[key] = AsyncOpencode(
             base_url=base_url,
             http_client=_build_http_client(),
-        )
-        logger.info(
-            "opencode_client_created",
-            key=key,
-            timeout_connect=10.0,
-            timeout_read=300.0,
         )
     return adapter._clients[key]
 
@@ -420,7 +501,7 @@ def _resolve_tool_names(adapter: OpenCodeAdapter, tools: Any) -> dict[str, bool]
     # chat 请求只声明"启用哪些", 跟自带 tool / MCP tool 解耦.
     result = dict.fromkeys(_OPENCODE_BUILTIN_TOOLS, False)
     result.update(dict.fromkeys(names, True))
-    logger.info("opencode_tools_resolved", tools_sent=list(result.keys()))
+    logger.debug("opencode_tools_resolved", tools_sent=list(result.keys()))
     return result
 
 
@@ -927,7 +1008,37 @@ async def stream_chat(
             # chat_task 在 stream 自然结束后, 我们还需要 await 它 (拿到可能的异常)
             if chat_task is not None:
                 try:
-                    raw_result = await chat_task
+                    if chat_task.done():
+                        # task.result() 同步取结果 — 若上游 500 抛 HTTPStatusError,
+                        # 走下方 except 分支转 SSE error, 不要再让 finally 冒泡,
+                        # 否则 GeneratorExit / CancelledError 会跟它叠加成
+                        # "During handling of the above exception, another exception"。
+                        try:
+                            raw_result = chat_task.result()
+                        except Exception as task_err:
+                            logger.warning(
+                                "opencode_chat_task_failed",
+                                session_id=session_id,
+                                error=str(task_err),
+                            )
+                            yield StreamEvent.error(
+                                message=f"opencode upstream error: {task_err}",
+                                code="OPENCODE_UPSTREAM_ERROR",
+                                retry=2000,
+                            )
+                            return
+                    else:
+                        # 客户端在 stream 还没自然结束时断开 (GeneratorExit 路径) —
+                        # 不能 await 未完成的任务, 否则 GeneratorExit 会在 await 之后
+                        # 再次抛出, 与 _post_session_message_raw 的 500 异常叠加成
+                        # "During handling of the above exception, another exception"。
+                        # 这里主动 cancel + swallow, 让 GeneratorExit 正常传播。
+                        chat_task.cancel()
+                        try:
+                            await chat_task
+                        except (asyncio.CancelledError, Exception):
+                            pass
+                        return
                     for part in raw_result.get("parts", []):
                         if not isinstance(part, dict):
                             continue

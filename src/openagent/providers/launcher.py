@@ -47,13 +47,26 @@ class ClaudeCodeHandle(EngineHandle):
 class EngineLauncher:
     """Scenario-aware engine launcher. Refuses unsafe cwds; dispatches by SDK."""
 
-    FORBIDDEN_CWDS: frozenset[str] = frozenset({
+    # 历史硬编码的 forbidden cwd 集. 现在从 settings.launcher_forbidden_cwds 读.
+    # 保留这个 frozenset 作为**兜底** (settings 不可用 / 单测场景).
+    # 注意: os.path.expanduser("~") 已在 settings 装载时算成实际 HOME, 这里保持
+    # 字面量避免对环境产生副作用.
+    FORBIDDEN_CWDS_FALLBACK: frozenset[str] = frozenset({
         "/",
         "~",
-        os.path.expanduser("~"),
-        os.path.expanduser("~/"),
         "",
     })
+
+    def _forbidden_cwds(self) -> frozenset[str]:
+        try:
+            from openagent.config.settings import get_settings
+            return frozenset(get_settings().launcher_forbidden_cwds)
+        except Exception:  # pragma: no cover
+            return self.FORBIDDEN_CWDS_FALLBACK
+
+    # 向后兼容 (老代码 ``EngineLauncher.FORBIDDEN_CWDS`` 仍可用, 但仅作为
+    # 兜底值, 真正校验走 ``_forbidden_cwds()``).
+    FORBIDDEN_CWDS: frozenset[str] = FORBIDDEN_CWDS_FALLBACK
 
     def __init__(
         self,
@@ -61,9 +74,14 @@ class EngineLauncher:
         config_dir: str | None = None,
     ) -> None:
         self._port_allocator = port_allocator or self._default_port_allocator
-        self._config_dir = (
-            Path(config_dir) if config_dir else Path("work/cache/opencode-configs")
-        )
+        if config_dir is not None:
+            self._config_dir = Path(config_dir)
+        else:
+            try:
+                from openagent.config.settings import get_settings
+                self._config_dir = Path(get_settings().launcher_config_dir)
+            except Exception:  # pragma: no cover
+                self._config_dir = Path("work/cache/opencode-configs")
 
     def launch(
         self,
@@ -93,7 +111,10 @@ class EngineLauncher:
         raise LauncherError(f"Unknown sdk_type: {agent_config.sdk_type!r}")
 
     def _validate_cwd(self, cwd: str) -> None:
-        if cwd in self.FORBIDDEN_CWDS:
+        forbidden = self._forbidden_cwds()
+        # 同时检查展开 ~ 之后的绝对路径 (settings 里给的是字面量, 运行时也匹配)
+        expanded = os.path.expanduser(cwd) if cwd else cwd
+        if cwd in forbidden or expanded in forbidden:
             raise LauncherRefusedRoot(
                 f"cwd {cwd!r} is forbidden. Engine MUST start in a project-relative "
                 f"path. Set scenario.workspace.workspace_dirs[0] to a real project path."
@@ -110,11 +131,16 @@ class EngineLauncher:
         port = self._port_allocator()
         config = self._render_opencode_config(security)
         config_path = self._write_temp_config(agent.name, config)
+        try:
+            from openagent.config.settings import get_settings
+            hostname = get_settings().launcher_opencode_hostname
+        except Exception:  # pragma: no cover
+            hostname = "127.0.0.1"
         proc = Popen(
             [
                 "opencode", "serve",
                 "--port", str(port),
-                "--hostname", "127.0.0.1",
+                "--hostname", hostname,
                 "--cwd", cwd,
                 "--config", config_path,
             ],
@@ -124,7 +150,7 @@ class EngineLauncher:
         )
         return EngineHandle(
             sdk_type="opencode",
-            base_url=f"http://127.0.0.1:{port}",
+            base_url=f"http://{hostname}:{port}",
             cwd=cwd,
             proc=proc,
             effective_policy=security,
@@ -143,9 +169,21 @@ class EngineLauncher:
         )
 
     def _render_opencode_config(self, security: dict) -> dict:
-        """Map scenario security to an opencode config dict."""
-        tool_level = security.get("tool_level", "standard")
-        network = security.get("network", "local")
+        """Map scenario security to an opencode config dict.
+
+        tool_level / network 默认值从 settings 读
+        (launcher_default_tool_level / launcher_default_network).
+        """
+        try:
+            from openagent.config.settings import get_settings
+            s = get_settings()
+            default_tool_level = s.launcher_default_tool_level
+            default_network = s.launcher_default_network
+        except Exception:  # pragma: no cover
+            default_tool_level = "standard"
+            default_network = "local"
+        tool_level = security.get("tool_level", default_tool_level)
+        network = security.get("network", default_network)
         return {
             "permission": {
                 "edit": "deny" if tool_level == "safe" else "allow",
@@ -180,7 +218,13 @@ class EngineLauncher:
         if handle.proc and handle.proc.poll() is None:
             handle.proc.terminate()
             try:
-                handle.proc.wait(timeout=5)
+                grace = 5.0
+                try:
+                    from openagent.config.settings import get_settings
+                    grace = float(get_settings().launcher_stop_grace_seconds)
+                except Exception:  # pragma: no cover
+                    pass
+                handle.proc.wait(timeout=grace)
             except TimeoutExpired:
                 handle.proc.kill()
 

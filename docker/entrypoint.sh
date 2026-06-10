@@ -156,7 +156,9 @@ while true; do
     echo "[entrypoint] (re)starting opencode serve on :${OPENCODE_PORT}"
     opencode serve \
         --port "${OPENCODE_PORT}" \
-        --hostname "${OPENCODE_HOST}" || true
+        --hostname "${OPENCODE_HOST}" \
+        --print-logs \
+        --log-level "${OPENCODE_LOG_LEVEL:-DEBUG}" || true
     echo "[entrypoint] opencode exited, restarting in 1s (config + env will be re-read on next start)"
     sleep 1
 done
