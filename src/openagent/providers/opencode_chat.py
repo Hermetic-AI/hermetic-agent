@@ -104,7 +104,15 @@ OPENCODE_ADMIN_PORT = OPENCODE_ADMIN_PORT_FALLBACK
 
 
 def _is_transient_opencode_error(exc: BaseException) -> bool:
-    """Return True for connection resets caused by opencode restart/reload."""
+    """Return True for opencode restart/reload and readiness races."""
+    if isinstance(exc, httpx.HTTPStatusError):
+        # opencode can return a body-less 503 immediately after admin reload:
+        # /global/health is already 200, but the per-directory instance is
+        # still bootstrapping. Retrying the same message is safe and usually
+        # succeeds once the instance is ready.
+        if exc.response.status_code == 503:
+            return True
+
     transient_names = {
         "ReadError",
         "ConnectError",
@@ -634,11 +642,12 @@ async def _post_session_message_raw(
     payload = _build_session_prompt_payload(sdk_kwargs)
     params = sdk_kwargs.get("extra_query") or {}
     last_error: Exception | None = None
-    # Up to 3 attempts total: 1 original + up to 2 retries.
+    # Up to 6 attempts total: reload/readiness 503s can last a few seconds
+    # after /global/health is already green.
     # Each retry handles a different transient class — one
     # connect/reload class (waits for /global/health) and one
     # session-init race class (short backoff).
-    for attempt in range(3):
+    for attempt in range(6):
         try:
             async with _build_http_client() as client:
                 response = await client.post(
@@ -659,6 +668,7 @@ async def _post_session_message_raw(
                     error=str(e),
                 )
                 await _wait_opencode_health(base_url, timeout_seconds=5.0)
+                await asyncio.sleep(min(0.5 * (attempt + 1), 2.0))
             elif _is_opencode_session_init_race(e):
                 logger.warning(
                     "opencode_message_post_init_race_retry",
@@ -1056,19 +1066,9 @@ async def stream_chat(
                             continue
                         last_text = text
                         accumulated_text = text
-                    # ask_user (AUIP 卡片): opencode 把它当 native tool 调本地脚本,
-                    # 实际 card 渲染走 SSE 转 — Hub 把 tool_use 翻译成 card 事件.
-                    if mapped.type == "tool_use" and mapped.data.get("tool_name") == "ask_user":
-                        import uuid
-                        card_input = mapped.data.get("input", {}) or {}
-                        yield StreamEvent.card(
-                            card_id=f"card-{uuid.uuid4().hex[:12]}",
-                            card_type=card_input.get("card_type", "CHAT_FALLBACK"),
-                            card=card_input,
-                        )
-                        # 仍然 yield tool_use, 让 LLM 看到 ask_user 被调了 (status=running)
-                        yield mapped
-                        continue
+                    # ask_user (AUIP card) is converted by chat_controller's
+                    # outer stream interceptor. Keeping it as tool_use here
+                    # avoids duplicate card events.
                     # Hub 端兜底: LLM 调 queryFlightBasic 后, Hub 自动拼 FLIGHT_RESULT
                     # 卡片 (LLM 不需要知道 AUIP 存在). minimax-M3 这类弱模型即使 system
                     # 提示了也倾向把航班塞 text 事件, 不主动调 ask_user — Hub 替它做

@@ -82,6 +82,185 @@ def test_chat_response_includes_scenario_info():
     assert dumped["result"]["message"]["content"] == "reply"
 
 
+def test_opencode_503_is_transient_reload_race():
+    import httpx
+
+    from openagent.providers.opencode_chat import _is_transient_opencode_error
+
+    request = httpx.Request(
+        "POST",
+        "http://opencode-1:14096/session/ses_1/message",
+    )
+    response = httpx.Response(503, request=request)
+    err = httpx.HTTPStatusError(
+        "Server error '503 Service Unavailable'",
+        request=request,
+        response=response,
+    )
+
+    assert _is_transient_opencode_error(err)
+
+
+def test_post_session_message_retries_transient_503(monkeypatch):
+    import httpx
+
+    from openagent.providers import opencode_chat
+
+    calls = {"count": 0}
+    request = httpx.Request(
+        "POST",
+        "http://opencode-1:14096/session/ses_1/message",
+    )
+
+    class FakeResponse:
+        def raise_for_status(self):
+            calls["count"] += 1
+            if calls["count"] < 4:
+                raise httpx.HTTPStatusError(
+                    "Server error '503 Service Unavailable'",
+                    request=request,
+                    response=httpx.Response(503, request=request),
+                )
+
+        def json(self):
+            return {"ok": True}
+
+    class FakeClient:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return None
+
+        async def post(self, *args, **kwargs):
+            return FakeResponse()
+
+    async def fake_wait(*args, **kwargs):
+        return True
+
+    async def fake_sleep(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr(opencode_chat, "_build_http_client", lambda: FakeClient())
+    monkeypatch.setattr(opencode_chat, "_wait_opencode_health", fake_wait)
+    monkeypatch.setattr(opencode_chat.asyncio, "sleep", fake_sleep)
+
+    result = asyncio.run(opencode_chat._post_session_message_raw(
+        "http://opencode-1:14096",
+        {
+            "id": "ses_1",
+            "provider_id": "openai",
+            "model_id": "model-a",
+            "parts": [],
+            "timeout": None,
+            "extra_query": {},
+        },
+    ))
+
+    assert result == {"ok": True}
+    assert calls["count"] == 4
+
+
+def test_resolve_or_create_session_uses_scenario_workspace_directory():
+    """新建 opencode session 时必须绑定 scenario workspace, 否则 question reply 会跨 InstanceState 404。"""
+    from types import SimpleNamespace
+
+    from openagent.api.controllers.chat_controller import _resolve_or_create_session
+    from openagent.api.schemas import ChatRequest
+
+    class Bridge:
+        def __init__(self):
+            self.calls = []
+
+        def list_agents(self):
+            return {"opencode-core": object()}
+
+        async def create_session(self, **kwargs):
+            self.calls.append(kwargs)
+            return SimpleNamespace(session_id="ses_1")
+
+    bridge = Bridge()
+    request = SimpleNamespace(
+        ctx=SimpleNamespace(
+            scenario=SimpleNamespace(
+                workspace=SimpleNamespace(workspace_dirs=["/work/project"]),
+            ),
+        ),
+    )
+
+    session_id, agent_name, err = asyncio.run(
+        _resolve_or_create_session(
+            bridge,
+            ChatRequest(message="hello"),
+            model_hint="model-a",
+            request=request,
+        )
+    )
+
+    assert err is None
+    assert session_id == "ses_1"
+    assert agent_name == "opencode-core"
+    assert bridge.calls[0]["directory"] == "/work/project"
+
+
+def test_resolve_or_create_session_pushes_mcp_token_before_create(monkeypatch):
+    """MCP token reload must happen before opencode session creation."""
+    from types import SimpleNamespace
+
+    from openagent.api.controllers import chat_controller
+    from openagent.api.controllers.chat_controller import _resolve_or_create_session
+    from openagent.api.schemas import ChatRequest
+
+    events = []
+
+    class Bridge:
+        def list_agents(self):
+            return {"opencode-core": object()}
+
+        def get_config(self, agent_name):
+            return SimpleNamespace(
+                sdk_type="opencode",
+                base_url="http://opencode-1:14096",
+            )
+
+        def get_provider(self, agent_name):
+            return SimpleNamespace(_clients={})
+
+        async def create_session(self, **kwargs):
+            events.append("create_session")
+            return SimpleNamespace(session_id="ses_1")
+
+    async def fake_push(*args, **kwargs):
+        events.append("push_token")
+        return True
+
+    async def fake_close(*args, **kwargs):
+        events.append("close_client")
+
+    monkeypatch.setattr(chat_controller, "_extract_effective_mcp_token", lambda request: "tok")
+    monkeypatch.setattr(
+        "openagent.providers.opencode_chat._push_flight_token_to_opencode",
+        fake_push,
+    )
+    monkeypatch.setattr(
+        "openagent.providers.opencode_chat._close_cached_opencode_client",
+        fake_close,
+    )
+
+    session_id, agent_name, err = asyncio.run(
+        _resolve_or_create_session(
+            Bridge(),
+            ChatRequest(message="hello"),
+            request=SimpleNamespace(ctx=SimpleNamespace()),
+        )
+    )
+
+    assert err is None
+    assert session_id == "ses_1"
+    assert agent_name == "opencode-core"
+    assert events == ["push_token", "close_client", "create_session"]
+
+
 # ---------------------------------------------------------------------------
 # 验证 2: _build_scenario_dict 正确处理 routing_ctx
 # ---------------------------------------------------------------------------

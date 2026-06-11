@@ -229,6 +229,14 @@ def _normalize_mcp_servers(raw: Any) -> dict:
 def _build_mcp_servers(policy: dict) -> dict:
     """Merge policy MCP servers with env-driven defaults."""
     servers = _normalize_mcp_servers(policy.get("mcp_servers", {}))
+    servers.setdefault(
+        "ask_user",
+        {
+            "type": "local",
+            "command": ["python3", "/opt/sandbox/ask_user.py"],
+            "enabled": True,
+        },
+    )
     flight = _flight_mcp_server_from_env()
     if flight:
         current = servers.get("feihe-travel", {})

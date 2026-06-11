@@ -138,6 +138,22 @@ def test_ask_user_to_card_uses_input_name_field() -> None:
     assert out.data["card_type"] == "CHAT_FALLBACK"
 
 
+def test_ask_user_to_card_accepts_prefixed_mcp_tool_name() -> None:
+    """OpenCode MCP may expose local ask_user as ask_user_ask_user."""
+    event = StreamEvent.tool_use(
+        tool_name="ask_user_ask_user",
+        input_data={
+            "card_type": "OD_INPUT",
+            "title": "查询国内机票",
+            "fields": [{"label": "出发日期", "type": "date", "key": "departureDate"}],
+        },
+    )
+    out = _ask_user_to_card(event, allowed_card_types=None)
+    assert out.type == "card"
+    assert out.data["card_type"] == "OD_INPUT"
+    assert out.data["card"]["fields"][0]["key"] == "departureDate"
+
+
 def test_ask_user_to_card_default_to_chat_fallback() -> None:
     """没传 card_type 时默认 CHAT_FALLBACK."""
     event = StreamEvent.tool_use(

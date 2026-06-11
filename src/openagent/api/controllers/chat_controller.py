@@ -33,7 +33,7 @@ from sanic.response import JSONResponse
 from sanic.response.types import ResponseStream
 from sanic_ext import openapi as sanic_openapi
 
-from openagent.api.routes import _extract_mcp_token
+from openagent.api.routes import _extract_mcp_token, _resolve_session_directory
 from openagent.api.schemas import (
     ChatRequest,
     ChatResponse,
@@ -45,6 +45,13 @@ from openagent.providers.base import ChatMessage
 from openagent.streaming import StreamEvent
 
 logger = structlog.get_logger(__name__)
+
+
+ASK_USER_TOOL_NAMES = {"ask_user", "ask_user_ask_user"}
+
+
+def _is_ask_user_tool(tool_name: Any) -> bool:
+    return str(tool_name or "") in ASK_USER_TOOL_NAMES
 
 doc_summary = sanic_openapi.summary
 doc_description = sanic_openapi.description
@@ -187,6 +194,7 @@ async def _resolve_or_create_session(
     body: ChatRequest,
     *,
     model_hint: str | None = None,
+    request: Request | None = None,
 ) -> tuple:
     if body.session_id:
         agent_name = bridge.get_agent_for_session(body.session_id)
@@ -208,9 +216,35 @@ async def _resolve_or_create_session(
         agent_name = next(iter(agents))
 
     try:
+        # If the request carries an MCP token, write it to the opencode
+        # sandbox before creating the session. The write may trigger an
+        # opencode reload; doing it after session creation invalidates the
+        # fresh session and makes POST /session/{id}/message return 503.
+        if request is not None:
+            mcp_token = _extract_effective_mcp_token(request)
+            if mcp_token:
+                config = bridge.get_config(agent_name)
+                if getattr(config, "sdk_type", None) == "opencode":
+                    from openagent.providers.opencode_chat import (
+                        _close_cached_opencode_client,
+                        _push_flight_token_to_opencode,
+                    )
+
+                    token_changed = await _push_flight_token_to_opencode(
+                        agent_base_url=config.base_url,
+                        mcp_token=mcp_token,
+                    )
+                    if token_changed:
+                        with contextlib.suppress(Exception):
+                            await _close_cached_opencode_client(
+                                bridge.get_provider(agent_name),
+                                agent_name,
+                                config.base_url,
+                            )
         session_info = await bridge.create_session(
             agent_name=agent_name,
             model=body.model or model_hint,
+            directory=_resolve_session_directory(request) if request is not None else None,
         )
     except Exception as e:
         return None, None, _format_500(e, "chat_create_session_failed")
@@ -339,7 +373,7 @@ def _ask_user_to_card(
         return event
     data = event.data or {}
     tool_name = data.get("name") or data.get("tool_name")
-    if tool_name != "ask_user":
+    if not _is_ask_user_tool(tool_name):
         return event
 
     inp = data.get("input") or {}
@@ -400,7 +434,7 @@ async def _stream_with_ask_user_intercept(iterator, *, allowed_card_types: set |
         if event.type == "tool_use":
             data = event.data or {}
             tool_name = data.get("name") or data.get("tool_name")
-            if tool_name == "ask_user":
+            if _is_ask_user_tool(tool_name):
                 last_ask_user_id = str(data.get("id") or "")
                 yield _ask_user_to_card(event, allowed_card_types=allowed_card_types)
                 continue
@@ -408,7 +442,7 @@ async def _stream_with_ask_user_intercept(iterator, *, allowed_card_types: set |
             data = event.data or {}
             tool_name = data.get("name") or data.get("tool_name")
             tool_id = str(data.get("id") or "")
-            if tool_name == "ask_user" and (not last_ask_user_id or tool_id == last_ask_user_id):
+            if _is_ask_user_tool(tool_name) and (not last_ask_user_id or tool_id == last_ask_user_id):
                 last_ask_user_id = None
                 continue
         yield event
@@ -527,6 +561,7 @@ async def chat(request: Request) -> JSONResponse:
             bridge,
             json_body,
             model_hint=model_hint,
+            request=request,
         )
         if err is not None:
             return err
@@ -570,7 +605,7 @@ async def chat(request: Request) -> JSONResponse:
     "2. `session` event (session_id)\n"
     "3. Business events (text / reasoning / tool_use / tool_result / state)\n"
     "4. If orchestration=hitl: `card` + `suspend` then stop the stream\n"
-    "5. If LLM calls `ask_user`: `card` event (single mode only, no suspend)\n"
+    "5. If LLM calls `ask_user`: `card` event (single mode; frontend may continue via chat)\n"
     "6. `done` event to end the stream\n\n"
     "If the scenario is unavailable or routing fails, the first event is `error`."
 )
@@ -664,6 +699,7 @@ async def chat_stream(request: Request) -> ResponseStream:
                 bridge,
                 json_body,
                 model_hint=model_hint,
+                request=request,
             )
             if err is not None:
                 await resp.write(

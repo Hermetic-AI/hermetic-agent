@@ -42,6 +42,7 @@ def test_fh_domestic_init_loads_with_auip_schema():
     assert cfg.a2ui.ask_user is not None
     assert Path(cfg.a2ui.ask_user.schema_ref).exists()
     assert "ask_user" in cfg.execution.tools
+    assert "question" not in cfg.execution.tools
     assert "queryFlightBasic" in cfg.execution.tools
     assert "feihe-travel_queryFlightBasic" in cfg.execution.tools
 
@@ -77,6 +78,8 @@ def test_fh_domestic_happy_path_prompt_uses_chinese_and_minimal_questions():
     assert "必须使用中文" in prompt
     assert "先从用户原话中提取信息" in prompt
     assert "不要再用 ask_user 重复确认" in prompt
+    assert "才调用\n    ask_user 询问用户" in prompt
+    assert "缺少查询必填项：OD_INPUT" in prompt
     assert "只问缺失项" in prompt
     assert "不要用 Bash 拼 HTTP 请求" in prompt
     assert "不要用 task 子代理代查航班" in prompt
@@ -91,7 +94,7 @@ def test_fh_domestic_does_not_reference_legacy_flight_query_skill():
     assert cfg.execution.skills == ["fh-domestic-flight-booking"]
     assert "flight-query" not in cfg.execution.skills
     assert "read_skill" not in cfg.execution.tools
-    for tool in ("question", "skill", "read", "glob", "grep"):
+    for tool in ("skill", "read", "glob", "grep"):
         assert tool not in cfg.execution.tools
 
 

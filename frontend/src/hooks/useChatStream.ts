@@ -289,7 +289,17 @@ export function useChatStream(options: UseChatStreamOptions = {}): UseChatStream
     (userInput: Record<string, unknown>, actionId?: string) => {
       const pending = pendingRef.current;
       if (!pending) {
-        setError('当前没有等待中的卡片');
+        if (status === 'sending' || status === 'streaming' || status === 'resuming') {
+          setError('请等待当前回复结束后再提交卡片');
+          return;
+        }
+        const latestCard = latestSubmittableCard(messages);
+        if (!latestCard) {
+          setError('当前没有等待中的卡片');
+          return;
+        }
+        markCardSubmitted(latestCard.messageId, latestCard.card.card_id);
+        send(formatCardReply(latestCard.card, userInput, actionId));
         return;
       }
       if (status !== 'suspended') return;
@@ -344,7 +354,7 @@ export function useChatStream(options: UseChatStreamOptions = {}): UseChatStream
     },
     // handleClose/handleEvent read mutable refs and don't need re-binding.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [status, stopHeartbeat],
+    [messages, send, status, stopHeartbeat],
   );
 
   const cancelTurn = useCallback(async () => {
@@ -671,6 +681,26 @@ export function useChatStream(options: UseChatStreamOptions = {}): UseChatStream
     setStatus('error');
   }
 
+  function markCardSubmitted(messageId: string, cardId: string): void {
+    setMessages((prev) =>
+      prev.map((m) =>
+        m.id === messageId
+          ? {
+              ...m,
+              cards: (m.cards ?? []).map((c) =>
+                c.card_id === cardId ? { ...c, submitted: true, suspended: false } : c,
+              ),
+              events: (m.events ?? []).map((e) =>
+                e.type === 'card' && e.card.card_id === cardId
+                  ? { ...e, submitted: true, suspended: false }
+                  : e,
+              ),
+            }
+          : m,
+      ),
+    );
+  }
+
   function patchAssistant(
     id: string,
     updater: (m: ChatMessage) => ChatMessage,
@@ -704,4 +734,35 @@ export function useChatStream(options: UseChatStreamOptions = {}): UseChatStream
     abort,
     reset,
   };
+}
+
+function latestSubmittableCard(
+  messages: ChatMessage[],
+): { messageId: string; card: CardView } | null {
+  for (let i = messages.length - 1; i >= 0; i -= 1) {
+    const message = messages[i];
+    if (message.role !== 'assistant') continue;
+    const cards = message.cards ?? [];
+    for (let j = cards.length - 1; j >= 0; j -= 1) {
+      const card = cards[j];
+      if (!card.submitted && !card.suspended) {
+        return { messageId: message.id, card };
+      }
+    }
+  }
+  return null;
+}
+
+function formatCardReply(
+  card: CardView,
+  userInput: Record<string, unknown>,
+  actionId?: string,
+): string {
+  const payload = {
+    card_type: card.card_type,
+    card_id: card.card_id,
+    action_id: actionId ?? 'submit',
+    user_input: userInput,
+  };
+  return `用户已提交 ${card.card_type} 卡片：${JSON.stringify(payload)}`;
 }

@@ -45,7 +45,12 @@ export function FormCard({ card, suspended, submitted, onSubmit }: FormCardProps
       {card.message && <p className="aui-card-message">{String(card.message)}</p>}
       <form id={`aui-form-${card.card_id}`} onSubmit={handleSubmit} className="aui-card-body">
         {fields.map((f) => (
-          <FieldRow key={f.id} field={f} value={values[f.id]} onChange={(v) => update(f.id, v)} />
+          <FieldRow
+            key={fieldId(f)}
+            field={f}
+            value={values[fieldId(f)]}
+            onChange={(v) => update(fieldId(f), v)}
+          />
         ))}
       </form>
     </CardShell>
@@ -61,7 +66,7 @@ function FieldRow({
   value: unknown;
   onChange: (v: unknown) => void;
 }) {
-  const id = `field-${field.id}`;
+  const id = `field-${fieldId(field)}`;
   return (
     <div className="aui-field">
       <label className="aui-field-label" htmlFor={id}>
@@ -115,7 +120,7 @@ function FieldRow({
 function initialValues(fields: CardField[]): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const f of fields) {
-    if (f.default !== undefined) out[f.id] = f.default;
+    if (f.default !== undefined) out[fieldId(f)] = f.default;
   }
   return out;
 }
@@ -126,10 +131,14 @@ function requiredFieldsComplete(
 ): boolean {
   return fields.every((field) => {
     if (!field.required) return true;
-    const value = values[field.id];
+    const value = values[fieldId(field)];
     if (value == null) return false;
     if (typeof value === 'string') return value.trim().length > 0;
     if (typeof value === 'number') return Number.isFinite(value);
     return true;
   });
+}
+
+function fieldId(field: CardField): string {
+  return field.id ?? field.key ?? field.name ?? field.label;
 }

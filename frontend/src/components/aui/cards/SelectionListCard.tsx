@@ -20,22 +20,24 @@ export function SelectionListCard({
   idKey,
   onSubmit,
 }: SelectionListCardProps) {
-  const items = (card.flights ?? card.cabins ?? card.options ?? []) as Array<
-    Record<string, unknown>
-  >;
+  const items = getSelectionItems(card);
   const [picked, setPicked] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   const resolveId = (item: Record<string, unknown>): string => {
     const key = idKey ?? pickIdKey(card.card_type);
-    const v = item[key] ?? item.id ?? item.flightId ?? item.cabId;
+    const v = item[key] ?? item.id ?? item.flightId ?? item.cabId ?? item.__selectionId;
     return v == null ? '' : String(v);
   };
 
   const handleConfirm = () => {
     if (!picked || busy || submitted) return;
     setBusy(true);
-    onSubmit({ selectedId: picked, [resolveIdKey(card.card_type)]: picked }, 'select');
+    const selectedItem = items.find((item) => resolveId(item) === picked);
+    onSubmit(
+      { selectedId: picked, [resolveIdKey(card.card_type)]: picked, selectedItem },
+      'select',
+    );
   };
 
   return (
@@ -60,11 +62,12 @@ export function SelectionListCard({
         {items.map((item, idx) => {
           const id = resolveId(item);
           const title = String(
-            item.title ?? item.flightNo ?? item.name ?? item.label ?? `选项 ${idx + 1}`,
+            item.title ?? formatFlightTitle(item) ?? item.name ?? item.label ?? `选项 ${idx + 1}`,
           );
-          const sub = item.subtitle ?? item.flightDesc ?? item.description ?? '';
+          const sub =
+            item.subtitle ?? item.flightDesc ?? item.description ?? formatFlightSubtitle(item);
           const price = item.price ?? item.fare;
-          const tags = Array.isArray(item.tags) ? (item.tags as string[]) : [];
+          const tags = getItemTags(item);
           const selected = picked === id;
           return (
             <button
@@ -98,6 +101,66 @@ export function SelectionListCard({
       </div>
     </CardShell>
   );
+}
+
+function getSelectionItems(card: CardDescriptor): Array<Record<string, unknown>> {
+  const directItems = card.flights ?? card.cabins ?? card.options;
+  if (Array.isArray(directItems) && directItems.length > 0) {
+    return withSelectionIds(directItems as Array<Record<string, unknown>>);
+  }
+  const plans = card.body?.plans;
+  return Array.isArray(plans) ? withSelectionIds(plans as Array<Record<string, unknown>>) : [];
+}
+
+function withSelectionIds(items: Array<Record<string, unknown>>): Array<Record<string, unknown>> {
+  return items.map((item, idx) => ({
+    ...item,
+    __selectionId: buildSelectionId(item, idx),
+  }));
+}
+
+function buildSelectionId(item: Record<string, unknown>, idx: number): string {
+  const existing = item.id ?? item.flightId ?? item.cabId;
+  if (existing != null && String(existing)) return String(existing);
+  const parts = [
+    item.flightNo,
+    item.departureTime,
+    item.arrivalTime,
+    item.departureAirport,
+    item.arrivalAirport,
+    item.price,
+    idx,
+  ]
+    .filter((part) => part != null && String(part))
+    .map(String);
+  return parts.length > 0 ? parts.join('|') : `option-${idx}`;
+}
+
+function formatFlightTitle(item: Record<string, unknown>): string | undefined {
+  const flightNo = item.flightNo == null ? '' : String(item.flightNo);
+  const airline = item.airline == null ? '' : String(item.airline);
+  if (flightNo && airline) return `${flightNo} · ${airline}`;
+  return flightNo || airline || undefined;
+}
+
+function formatFlightSubtitle(item: Record<string, unknown>): string {
+  const time = [item.departureTime, item.arrivalTime].filter(Boolean).join(' - ');
+  const airports = [item.departureAirport, item.arrivalAirport].filter(Boolean).join(' → ');
+  const details = [time, airports, item.duration].filter(Boolean).map(String);
+  return details.join(' · ');
+}
+
+function getItemTags(item: Record<string, unknown>): string[] {
+  const tags = Array.isArray(item.tags) ? (item.tags as string[]) : [];
+  const generatedTags = [
+    item.seats ? `余票${String(item.seats)}` : '',
+    item.stops === 0 ? '直飞' : item.stops != null ? `${String(item.stops)}次经停` : '',
+    item.meal === true ? '含餐' : item.meal === false ? '无餐' : '',
+    item.baggageInfo ?? item[' baggageInfo'] ?? '',
+  ]
+    .filter(Boolean)
+    .map(String);
+  return [...tags, ...generatedTags];
 }
 
 function pickIdKey(cardType: string): string {

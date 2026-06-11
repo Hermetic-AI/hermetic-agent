@@ -25,6 +25,11 @@ from openagent.providers.opencode_native_sdk import (
 logger = structlog.get_logger(__name__)
 
 
+def _is_question_not_found(error: Exception) -> bool:
+    text = str(error).lower()
+    return "questionnotfounderror" in text or "question request not found" in text or "404" in text
+
+
 async def resolve_opencode_client(bridge, session_id: str) -> tuple:
     """从 ``bridge`` + ``session_id`` 找 ``AsyncOpencode`` client + directory.
 
@@ -74,6 +79,19 @@ async def reply_question(
         ok = await question_reply(client, request_id, answers, directory=directory)
         return ok, None
     except Exception as e:
+        if directory and _is_question_not_found(e):
+            try:
+                logger.warning(
+                    "auip_question_reply_retry_without_directory",
+                    request_id=request_id,
+                    session_id=session_id,
+                    directory=directory,
+                    error=str(e),
+                )
+                ok = await question_reply(client, request_id, answers, directory=None)
+                return ok, None
+            except Exception:
+                pass
         logger.error("auip_question_reply_failed", request_id=request_id, error=str(e))
         return False, f"opencode /question/:id/reply failed: {e}"
 
@@ -89,6 +107,19 @@ async def reject_question(
         ok = await question_reject(client, request_id, directory=directory)
         return ok, None
     except Exception as e:
+        if directory and _is_question_not_found(e):
+            try:
+                logger.warning(
+                    "auip_question_reject_retry_without_directory",
+                    request_id=request_id,
+                    session_id=session_id,
+                    directory=directory,
+                    error=str(e),
+                )
+                ok = await question_reject(client, request_id, directory=None)
+                return ok, None
+            except Exception:
+                pass
         logger.error("auip_question_reject_failed", request_id=request_id, error=str(e))
         return False, f"opencode /question/:id/reject failed: {e}"
 

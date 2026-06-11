@@ -320,7 +320,9 @@ export interface CardAction {
 }
 
 export interface CardField {
-  id: string;
+  id?: string;
+  key?: string;
+  name?: string;
   label: string;
   type: string;
   required?: boolean;
@@ -359,11 +361,11 @@ export interface FlightSegment {
 }
 
 export interface FlightPlan {
-  id: string;
-  title: string;
+  id?: string;
+  title?: string;
   subtitle?: string;
   criteria?: string;
-  flights: FlightSegment[];
+  flights?: FlightSegment[];
   [k: string]: unknown;
 }
 

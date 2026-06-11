@@ -162,6 +162,18 @@ def test_render_config_registers_flight_mcp_without_env_token(monkeypatch) -> No
     assert flight["headers"]["token"] == "{env:FLIGHT_API_KEY}"
 
 
+def test_render_config_registers_ask_user_local_mcp(monkeypatch) -> None:
+    from docker.render_config import render
+
+    monkeypatch.delenv("FLIGHT_API_KEY", raising=False)
+    cfg = render({"agent": {"model": "openai/qwen"}, "tool_level": "standard"})
+
+    ask_user = cfg["mcp"]["ask_user"]
+    assert ask_user["type"] == "local"
+    assert ask_user["command"] == ["python3", "/opt/sandbox/ask_user.py"]
+    assert ask_user["enabled"] is True
+
+
 def test_render_config_safe_level_denies_task_tool() -> None:
     from docker.render_config import render
 

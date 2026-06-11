@@ -189,9 +189,9 @@ function QuestionItemRow({
 
   const setCustom = (text: string) => {
     setCustomText(text);
-    if (text.trim().length > 0) {
-      // 自定义答案用 __custom__ 标记, 让 opencode 服务端读 input
-      onChange(['__custom__']);
+    const value = text.trim();
+    if (value.length > 0) {
+      onChange([value]);
     } else {
       onChange([]);
     }

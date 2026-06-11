@@ -43,7 +43,7 @@ export function FlightResultCard({
 }: FlightResultCardProps) {
   const body = card.body ?? {};
   const summary = (body.summary ?? null) as FlightResultSummary | null;
-  const plans = (body.plans ?? []) as FlightPlan[];
+  const plans = normalizePlans(body.plans);
   const [expanded, setExpanded] = useState(false);
 
   return (
@@ -61,6 +61,7 @@ export function FlightResultCard({
           <PlanBlock
             key={`${plan.id}-${idx}`}
             plan={plan}
+            index={idx}
             expanded={expanded}
             onPick={(seg) =>
               onSubmit(
@@ -98,6 +99,21 @@ function SummaryLine({
   expanded: boolean;
   onToggle: () => void;
 }) {
+  if (typeof summary === 'string') {
+    return (
+      <div className="frc-summary-row">
+        <span className="frc-summary-text">{summary}</span>
+        <button
+          type="button"
+          className="frc-summary-toggle"
+          onClick={onToggle}
+          aria-expanded={expanded}
+        >
+          {expanded ? '收起 ▴' : '更多 ▾'}
+        </button>
+      </div>
+    );
+  }
   const weather = summary.weather;
   return (
     <div className="frc-summary-row">
@@ -120,26 +136,30 @@ function SummaryLine({
 
 function PlanBlock({
   plan,
+  index,
   expanded,
   onPick,
   disabled,
 }: {
   plan: FlightPlan;
+  index: number;
   expanded: boolean;
   onPick: (seg: FlightSegment) => void;
   disabled: boolean;
 }) {
+  const flights = Array.isArray(plan.flights) ? plan.flights : [];
+  const title = plan.title || defaultPlanTitle(plan.id, index);
   return (
     <div className="frc-plan">
       <div className="frc-plan-header">
-        <span className="frc-plan-index">方案{planIndex(plan.id, plan.title)}</span>
+        <span className="frc-plan-index">方案{planIndex(plan.id, title, index)}</span>
         <div className="frc-plan-copy">
-          <h5 className="frc-plan-title">{plan.title}</h5>
+          <h5 className="frc-plan-title">{title}</h5>
           {plan.subtitle && <span className="frc-plan-subtitle">{plan.subtitle}</span>}
         </div>
       </div>
       <div className="frc-plan-flights">
-        {plan.flights.map((seg, idx) => (
+        {flights.map((seg, idx) => (
           <FlightRow
             key={seg.flightId ?? `${plan.id}-${idx}`}
             segment={seg}
@@ -165,17 +185,18 @@ function FlightRow({
   disabled: boolean;
 }) {
   const showTags = (segment.tags ?? []).slice(0, expanded ? 10 : 2);
-  const dep = segment.departure;
-  const arr = segment.arrival;
+  const dep = segment.departure ?? {};
+  const arr = segment.arrival ?? {};
   const depTime = formatClock(dep.time);
   const arrTime = formatClock(arr.time);
   const routeDate = formatDateLabel(segment.date || dep.time);
   const routeLabel = [dep.city, arr.city].filter(Boolean).join(' → ');
   const depPlace = formatAirport(dep);
   const arrPlace = formatAirport(arr);
+  const airline = segment.airline ?? { code: '', name: '' };
   const airlineLabel = segment.shareInfo
-    ? `${segment.airline.name}（${segment.shareInfo}）`
-    : segment.airline.name;
+    ? `${airline.name || airline.code || '航司未提供'}（${segment.shareInfo}）`
+    : airline.name;
   return (
     <article className="frc-ticket">
       <div className="frc-ticket-head">
@@ -202,7 +223,7 @@ function FlightRow({
         </div>
 
         <div className="frc-ticket-meta">
-          <span className="frc-airline-chip">{airlineLabel || segment.airline.code || '航司未提供'} {segment.flightNo}</span>
+          <span className="frc-airline-chip">{airlineLabel || airline.code || '航司未提供'} {segment.flightNo}</span>
           {segment.aircraft && <span className="frc-soft-chip">{segment.aircraft}</span>}
           {segment.cabin && <span className="frc-soft-chip">{segment.cabin}</span>}
           <FlightComplianceInline price={Number(segment.price)} cabinClass={segment.cabinClass} />
@@ -235,11 +256,105 @@ function FlightRow({
   );
 }
 
-function planIndex(id: string, title: string): string {
-  if (id === 'fastest' || title.includes('快')) return '1';
-  if (id === 'cheapest' || title.includes('便宜')) return '2';
-  if (id === 'comfortable' || title.includes('舒适') || title.includes('直飞')) return '3';
-  return '';
+function normalizePlans(value: unknown): FlightPlan[] {
+  if (!Array.isArray(value)) return [];
+  return value.map((raw, idx) => normalizePlan(raw as Record<string, unknown>, idx));
+}
+
+function normalizePlan(raw: Record<string, unknown>, idx: number): FlightPlan {
+  const id = stringValue(raw.id ?? raw.plan_id) ?? `plan-${idx + 1}`;
+  const flights = Array.isArray(raw.flights)
+    ? (raw.flights as Array<Record<string, unknown>>).map((flight, flightIdx) =>
+        normalizeFlightSegment(flight, id, flightIdx),
+      )
+    : [normalizeFlightSegment(raw, id, 0)];
+
+  return {
+    ...raw,
+    id,
+    title: stringValue(raw.title) ?? defaultPlanTitle(id, idx),
+    subtitle: stringValue(raw.subtitle ?? raw.criteria),
+    flights,
+  } as FlightPlan;
+}
+
+function normalizeFlightSegment(
+  raw: Record<string, unknown>,
+  planId: string,
+  idx: number,
+): FlightSegment {
+  const flightNo = stringValue(raw.flightNo ?? raw.flight_no) ?? '';
+  const depTime = stringValue(raw.departure_time ?? raw.departureTime) ?? '';
+  const arrTime = stringValue(raw.arrival_time ?? raw.arrivalTime) ?? '';
+  const departureText = stringValue(raw.departure ?? raw.departureAirport) ?? '';
+  const arrivalText = stringValue(raw.arrival ?? raw.arrivalAirport) ?? '';
+  const airline = normalizeAirline(raw.airline);
+  const stops = typeof raw.stops === 'number' ? raw.stops : 0;
+  const seats = raw.seats == null ? '' : `余票${String(raw.seats)}`;
+  const tags = Array.isArray(raw.tags) ? (raw.tags as string[]) : [seats].filter(Boolean);
+
+  return {
+    ...raw,
+    flightId: stringValue(raw.flightId ?? raw.flight_id ?? raw.plan_id ?? raw.id)
+      ?? `${planId}-${flightNo || idx}`,
+    flightNo,
+    airline,
+    date: stringValue(raw.date) ?? depTime,
+    departure: normalizeEndpoint(raw.departure, departureText, depTime),
+    arrival: normalizeEndpoint(raw.arrival, arrivalText, arrTime),
+    duration: stringValue(raw.duration) ?? '',
+    stops,
+    cabin: stringValue(raw.cabin) ?? '',
+    cabinClass: stringValue(raw.cabinClass ?? raw.cabin_class) ?? 'ECONOMY',
+    price: Number(raw.price ?? raw.fare ?? 0),
+    tags,
+  } as FlightSegment;
+}
+
+function normalizeAirline(value: unknown): { code: string; name: string } {
+  if (value && typeof value === 'object') {
+    const airline = value as Record<string, unknown>;
+    return {
+      code: stringValue(airline.code) ?? '',
+      name: stringValue(airline.name) ?? stringValue(airline.label) ?? '',
+    };
+  }
+  return { code: '', name: stringValue(value) ?? '' };
+}
+
+function normalizeEndpoint(value: unknown, fallback: string, time: string): FlightSegment['departure'] {
+  if (value && typeof value === 'object') {
+    const endpoint = value as Record<string, unknown>;
+    return {
+      city: stringValue(endpoint.city) ?? '',
+      airport: stringValue(endpoint.airport) ?? fallback,
+      airportCode: stringValue(endpoint.airportCode ?? endpoint.airport_code) ?? '',
+      terminal: stringValue(endpoint.terminal),
+      time: stringValue(endpoint.time) ?? time,
+    };
+  }
+  return { city: '', airport: fallback, airportCode: '', time };
+}
+
+function stringValue(value: unknown): string | undefined {
+  if (value == null) return undefined;
+  const text = String(value);
+  return text ? text : undefined;
+}
+
+function planIndex(id: string | undefined, title: string | undefined, fallbackIndex: number): string {
+  const safeTitle = title ?? '';
+  if (id === 'fastest' || safeTitle.includes('快')) return '1';
+  if (id === 'cheapest' || safeTitle.includes('便宜')) return '2';
+  if (id === 'comfortable' || safeTitle.includes('舒适') || safeTitle.includes('直飞')) return '3';
+  return String(fallbackIndex + 1);
+}
+
+function defaultPlanTitle(id: string | undefined, index: number): string {
+  if (id === 'fastest') return '最快抵达';
+  if (id === 'cheapest') return '最便宜';
+  if (id === 'comfortable') return '舒适首选';
+  return `推荐方案 ${index + 1}`;
 }
 
 function formatClock(value?: string): string {

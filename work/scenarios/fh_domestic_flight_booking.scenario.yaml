@@ -65,7 +65,7 @@ execution:
     MCP 输出是事实来源。上下文损坏或用户要求重来时，使用 resetBookingSession。
 
     AUIP 卡片约定：
-    - 只有需要用户输入/选择/确认时才调用 ask_user；不需要用户动作的说明直接中文回复。
+    - 需要用户输入/选择/确认时调用 ask_user；不需要用户动作的说明直接中文回复。
     - 用户原话信息足够时，不要发 OD_INPUT，直接 queryFlightBasic。
     - 缺少查询必填项：OD_INPUT，使用顶层 fields[]，只包含缺失字段。
     - 搜索结果：FLIGHT_RESULT，使用 body.summary 和 body.plans。

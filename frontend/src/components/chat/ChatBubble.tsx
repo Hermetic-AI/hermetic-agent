@@ -187,7 +187,7 @@ function EventTimeline({
                 key={`card-${idx}`}
                 events={group.events.filter((e): e is Extract<ChatEvent, { type: 'card' }> => e.type === 'card')}
                 onSubmit={onCardSubmit}
-                disabled={message.status === 'suspended' || message.status === 'aborted' || message.status === 'error'}
+                disabled={message.status === 'aborted' || message.status === 'error'}
               />
             );
           case 'state':

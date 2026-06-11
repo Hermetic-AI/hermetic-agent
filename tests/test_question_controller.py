@@ -189,6 +189,35 @@ def test_reply_success(app):
     assert call.kwargs["body"] == {"answers": [["单程"], ["经济舱"]]}
 
 
+def test_reply_retries_without_directory_on_not_found(app):
+    """兼容旧 session: question 创建在默认 directory 时, 带 workspace reply 404 后无目录重试。"""
+    s_app, _, _ = app
+    fake_client = MagicMock()
+    fake_client.post = AsyncMock(
+        side_effect=[
+            httpx.HTTPStatusError(
+                "404",
+                request=httpx.Request("POST", "http://localhost/question/que_1/reply"),
+                response=httpx.Response(404),
+            ),
+            _make_status_response(200),
+        ]
+    )
+    _wire_opencode_client(app[2], fake_client)
+
+    _, resp = s_app.test_client.post(
+        "/agent/questions/que_1/reply",
+        data=json.dumps({"session_id": "ses_q1", "answers": [["明天出发"]]}),
+        headers={"Content-Type": "application/json"},
+    )
+
+    assert resp.status_code == 200
+    assert resp.json["replied"] is True
+    calls = fake_client.post.await_args_list
+    assert calls[0].kwargs["options"]["extra_query"] == {"directory": "/work/proj"}
+    assert calls[1].kwargs["options"] == {}
+
+
 # ---------------------------------------------------------------------------
 # POST /agent/questions/{id}/reject
 # ---------------------------------------------------------------------------
