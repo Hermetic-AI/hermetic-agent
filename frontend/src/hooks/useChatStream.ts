@@ -131,7 +131,10 @@ function newId(prefix: string): string {
 function hasRenderableFlightPlans(card: CardDescriptor): boolean {
   if (card.card_type !== 'FLIGHT_RESULT') return true;
   const plans = card.body?.plans;
-  return Array.isArray(plans) && plans.some((plan) => Array.isArray(plan.flights) && plan.flights.length > 0);
+  return Array.isArray(plans) && plans.some((plan) => {
+    if (Array.isArray(plan.flights) && plan.flights.length > 0) return true;
+    return Boolean(plan.flightNo ?? plan.flight_no ?? plan.flightNumber);
+  });
 }
 
 function flightResultSignature(card: CardDescriptor): string | null {
@@ -141,9 +144,10 @@ function flightResultSignature(card: CardDescriptor): string | null {
   const flights = plans.flatMap((plan) =>
     Array.isArray(plan.flights)
       ? plan.flights.map((flight) => [flight.flightId, flight.flightNo, flight.price].filter(Boolean).join(':'))
-      : [],
+      : [[plan.flightNo, plan.flight_no, plan.flightNumber, plan.price].filter(Boolean).join(':')],
   );
-  return flights.length > 0 ? flights.join('|') : null;
+  const signature = flights.filter(Boolean).join('|');
+  return signature || null;
 }
 
 function messageHasCard(message: ChatMessage, card: CardDescriptor): boolean {
@@ -153,9 +157,13 @@ function messageHasCard(message: ChatMessage, card: CardDescriptor): boolean {
   return (message.cards ?? []).some((item) => flightResultSignature(item.card) === nextSignature);
 }
 
-function enrichFlightResultCard(card: CardDescriptor, messages: ChatMessage[]): CardDescriptor {
+function enrichFlightResultCard(
+  card: CardDescriptor,
+  messages: ChatMessage[],
+  flightRoute: { depCity: string; arrCity: string },
+): CardDescriptor {
   if (card.card_type !== 'FLIGHT_RESULT') return card;
-  const route = inferRouteFromMessages(messages);
+  const route = flightRoute.depCity || flightRoute.arrCity ? flightRoute : inferRouteFromMessages(messages);
   if (!route.depCity && !route.arrCity) return card;
   const body = card.body ?? {};
   const plans = Array.isArray(body.plans)
@@ -210,8 +218,8 @@ function collectMessageText(message: ChatMessage): string {
 
 function inferRouteFromText(text: string): { depCity: string; arrCity: string } {
   const patterns = [
-    /([\u4e00-\u9fa5]{2,10})\s*[→到至-]\s*([\u4e00-\u9fa5]{2,10})/,
-    /查询([\u4e00-\u9fa5]{2,10})[至到]([\u4e00-\u9fa5]{2,10})/,
+    /(?:从)?([\u4e00-\u9fa5]{2,4})\s*[→至-]\s*([\u4e00-\u9fa5]{2,4})(?:的|单程|往返|机票|航班|$)/,
+    /(?:从)?([\u4e00-\u9fa5]{2,4})到([\u4e00-\u9fa5]{2,4})(?:的|单程|往返|机票|航班|$)/,
   ];
   for (const pattern of patterns) {
     const match = text.match(pattern);
@@ -242,6 +250,7 @@ export function useChatStream(options: UseChatStreamOptions = {}): UseChatStream
   const pendingRef = useRef<PendingCard | null>(null);
   const submittedCardIdsRef = useRef<Set<string>>(new Set());
   const messagesRef = useRef<ChatMessage[]>(EMPTY_MESSAGES);
+  const lastFlightRouteRef = useRef<{ depCity: string; arrCity: string }>({ depCity: '', arrCity: '' });
   const heartbeatRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const heartbeatTargetRef = useRef<string | null>(null);
 
@@ -305,6 +314,7 @@ export function useChatStream(options: UseChatStreamOptions = {}): UseChatStream
     setPendingCard(null);
     pendingRef.current = null;
     submittedCardIdsRef.current.clear();
+    lastFlightRouteRef.current = { depCity: '', arrCity: '' };
     setCurrentState(null);
   }, [abort, options.sessionId, options.turnId]);
 
@@ -537,6 +547,12 @@ export function useChatStream(options: UseChatStreamOptions = {}): UseChatStream
         const data = event.data;
         const name = (data.name ?? data.tool_name ?? 'unknown') as string;
         const input = (data.input as Record<string, unknown> | undefined) ?? {};
+        if (name === 'feihe-travel_queryFlightBasic' || name === 'queryFlightBasic') {
+          lastFlightRouteRef.current = {
+            depCity: String(input.departureCity ?? input.depCity ?? ''),
+            arrCity: String(input.arrivalCity ?? input.arrCity ?? ''),
+          };
+        }
         const at = new Date().toISOString();
         const item: ToolEventView = {
           id: newId('tool'),
@@ -591,6 +607,7 @@ export function useChatStream(options: UseChatStreamOptions = {}): UseChatStream
           card: enrichFlightResultCard(
             { ...data.card, card_type: data.card_type, card_id: data.card_id },
             messagesRef.current,
+            lastFlightRouteRef.current,
           ),
           correlation_id: data.correlation_id,
           at: new Date().toISOString(),
