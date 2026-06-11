@@ -338,6 +338,7 @@ function normalizeEndpoint(value: unknown, fallback: string, time: string): Flig
 
 function stringValue(value: unknown): string | undefined {
   if (value == null) return undefined;
+  if (typeof value === 'object') return undefined;
   const text = String(value);
   return text ? text : undefined;
 }

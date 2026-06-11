@@ -113,7 +113,7 @@ export interface UseChatStreamResult {
   isSuspended: boolean;
   send: (content: string) => void;
   /** Submit the user response for the current pending card. */
-  resumeTurn: (userInput: Record<string, unknown>, actionId?: string) => void;
+  resumeTurn: (userInput: Record<string, unknown>, actionId?: string, cardId?: string) => void;
   /** Cancel a running turn (server-side cancel, not just the SSE stream). */
   cancelTurn: () => Promise<void>;
   /** Stop the SSE stream locally without cancelling the server turn. */
@@ -169,6 +169,7 @@ export function useChatStream(options: UseChatStreamOptions = {}): UseChatStream
   const abortRef = useRef<AbortController | null>(null);
   const activeMsgIdRef = useRef<string | null>(null);
   const pendingRef = useRef<PendingCard | null>(null);
+  const submittedCardIdsRef = useRef<Set<string>>(new Set());
   const heartbeatRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const heartbeatTargetRef = useRef<string | null>(null);
 
@@ -227,6 +228,7 @@ export function useChatStream(options: UseChatStreamOptions = {}): UseChatStream
     setScenario(null);
     setPendingCard(null);
     pendingRef.current = null;
+    submittedCardIdsRef.current.clear();
     setCurrentState(null);
   }, [abort, options.sessionId, options.turnId]);
 
@@ -311,18 +313,20 @@ export function useChatStream(options: UseChatStreamOptions = {}): UseChatStream
   );
 
   const resumeTurn = useCallback(
-    (userInput: Record<string, unknown>, actionId?: string) => {
+    (userInput: Record<string, unknown>, actionId?: string, cardId?: string) => {
       const pending = pendingRef.current;
       if (!pending) {
         if (status === 'sending' || status === 'streaming' || status === 'resuming') {
           setError('请等待当前回复结束后再提交卡片');
           return;
         }
-        const latestCard = latestSubmittableCard(messages);
+        const latestCard = latestSubmittableCard(messages, cardId);
         if (!latestCard) {
           setError('当前没有等待中的卡片');
           return;
         }
+        if (submittedCardIdsRef.current.has(latestCard.card.card_id)) return;
+        submittedCardIdsRef.current.add(latestCard.card.card_id);
         markCardSubmitted(latestCard.messageId, latestCard.card.card_id);
         send(formatCardReply(latestCard.card, userInput, actionId));
         return;
@@ -767,6 +771,7 @@ export function useChatStream(options: UseChatStreamOptions = {}): UseChatStream
 
 function latestSubmittableCard(
   messages: ChatMessage[],
+  cardId?: string,
 ): { messageId: string; card: CardView } | null {
   for (let i = messages.length - 1; i >= 0; i -= 1) {
     const message = messages[i];
@@ -774,6 +779,7 @@ function latestSubmittableCard(
     const cards = message.cards ?? [];
     for (let j = cards.length - 1; j >= 0; j -= 1) {
       const card = cards[j];
+      if (cardId && card.card_id !== cardId) continue;
       if (!card.submitted && !card.suspended) {
         return { messageId: message.id, card };
       }

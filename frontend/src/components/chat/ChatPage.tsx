@@ -102,8 +102,8 @@ export function ChatPage({
   }, [chat]);
 
   const handleCardSubmit = useCallback(
-    (userInput: Record<string, unknown>, actionId?: string) => {
-      chat.resumeTurn(userInput, actionId);
+    (userInput: Record<string, unknown>, actionId?: string, cardId?: string) => {
+      chat.resumeTurn(userInput, actionId, cardId);
     },
     [chat],
   );

@@ -14,6 +14,7 @@ export interface FormCardProps {
 export function FormCard({ card, suspended, submitted, onSubmit }: FormCardProps) {
   const fields = card.fields ?? [];
   const [values, setValues] = useState<Record<string, unknown>>(() => initialValues(fields));
+  const [busy, setBusy] = useState(false);
   const complete = requiredFieldsComplete(fields, values);
 
   const update = (id: string, value: unknown) => {
@@ -22,7 +23,8 @@ export function FormCard({ card, suspended, submitted, onSubmit }: FormCardProps
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (submitted || !complete) return;
+    if (submitted || busy || !complete) return;
+    setBusy(true);
     onSubmit(values, 'submit');
   };
 
@@ -36,9 +38,9 @@ export function FormCard({ card, suspended, submitted, onSubmit }: FormCardProps
           type="submit"
           form={`aui-form-${card.card_id}`}
           className="aui-action aui-action-primary"
-          disabled={submitted || !complete}
+          disabled={submitted || busy || !complete}
         >
-          {submitted ? '已提交' : '确认'}
+          {submitted || busy ? '已提交' : '确认'}
         </button>
       }
     >

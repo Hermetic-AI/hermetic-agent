@@ -20,7 +20,7 @@ interface ChatBubbleProps {
   onQuickReply?: (value: string) => void;
   onAbort?: () => void;
   /** Called when the user submits an AUIP card form. */
-  onCardSubmit?: (userInput: Record<string, unknown>, actionId?: string) => void;
+  onCardSubmit?: (userInput: Record<string, unknown>, actionId?: string, cardId?: string) => void;
   onQuestionReply?: (requestId: string, answers: string[][], sessionId: string) => void;
   onQuestionReject?: (requestId: string, sessionId: string) => void;
 }
@@ -125,7 +125,7 @@ export function ChatBubble({
 interface EventTimelineProps {
   message: ChatMessageType;
   showSpinner: boolean;
-  onCardSubmit?: (userInput: Record<string, unknown>, actionId?: string) => void;
+  onCardSubmit?: (userInput: Record<string, unknown>, actionId?: string, cardId?: string) => void;
   onQuestionReply?: (requestId: string, answers: string[][], sessionId: string) => void;
   onQuestionReject?: (requestId: string, sessionId: string) => void;
 }
@@ -321,7 +321,7 @@ function CardGroupBlock({
   disabled,
 }: {
   events: Extract<ChatEvent, { type: 'card' }>[];
-  onSubmit?: (userInput: Record<string, unknown>, actionId?: string) => void;
+  onSubmit?: (userInput: Record<string, unknown>, actionId?: string, cardId?: string) => void;
   disabled: boolean;
 }) {
   if (!onSubmit) return null;
@@ -333,7 +333,7 @@ function CardGroupBlock({
           card={e.card}
           suspended={Boolean(e.suspended) || disabled}
           submitted={Boolean(e.submitted)}
-          onSubmit={onSubmit}
+          onSubmit={(userInput, actionId) => onSubmit(userInput, actionId, e.card.card_id)}
         />
       ))}
     </div>
@@ -432,7 +432,7 @@ function CardsBlock({
   disabled,
 }: {
   items: CardView[];
-  onSubmit: (userInput: Record<string, unknown>, actionId?: string) => void;
+  onSubmit: (userInput: Record<string, unknown>, actionId?: string, cardId?: string) => void;
   disabled: boolean;
 }) {
   if (items.length === 0) return null;
@@ -444,7 +444,7 @@ function CardsBlock({
           card={c.card}
           suspended={Boolean(c.suspended) || disabled}
           submitted={Boolean(c.submitted)}
-          onSubmit={onSubmit}
+          onSubmit={(userInput, actionId) => onSubmit(userInput, actionId, c.card_id)}
         />
       ))}
     </div>
