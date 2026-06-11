@@ -111,7 +111,7 @@ export interface UseChatStreamResult {
   currentState: string | null;
   /** True while a `suspend` has been received and the user has not yet submitted. */
   isSuspended: boolean;
-  send: (content: string) => void;
+  send: (content: string, displayContent?: string) => void;
   /** Submit the user response for the current pending card. */
   resumeTurn: (userInput: Record<string, unknown>, actionId?: string, cardId?: string) => void;
   /** Cancel a running turn (server-side cancel, not just the SSE stream). */
@@ -153,6 +153,77 @@ function messageHasCard(message: ChatMessage, card: CardDescriptor): boolean {
   return (message.cards ?? []).some((item) => flightResultSignature(item.card) === nextSignature);
 }
 
+function enrichFlightResultCard(card: CardDescriptor, messages: ChatMessage[]): CardDescriptor {
+  if (card.card_type !== 'FLIGHT_RESULT') return card;
+  const route = inferRouteFromMessages(messages);
+  if (!route.depCity && !route.arrCity) return card;
+  const body = card.body ?? {};
+  const plans = Array.isArray(body.plans)
+    ? body.plans.map((plan) => ({
+        ...plan,
+        flights: Array.isArray(plan.flights)
+          ? plan.flights.map((flight) => ({
+              ...flight,
+              departure: {
+                ...(flight.departure ?? {}),
+                city: flight.departure?.city || route.depCity,
+              },
+              arrival: {
+                ...(flight.arrival ?? {}),
+                city: flight.arrival?.city || route.arrCity,
+              },
+            }))
+          : plan.flights,
+      }))
+    : body.plans;
+  return {
+    ...card,
+    body: {
+      ...body,
+      summary: {
+        ...(typeof body.summary === 'object' && body.summary ? body.summary : {}),
+        depCity: (typeof body.summary === 'object' && body.summary ? body.summary.depCity : '') || route.depCity,
+        arrCity: (typeof body.summary === 'object' && body.summary ? body.summary.arrCity : '') || route.arrCity,
+      },
+      plans,
+    },
+  };
+}
+
+function inferRouteFromMessages(messages: ChatMessage[]): { depCity: string; arrCity: string } {
+  for (let i = messages.length - 1; i >= 0; i -= 1) {
+    const text = collectMessageText(messages[i]);
+    const route = inferRouteFromText(text);
+    if (route.depCity || route.arrCity) return route;
+  }
+  return { depCity: '', arrCity: '' };
+}
+
+function collectMessageText(message: ChatMessage): string {
+  const cardTexts = (message.cards ?? []).flatMap((item) => [
+    item.card.title,
+    item.card.message,
+    typeof item.card.body?.summary === 'string' ? item.card.body.summary : '',
+  ]);
+  return [message.content, ...cardTexts].filter(Boolean).join('\n');
+}
+
+function inferRouteFromText(text: string): { depCity: string; arrCity: string } {
+  const patterns = [
+    /([\u4e00-\u9fa5]{2,10})\s*[→到至-]\s*([\u4e00-\u9fa5]{2,10})/,
+    /查询([\u4e00-\u9fa5]{2,10})[至到]([\u4e00-\u9fa5]{2,10})/,
+  ];
+  for (const pattern of patterns) {
+    const match = text.match(pattern);
+    if (match) return { depCity: cleanCity(match[1]), arrCity: cleanCity(match[2]) };
+  }
+  return { depCity: '', arrCity: '' };
+}
+
+function cleanCity(value: string): string {
+  return value.replace(/机票|航班|单程|往返|查询|请提供|出发|到达/g, '').trim();
+}
+
 export function useChatStream(options: UseChatStreamOptions = {}): UseChatStreamResult {
   const [messages, setMessages] = useState<ChatMessage[]>(EMPTY_MESSAGES);
   const [status, setStatus] = useState<ChatStatus>('idle');
@@ -170,6 +241,7 @@ export function useChatStream(options: UseChatStreamOptions = {}): UseChatStream
   const activeMsgIdRef = useRef<string | null>(null);
   const pendingRef = useRef<PendingCard | null>(null);
   const submittedCardIdsRef = useRef<Set<string>>(new Set());
+  const messagesRef = useRef<ChatMessage[]>(EMPTY_MESSAGES);
   const heartbeatRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const heartbeatTargetRef = useRef<string | null>(null);
 
@@ -177,6 +249,10 @@ export function useChatStream(options: UseChatStreamOptions = {}): UseChatStream
   useEffect(() => {
     optionsRef.current = options;
   }, [options]);
+
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
 
   useEffect(() => {
     if (options.sessionId && !serverSessionId && status === 'idle') {
@@ -233,7 +309,7 @@ export function useChatStream(options: UseChatStreamOptions = {}): UseChatStream
   }, [abort, options.sessionId, options.turnId]);
 
   const send = useCallback(
-    (content: string) => {
+    (content: string, displayContent?: string) => {
       const trimmed = content.trim();
       if (!trimmed) return;
       if (status === 'sending' || status === 'streaming' || status === 'resuming') return;
@@ -249,7 +325,7 @@ export function useChatStream(options: UseChatStreamOptions = {}): UseChatStream
       const userMsg: ChatMessage = {
         id: newId('user'),
         role: 'user',
-        content: trimmed,
+        content: displayContent?.trim() || trimmed,
         timestamp: new Date().toISOString(),
       };
       const assistantId = newId('assistant');
@@ -328,7 +404,10 @@ export function useChatStream(options: UseChatStreamOptions = {}): UseChatStream
         if (submittedCardIdsRef.current.has(latestCard.card.card_id)) return;
         submittedCardIdsRef.current.add(latestCard.card.card_id);
         markCardSubmitted(latestCard.messageId, latestCard.card.card_id);
-        send(formatCardReply(latestCard.card, userInput, actionId));
+        send(
+          formatCardReply(latestCard.card, userInput, actionId),
+          formatCardReplyDisplay(latestCard.card.card, userInput),
+        );
         return;
       }
       if (status !== 'suspended') return;
@@ -509,7 +588,10 @@ export function useChatStream(options: UseChatStreamOptions = {}): UseChatStream
         const cardView: CardView = {
           card_id: data.card_id,
           card_type: data.card_type,
-          card: { ...data.card, card_type: data.card_type, card_id: data.card_id },
+          card: enrichFlightResultCard(
+            { ...data.card, card_type: data.card_type, card_id: data.card_id },
+            messagesRef.current,
+          ),
           correlation_id: data.correlation_id,
           at: new Date().toISOString(),
         };
@@ -800,4 +882,22 @@ function formatCardReply(
     user_input: userInput,
   };
   return `用户已提交 ${card.card_type} 卡片：${JSON.stringify(payload)}`;
+}
+
+function formatCardReplyDisplay(
+  card: CardDescriptor,
+  userInput: Record<string, unknown>,
+): string {
+  const labels = new Map(
+    (card.fields ?? []).map((field) => [field.id ?? field.key ?? field.name ?? field.label, field.label]),
+  );
+  return Object.entries(userInput)
+    .map(([key, value]) => `${labels.get(key) ?? key}：${formatUserInputValue(value)}`)
+    .join('，');
+}
+
+function formatUserInputValue(value: unknown): string {
+  if (Array.isArray(value)) return value.map(formatUserInputValue).join('、');
+  if (value && typeof value === 'object') return JSON.stringify(value);
+  return String(value ?? '');
 }

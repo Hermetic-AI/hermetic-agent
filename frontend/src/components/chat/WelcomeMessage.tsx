@@ -167,6 +167,9 @@ function pickActions(label?: string, backendReady = true): QuickAction[] {
     return [
       { label: '订机票', value: '帮我订明天北京到上海的经济舱', icon: <PlaneIcon />, hint: '按差标预订, 全程引导' },
       { label: '查航班', value: '帮我查下周二上海到深圳的航班', icon: <SearchIcon />, hint: '单程/往返, 实时价格' },
+      { label: '多城差旅', value: '下周我要从北京去上海，再去杭州，最后回北京，帮我规划机票和酒店', icon: <RouteIcon />, hint: '多城市机票 + 酒店规划' },
+      { label: '预算合规', value: '我去上海出差，机票和酒店总预算 3000，帮我做一个合规方案', icon: <BudgetIcon />, hint: '预算 + 差标约束' },
+      { label: '端午出行', value: '端午节给我推荐 3 个适合从北京出发的出行目的地，并规划 3 天 2 晚行程，帮我订酒店和机票，并给我一个游玩攻略', icon: <TripIcon />, hint: '目的地 + 行程 + 酒店机票' },
       { label: '我的订单', value: '查看我的订单', icon: <TicketIcon />, hint: '待支付 / 待出行 / 已完成' },
       { label: '差旅规则', value: '差旅规则是什么', icon: <BookIcon />, hint: '舱位/价格上限' },
     ];
@@ -175,6 +178,9 @@ function pickActions(label?: string, backendReady = true): QuickAction[] {
   return [
     { label: '查机票', value: '帮我查一下北京到上海明天的单程机票', icon: <SearchIcon />, hint: '用城市名查, 不用三字码' },
     { label: '订机票', value: '帮我订明天北京到上海的经济舱', icon: <PlaneIcon />, hint: '跳到预订流程' },
+    { label: '多城差旅', value: '下周我要从北京去上海，再去杭州，最后回北京，帮我规划机票和酒店', icon: <RouteIcon />, hint: '多城市机票 + 酒店规划' },
+    { label: '预算合规', value: '我去上海出差，机票和酒店总预算 3000，帮我做一个合规方案', icon: <BudgetIcon />, hint: '预算 + 差标约束' },
+    { label: '端午出行', value: '端午节给我推荐 3 个适合从北京出发的出行目的地，并规划 3 天 2 晚行程，帮我订酒店和机票，并给我一个游玩攻略', icon: <TripIcon />, hint: '目的地 + 行程 + 酒店机票' },
     { label: '我的订单', value: '查看我的订单', icon: <TicketIcon />, hint: '差旅订单状态' },
     { label: '差旅规则', value: '差旅规则是什么', icon: <BookIcon />, hint: '公司差旅标准' },
   ];
@@ -223,6 +229,38 @@ function BookIcon() {
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
       <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
       <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
+    </svg>
+  );
+}
+
+function RouteIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+      <circle cx="5" cy="6" r="2" />
+      <circle cx="19" cy="18" r="2" />
+      <path d="M7 6h5a3 3 0 0 1 0 6H9a3 3 0 0 0 0 6h8" />
+    </svg>
+  );
+}
+
+function BudgetIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+      <path d="M4 7h16v12H4z" />
+      <path d="M4 10h16" />
+      <path d="M8 15h3" />
+      <path d="M16 15h1" />
+    </svg>
+  );
+}
+
+function TripIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+      <path d="M3 20h18" />
+      <path d="M5 20 12 4l7 16" />
+      <path d="M8 14h8" />
+      <path d="M9.5 10h5" />
     </svg>
   );
 }
