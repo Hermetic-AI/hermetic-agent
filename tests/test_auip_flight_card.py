@@ -267,7 +267,10 @@ def test_compact_flight_fields_without_legs_are_mapped() -> None:
     card = maybe_assemble_flight_card("feihe-travel_queryFlightBasic", output)
 
     assert card is not None
-    assert card.title == "北京 → 上海 2026-06-12 航班方案"
+    assert card.title == "机票已发送"
+    assert card.body["summary"]["depCity"] == "北京"
+    assert card.body["summary"]["arrCity"] == "上海"
+    assert card.body["summary"]["depDate"] == "2026-06-12"
     flight = card.body["plans"][0]["flights"][0]
     assert flight["flightId"] == "MF8561"
     assert flight["flightNo"] == "MF8561"

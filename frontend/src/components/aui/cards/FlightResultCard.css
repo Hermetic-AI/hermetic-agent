@@ -1,73 +1,85 @@
-/* FlightResultCard — 机票查询结果卡片
-   视觉对齐 docs/ui/AI订票-对话卡片.png
-*/
+/* FlightResultCard — ticket-style flight result card. */
 
-.frc-summary {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
+.aui-card-flight_result {
+  border-color: #d7e8ff;
+  background: linear-gradient(180deg, #f7fbff 0%, #ffffff 46%);
+  box-shadow: 0 10px 28px rgba(0, 81, 161, 0.08);
+}
+
+.aui-card-flight_result .aui-card-header {
+  margin-bottom: 8px;
+}
+
+.aui-card-flight_result .aui-card-icon {
+  background: #e8f3ff;
+  color: #0051a1;
+}
+
+.aui-card-flight_result .aui-card-title {
+  color: #0b3d74;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.frc-card-topline {
+  border-bottom: 1px solid #e3efff;
+  padding-bottom: 8px;
 }
 
 .frc-summary-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
-  padding: 4px 0;
+  gap: 12px;
 }
 
 .frc-summary-text {
   font-size: 13px;
-  color: #475569;
-  line-height: 1.5;
+  color: #5b6b7e;
+  line-height: 1.55;
 }
 
 .frc-summary-text strong {
-  color: #0051A1;
-  font-weight: 700;
+  color: #0051a1;
+  font-weight: 800;
 }
 
 .frc-summary-weather {
-  color: #94a3b8;
-  font-size: 12px;
+  color: #7c8da0;
   margin-left: 6px;
 }
 
 .frc-summary-toggle {
-  font-size: 12px;
-  padding: 4px 10px;
-  border-radius: 6px;
-  background: #EFF6FF;
-  color: #1E40AF;
-  border: 1px solid #DBEAFE;
-  cursor: pointer;
-  transition: background 0.15s;
   flex-shrink: 0;
+  border: 0;
+  background: transparent;
+  color: #0051a1;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 3px 0;
 }
 
 .frc-summary-toggle:hover {
-  background: #DBEAFE;
+  color: #003f7e;
 }
 
 .frc-empty {
+  margin: 0;
+  padding: 18px 0;
   text-align: center;
   color: #94a3b8;
-  font-size: 12px;
-  padding: 12px 0;
+  font-size: 13px;
 }
 
 .frc-plans {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  margin-top: 6px;
+  gap: 14px;
+  margin-top: 4px;
 }
 
 .frc-plan {
-  background: #FAFBFC;
-  border: 1px solid #E2E8F0;
-  border-radius: 10px;
-  padding: 10px 12px;
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -75,21 +87,43 @@
 
 .frc-plan-header {
   display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 28px;
+}
+
+.frc-plan-index {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: #0051a1;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.frc-plan-copy {
+  display: flex;
   align-items: baseline;
   gap: 6px;
+  min-width: 0;
   flex-wrap: wrap;
 }
 
 .frc-plan-title {
   margin: 0;
+  color: #17324d;
   font-size: 14px;
-  font-weight: 600;
-  color: #0F172A;
+  font-weight: 700;
 }
 
 .frc-plan-subtitle {
+  color: #708197;
   font-size: 12px;
-  color: #64748B;
 }
 
 .frc-plan-flights {
@@ -98,235 +132,316 @@
   gap: 8px;
 }
 
-/* --- Flight row --- */
-
-.frc-row {
+.frc-ticket {
+  position: relative;
   display: grid;
-  grid-template-columns: 1fr 130px;
-  gap: 10px;
+  grid-template-columns: minmax(0, 1fr) 112px;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid #dbe9f8;
+  border-radius: 14px;
   background: #fff;
-  border: 1px solid #E2E8F0;
-  border-radius: 8px;
-  padding: 10px 12px;
-  align-items: center;
-  transition: border-color 0.15s, box-shadow 0.15s;
+  box-shadow: 0 8px 22px rgba(25, 69, 116, 0.07);
+  overflow: hidden;
 }
 
-.frc-row:hover {
-  border-color: #94A3B8;
-  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.04);
+.frc-ticket::before,
+.frc-ticket::after {
+  content: '';
+  position: absolute;
+  right: 106px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #f7fbff;
+  border: 1px solid #dbe9f8;
 }
 
-.frc-row-date {
-  display: flex;
-  align-items: baseline;
-  gap: 6px;
-  font-size: 11px;
-  color: #94A3B8;
+.frc-ticket::before {
+  top: -8px;
+}
+
+.frc-ticket::after {
+  bottom: -8px;
+}
+
+.frc-ticket-head {
   grid-column: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
 }
 
-.frc-row-date-label {
-  font-size: 10px;
-  background: #F1F5F9;
-  padding: 1px 6px;
-  border-radius: 4px;
-  color: #64748B;
+.frc-ticket-route {
+  color: #17324d;
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-.frc-row-date-value {
-  font-weight: 600;
-  color: #475569;
-  font-size: 12px;
-  font-family: ui-monospace, "SFMono-Regular", Menlo, monospace;
+.frc-ticket-badge {
+  flex-shrink: 0;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: #edf7ff;
+  color: #0051a1;
+  font-size: 11px;
+  font-weight: 700;
 }
 
-.frc-row-route {
-  margin-left: 4px;
-  color: #475569;
-  font-size: 12px;
-}
-
-.frc-row-main {
+.frc-ticket-body {
   grid-column: 1;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 9px;
+  min-width: 0;
 }
 
-.frc-row-time {
+.frc-flightline {
   display: grid;
-  grid-template-columns: 1fr auto 1fr;
+  grid-template-columns: 88px minmax(76px, 1fr) 88px;
   gap: 8px;
   align-items: center;
 }
 
-.frc-row-time-end {
+.frc-timepoint {
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
+  min-width: 0;
 }
 
-.frc-row-time-end:last-child {
+.frc-timepoint-right {
+  text-align: right;
   align-items: flex-end;
 }
 
-.frc-row-time-hhmm {
-  font-size: 20px;
-  font-weight: 700;
-  color: #0F172A;
-  font-family: ui-monospace, "SFMono-Regular", Menlo, monospace;
-  line-height: 1.1;
-  letter-spacing: -0.5px;
+.frc-time {
+  color: #10233a;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 22px;
+  font-weight: 800;
+  line-height: 1.05;
+  letter-spacing: -0.8px;
 }
 
-.frc-row-time-airport {
-  font-size: 11px;
-  color: #64748B;
-  margin-top: 2px;
-  max-width: 130px;
-  text-align: inherit;
+.frc-airport {
+  max-width: 100%;
+  margin-top: 4px;
+  color: #66788d;
+  font-size: 12px;
+  white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
-.frc-row-time-arrow {
+.frc-path {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 2px;
-  color: #94A3B8;
-  font-size: 11px;
-  white-space: nowrap;
-}
-
-.frc-row-time-duration {
-  font-weight: 600;
-  color: #475569;
-  font-size: 11px;
-}
-
-.frc-row-time-line {
-  color: #94A3B8;
-  font-size: 12px;
-  letter-spacing: -1px;
-}
-
-.frc-row-time-stops {
-  font-size: 10px;
-  color: #94A3B8;
-}
-
-.frc-row-meta {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 12px;
-  color: #475569;
-  flex-wrap: wrap;
-}
-
-.frc-row-airline {
-  color: #475569;
-  font-size: 12px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.frc-row-cabin {
-  font-size: 11px;
-  background: #F1F5F9;
-  padding: 1px 6px;
-  border-radius: 4px;
-  color: #475569;
-}
-
-.frc-row-tags {
-  display: flex;
   gap: 4px;
+  min-width: 0;
+}
+
+.frc-duration {
+  color: #71849a;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.frc-path-line {
+  position: relative;
+  display: block;
+  width: 100%;
+  min-width: 64px;
+  height: 12px;
+}
+
+.frc-path-line::before {
+  content: '';
+  position: absolute;
+  left: 4px;
+  right: 12px;
+  top: 6px;
+  border-top: 2px solid #bad2ed;
+}
+
+.frc-path-line::after {
+  content: '';
+  position: absolute;
+  right: 4px;
+  top: 2px;
+  width: 8px;
+  height: 8px;
+  border-top: 2px solid #bad2ed;
+  border-right: 2px solid #bad2ed;
+  transform: rotate(45deg);
+}
+
+.frc-path-line i {
+  position: absolute;
+  left: 0;
+  top: 3px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  border: 2px solid #bad2ed;
+  background: #fff;
+}
+
+.frc-ticket-meta,
+.frc-ticket-tags {
+  display: flex;
   flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.frc-airline-chip,
+.frc-soft-chip,
+.frc-tag {
+  display: inline-flex;
+  align-items: center;
+  min-height: 20px;
+  padding: 2px 7px;
+  border-radius: 6px;
+  font-size: 12px;
+  line-height: 1.2;
+}
+
+.frc-airline-chip {
+  background: #f0f6fd;
+  color: #274867;
+  font-weight: 700;
+}
+
+.frc-soft-chip {
+  background: #f5f7fa;
+  color: #607286;
 }
 
 .frc-tag {
-  font-size: 11px;
-  padding: 1px 6px;
-  border-radius: 4px;
-  background: #E0F2FE;
-  color: #075985;
-  font-weight: 500;
+  background: #eaf8f1;
+  color: #14734a;
+  font-weight: 700;
 }
 
-.frc-row-aside {
+.frc-ticket-pricebox {
   grid-column: 2;
-  grid-row: 1 / span 3;
+  grid-row: 1 / span 2;
   display: flex;
   flex-direction: column;
   align-items: flex-end;
-  gap: 4px;
-  border-left: 1px dashed #E2E8F0;
-  padding-left: 12px;
-  align-self: stretch;
   justify-content: center;
+  gap: 5px;
+  padding-left: 12px;
+  border-left: 1px dashed #c8d9ed;
 }
 
-.frc-row-price-label {
-  font-size: 10px;
-  color: #94A3B8;
+.frc-price-line {
+  color: #0051a1;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 24px;
+  font-weight: 900;
+  letter-spacing: -1px;
+  line-height: 1;
 }
 
-.frc-row-price {
-  font-size: 20px;
-  font-weight: 700;
-  color: #0051A1;
-  font-family: ui-monospace, "SFMono-Regular", Menlo, monospace;
-  letter-spacing: -0.5px;
-  line-height: 1.1;
+.frc-price-line span {
+  margin-right: 1px;
+  font-size: 14px;
+  font-weight: 800;
 }
 
-.frc-row-pick {
-  font-size: 12px;
-  padding: 4px 10px;
-  border-radius: 6px;
-  background: #0051A1;
+.frc-price-suffix {
+  color: #8191a5;
+  font-size: 11px;
+}
+
+.frc-pick {
+  margin-top: 4px;
+  border: 0;
+  border-radius: 999px;
+  background: #0051a1;
   color: #fff;
-  border: none;
   cursor: pointer;
-  font-weight: 500;
-  transition: background 0.15s;
+  font-size: 12px;
+  font-weight: 800;
+  padding: 6px 13px;
+  box-shadow: 0 6px 14px rgba(0, 81, 161, 0.2);
+  transition: transform 0.15s, background 0.15s, box-shadow 0.15s;
 }
 
-.frc-row-pick:hover:not(:disabled) {
-  background: #003F7E;
+.frc-pick:hover:not(:disabled) {
+  background: #003f7e;
+  box-shadow: 0 8px 18px rgba(0, 81, 161, 0.26);
+  transform: translateY(-1px);
 }
 
-.frc-row-pick:disabled {
-  opacity: 0.5;
+.frc-pick:disabled {
   cursor: not-allowed;
+  opacity: 0.5;
+  box-shadow: none;
 }
 
 .frc-footer-hint {
-  font-size: 11px;
-  color: #94A3B8;
+  padding-top: 2px;
+  color: #7c8da0;
+  font-size: 12px;
+  line-height: 1.45;
   text-align: center;
-  padding: 4px 0 0;
-  font-style: italic;
 }
 
-/* Responsive: stack the aside below the row on narrow viewports */
-@media (max-width: 480px) {
-  .frc-row {
+@media (max-width: 560px) {
+  .frc-summary-row {
+    align-items: flex-start;
+  }
+
+  .frc-ticket {
     grid-template-columns: 1fr;
   }
-  .frc-row-aside {
+
+  .frc-ticket::before,
+  .frc-ticket::after {
+    display: none;
+  }
+
+  .frc-ticket-head,
+  .frc-ticket-body,
+  .frc-ticket-pricebox {
     grid-column: 1;
+  }
+
+  .frc-ticket-pricebox {
     grid-row: auto;
     flex-direction: row;
+    align-items: center;
     justify-content: space-between;
     border-left: 0;
-    border-top: 1px dashed #E2E8F0;
-    padding-left: 0;
-    padding-top: 8px;
+    border-top: 1px dashed #c8d9ed;
+    padding: 10px 0 0;
+  }
+
+  .frc-price-suffix {
+    margin-right: auto;
+  }
+}
+
+@media (max-width: 420px) {
+  .frc-flightline {
+    grid-template-columns: 76px minmax(52px, 1fr) 76px;
+    gap: 6px;
+  }
+
+  .frc-time {
+    font-size: 19px;
+  }
+
+  .frc-airport,
+  .frc-duration,
+  .frc-plan-subtitle {
+    font-size: 11px;
   }
 }

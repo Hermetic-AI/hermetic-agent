@@ -228,18 +228,18 @@ def _build_plans(flight_list: list[dict[str, Any]], airway_names: dict[str, str]
     )
     return [
         {
-            "id": "cheapest",
-            "title": "最便宜",
-            "subtitle": f"¥{_first_number(cheapest[0].get('lowestPrice'), cheapest[0].get('price'), cheapest[0].get('totalPrice')) or '?'} 起",
-            "criteria": "price",
-            "flights": [_flight_to_auip(cheapest[0], airway_names)],
-        },
-        {
             "id": "fastest",
             "title": "最快抵达",
             "subtitle": _duration_text(fastest[0], fastest[0].get("legs", [{}])[0] if fastest[0].get("legs") else {}) or "?",
             "criteria": "duration",
             "flights": [_flight_to_auip(fastest[0], airway_names)],
+        },
+        {
+            "id": "cheapest",
+            "title": "最便宜",
+            "subtitle": f"¥{_first_number(cheapest[0].get('lowestPrice'), cheapest[0].get('price'), cheapest[0].get('totalPrice')) or '?'} 起",
+            "criteria": "price",
+            "flights": [_flight_to_auip(cheapest[0], airway_names)],
         },
         {
             "id": "comfortable",
@@ -298,7 +298,7 @@ def maybe_assemble_flight_card(tool_name: str, output: Any) -> Card | None:
     return Card(
         card_id=f"card-{uuid.uuid4().hex[:12]}",
         card_type=CardType.FLIGHT_RESULT,
-        title=f"{summary['depCity']} → {summary['arrCity']} {summary['depDate']} 航班方案",
+        title="机票已发送",
         body={"summary": summary, "plans": plans},
     )
 

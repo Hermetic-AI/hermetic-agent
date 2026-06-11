@@ -48,7 +48,7 @@ export function FlightResultCard({
 
   return (
     <CardShell card={card} suspended={suspended} submitted={submitted}>
-      <div className="frc-summary">
+      <div className="frc-card-topline">
         {summary && <SummaryLine summary={summary} expanded={expanded} onToggle={() => setExpanded((v) => !v)} />}
       </div>
 
@@ -82,7 +82,7 @@ export function FlightResultCard({
 
       {!submitted && plans.length > 0 && (
         <div className="frc-footer-hint">
-          点击「选这班」可直接进入预订流程; 或继续对话调整筛选条件。
+          你可以点选推荐航班进入预订，也可以继续说出发时段、航司或价格偏好。
         </div>
       )}
     </CardShell>
@@ -132,8 +132,11 @@ function PlanBlock({
   return (
     <div className="frc-plan">
       <div className="frc-plan-header">
-        <h5 className="frc-plan-title">{plan.title}</h5>
-        {plan.subtitle && <span className="frc-plan-subtitle">（{plan.subtitle}）</span>}
+        <span className="frc-plan-index">方案{planIndex(plan.id, plan.title)}</span>
+        <div className="frc-plan-copy">
+          <h5 className="frc-plan-title">{plan.title}</h5>
+          {plan.subtitle && <span className="frc-plan-subtitle">{plan.subtitle}</span>}
+        </div>
       </div>
       <div className="frc-plan-flights">
         {plan.flights.map((seg, idx) => (
@@ -164,54 +167,49 @@ function FlightRow({
   const showTags = (segment.tags ?? []).slice(0, expanded ? 10 : 2);
   const dep = segment.departure;
   const arr = segment.arrival;
+  const depTime = formatClock(dep.time);
+  const arrTime = formatClock(arr.time);
+  const routeDate = formatDateLabel(segment.date || dep.time);
+  const routeLabel = [dep.city, arr.city].filter(Boolean).join(' → ');
+  const depPlace = formatAirport(dep);
+  const arrPlace = formatAirport(arr);
   const airlineLabel = segment.shareInfo
     ? `${segment.airline.name}（${segment.shareInfo}）`
     : segment.airline.name;
   return (
-    <div className="frc-row">
-      <div className="frc-row-date">
-        <span className="frc-row-date-label">航班</span>
-        <span className="frc-row-date-value">{segment.date}</span>
-        <span className="frc-row-route">
-          {dep.city} - {arr.city}
-        </span>
+    <article className="frc-ticket">
+      <div className="frc-ticket-head">
+        <span className="frc-ticket-route">{routeDate} {routeLabel}</span>
+        <span className="frc-ticket-badge">{segment.stops === 0 ? '直飞' : `经停${segment.stops}次`}</span>
       </div>
 
-      <div className="frc-row-main">
-        <div className="frc-row-time">
-          <div className="frc-row-time-end">
-            <span className="frc-row-time-hhmm">{dep.time}</span>
-            <span className="frc-row-time-airport">
-              {dep.airport}
-              {dep.terminal ? ` ${dep.terminal}` : ''}
-            </span>
+      <div className="frc-ticket-body">
+        <div className="frc-flightline">
+          <div className="frc-timepoint frc-timepoint-left">
+            <span className="frc-time">{depTime}</span>
+            <span className="frc-airport">{depPlace}</span>
           </div>
-          <div className="frc-row-time-arrow">
-            <span className="frc-row-time-duration">{segment.duration}</span>
-            <span className="frc-row-time-line">———▶</span>
-            <span className="frc-row-time-stops">
-              {segment.stops === 0 ? '直飞' : `经停 ${segment.stops} 次`}
-            </span>
+
+          <div className="frc-path" aria-hidden="true">
+            <span className="frc-duration">{formatDuration(segment.duration)}</span>
+            <span className="frc-path-line"><i /></span>
           </div>
-          <div className="frc-row-time-end">
-            <span className="frc-row-time-hhmm">{arr.time}</span>
-            <span className="frc-row-time-airport">
-              {arr.airport}
-              {arr.terminal ? ` ${arr.terminal}` : ''}
-            </span>
+
+          <div className="frc-timepoint frc-timepoint-right">
+            <span className="frc-time">{arrTime}</span>
+            <span className="frc-airport">{arrPlace}</span>
           </div>
         </div>
 
-        <div className="frc-row-meta">
-          <span className="frc-row-airline">
-            {airlineLabel} · {segment.aircraft ?? '机型未提供'}
-          </span>
-          <span className="frc-row-cabin">{segment.cabin}</span>
+        <div className="frc-ticket-meta">
+          <span className="frc-airline-chip">{airlineLabel || segment.airline.code || '航司未提供'} {segment.flightNo}</span>
+          {segment.aircraft && <span className="frc-soft-chip">{segment.aircraft}</span>}
+          {segment.cabin && <span className="frc-soft-chip">{segment.cabin}</span>}
           <FlightComplianceInline price={Number(segment.price)} cabinClass={segment.cabinClass} />
         </div>
 
         {showTags.length > 0 && (
-          <div className="frc-row-tags">
+          <div className="frc-ticket-tags">
             {showTags.map((t) => (
               <span key={t} className="frc-tag">
                 {t}
@@ -221,20 +219,50 @@ function FlightRow({
         )}
       </div>
 
-      <div className="frc-row-aside">
-        <div className="frc-row-price-label">起</div>
-        <div className="frc-row-price">¥{Number(segment.price).toFixed(0)}</div>
+      <div className="frc-ticket-pricebox">
+        <div className="frc-price-line"><span>¥</span>{Number(segment.price).toFixed(0)}</div>
+        <div className="frc-price-suffix">起</div>
         <button
           type="button"
-          className="frc-row-pick"
+          className="frc-pick"
           onClick={onPick}
           disabled={disabled}
         >
           选这班
         </button>
       </div>
-    </div>
+    </article>
   );
+}
+
+function planIndex(id: string, title: string): string {
+  if (id === 'fastest' || title.includes('快')) return '1';
+  if (id === 'cheapest' || title.includes('便宜')) return '2';
+  if (id === 'comfortable' || title.includes('舒适') || title.includes('直飞')) return '3';
+  return '';
+}
+
+function formatClock(value?: string): string {
+  if (!value) return '--:--';
+  const match = String(value).match(/(\d{1,2}:\d{2})/);
+  return match ? match[1] : String(value);
+}
+
+function formatDateLabel(value?: string): string {
+  if (!value) return '';
+  const text = String(value);
+  const match = text.match(/(?:\d{4}-)?(\d{1,2})-(\d{1,2})/);
+  if (!match) return text;
+  return `${match[1].padStart(2, '0')}月${match[2].padStart(2, '0')}日`;
+}
+
+function formatAirport(endpoint: { airport?: string; terminal?: string }): string {
+  return [endpoint.airport, endpoint.terminal].filter(Boolean).join(' ');
+}
+
+function formatDuration(value?: string): string {
+  if (!value) return '';
+  return String(value).replace('分钟', 'm').replace('小时', 'h');
 }
 
 function FlightComplianceInline({
