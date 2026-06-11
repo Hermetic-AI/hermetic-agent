@@ -12,15 +12,9 @@
 // Usage:
 //   for await (const evt of parseSSE(response)) { ... }
 
-import type { StreamEvent, StreamEventType } from '../types';
+import type { StreamEvent, StreamEventType, StreamEventPayloadMap } from '../types';
 
-type PayloadMap = StreamEvent extends infer E
-  ? E extends StreamEvent<infer T>
-    ? T extends StreamEventType
-      ? { [K in T]: StreamEvent<K>['data'] }
-      : never
-    : never
-  : never;
+type PayloadFor<T extends StreamEventType> = StreamEventPayloadMap[T];
 
 function tryParseJson(line: string): unknown {
   if (!line) return null;
@@ -106,6 +100,6 @@ function parseRecord(record: string): StreamEvent | null {
   const payload = tryParseJson(dataLines.join('\n'));
   if (!isStreamEventShape(payload)) return null;
   const type = payload.type as StreamEventType;
-  const data = (payload.data ?? {}) as PayloadMap[typeof type];
+  const data = (payload.data ?? {}) as PayloadFor<typeof type>;
   return { type, data } as StreamEvent;
 }

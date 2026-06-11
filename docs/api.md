@@ -110,7 +110,7 @@ curl -N -X POST http://localhost:8000/agent/chat/stream \
   "message": "用户消息 (必填)",
   "session_id": "可选, 继续已有会话",
   "agent_name": "可选, 指定 Agent",
-  "model": "可选, 指定模型 (claude-sonnet-4-5 等)",
+  "model": "可选, 指定模型 (MiniMax-M2.7-highspeed 等)",
   "system_prompt": "可选, 但 scenario 注入会覆盖",
   "skills": ["可选", "但会被 scenario 白名单过滤"],
   "tools": ["可选", "但会被 scenario 白名单过滤"],
@@ -208,7 +208,7 @@ curl -N -X POST http://localhost:8000/agent/chat/stream \
 | [docs/design/scenario-routing-proposal.md](design/scenario-routing-proposal.md) | 场景化路由设计源 |
 | [docs/design/agent-sandbox-plan.md](design/agent-sandbox-plan.md) | 沙箱 + 工具权限分层设计源 |
 | [docs/design/book-flight-hitl-design.md](design/book-flight-hitl-design.md) | HITL / A2UI 协议设计源 |
-| [CLAUDE.md](../CLAUDE.md) | 项目工程规范 (5 层代码分层 / 命名约定 / 质量约束) |
+| [CLAUDE.md](../.ai/CLAUDE.md) | 项目工程规范 (5 层代码分层 / 命名约定 / 质量约束) |
 
 ---
 

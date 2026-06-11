@@ -77,7 +77,7 @@ class ChatRequest(BaseModel):
     model: Optional[str] = Field(
         None,
         description="指定模型",
-        examples=["claude-sonnet-4-5"],
+        examples=["MiniMax-M2.7-highspeed"],
     )
     system_prompt: Optional[str] = Field(
         None,
@@ -127,7 +127,7 @@ class CreateSessionRequest(BaseModel):
     """创建会话请求"""
 
     agent_name: str = Field(..., description="Agent 实例名称", examples=["agent-shanghai"])
-    model: Optional[str] = Field(None, description="指定模型", examples=["claude-sonnet-4-5"])
+    model: Optional[str] = Field(None, description="指定模型", examples=["MiniMax-M2.7-highspeed"])
     system_prompt: Optional[str] = Field(None, description="系统提示词", examples=["你是一个旅行助手"])
     session_id: Optional[str] = Field(
         None,
@@ -143,7 +143,7 @@ class CreateSessionResponse(BaseModel):
     session_id: str = Field(..., examples=["a1b2c3d4-1234-5678-9abc-def012345678"])
     agent_name: str = Field(..., examples=["agent-shanghai"])
     agent_base_url: str = Field(..., examples=["http://localhost:4096"])
-    model: Optional[str] = Field(None, examples=["claude-sonnet-4-5"])
+    model: Optional[str] = Field(None, examples=["MiniMax-M2.7-highspeed"])
 
 
 class ErrorResponse(BaseModel):

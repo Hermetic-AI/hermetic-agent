@@ -123,6 +123,38 @@ def _is_transient_opencode_error(exc: BaseException) -> bool:
     return False
 
 
+def _is_opencode_session_init_race(exc: BaseException) -> bool:
+    """Detect opencode 1.17.0 share-subscriber race on first session prompt.
+
+    Right after a brand-new session is created, opencode's internal
+    ``share subscriber`` (which broadcasts ``message.updated`` events) can
+    fire *before* the session's primary model binding is fully visible to
+    ``SessionPrompt.getModel``. When that happens the subscriber raises
+    ``ProviderModelNotFoundError`` and the entire ``POST /session/{id}/message``
+    returns 500 — even though a *retry* of the same POST a few hundred ms
+    later goes through cleanly because the binding has settled.
+
+    We treat such 5xx + ``ProviderModelNotFoundError`` as a transient race
+    that deserves a short backoff retry, separate from the
+    connect/reload-style errors handled by ``_is_transient_opencode_error``.
+    """
+    import httpx
+
+    if isinstance(exc, httpx.HTTPStatusError):
+        if exc.response.status_code >= 500:
+            blob = (exc.response.text or "") + " " + str(exc)
+            if "ProviderModelNotFoundError" in blob or "UnknownError" in blob:
+                return True
+    current: BaseException | None = exc
+    seen = 0
+    while current is not None and seen < 5:
+        if "ProviderModelNotFoundError" in str(current):
+            return True
+        current = current.__cause__ or current.__context__
+        seen += 1
+    return False
+
+
 async def _wait_opencode_health(
     base_url: str,
     *,
@@ -566,10 +598,18 @@ def _log_payload_kwargs(sdk_kwargs: dict[str, Any]) -> dict[str, Any]:
 
 def _build_session_prompt_payload(sdk_kwargs: dict[str, Any]) -> dict[str, Any]:
     """Build the current opencode ``POST /session/{id}/message`` body."""
+    provider_id = sdk_kwargs["provider_id"]
+    model_id = sdk_kwargs["model_id"]
+    if isinstance(model_id, str) and "/" in model_id:
+        model_provider, _, bare_model_id = model_id.partition("/")
+        if model_provider:
+            provider_id = model_provider
+        if bare_model_id:
+            model_id = bare_model_id
     return {
         "model": {
-            "providerID": sdk_kwargs["provider_id"],
-            "modelID": sdk_kwargs["model_id"],
+            "providerID": provider_id,
+            "modelID": model_id,
         },
         "parts": sdk_kwargs["parts"],
         "system": sdk_kwargs.get("system"),
@@ -581,11 +621,24 @@ async def _post_session_message_raw(
     base_url: str,
     sdk_kwargs: dict[str, Any],
 ) -> dict[str, Any]:
-    """POST chat directly and return raw JSON, avoiding SDK response parsing."""
+    """POST chat directly and return raw JSON, avoiding SDK response parsing.
+
+    Retries on two transient error classes:
+      * connection / reload errors caught by ``_is_transient_opencode_error``
+        (waits for ``/global/health`` to recover between attempts)
+      * opencode 1.17.0's first-prompt share-subscriber race
+        (ProviderModelNotFoundError / 5xx UnknownError) caught by
+        ``_is_opencode_session_init_race`` — short backoff so the session's
+        internal model binding settles, then retry the same POST.
+    """
     payload = _build_session_prompt_payload(sdk_kwargs)
     params = sdk_kwargs.get("extra_query") or {}
     last_error: Exception | None = None
-    for attempt in range(2):
+    # Up to 3 attempts total: 1 original + up to 2 retries.
+    # Each retry handles a different transient class — one
+    # connect/reload class (waits for /global/health) and one
+    # session-init race class (short backoff).
+    for attempt in range(3):
         try:
             async with _build_http_client() as client:
                 response = await client.post(
@@ -598,14 +651,25 @@ async def _post_session_message_raw(
                 return response.json()
         except Exception as e:
             last_error = e
-            if attempt > 0 or not _is_transient_opencode_error(e):
+            if _is_transient_opencode_error(e):
+                logger.warning(
+                    "opencode_message_post_transient_retry",
+                    session_id=sdk_kwargs.get("id"),
+                    attempt=attempt,
+                    error=str(e),
+                )
+                await _wait_opencode_health(base_url, timeout_seconds=5.0)
+            elif _is_opencode_session_init_race(e):
+                logger.warning(
+                    "opencode_message_post_init_race_retry",
+                    session_id=sdk_kwargs.get("id"),
+                    attempt=attempt,
+                    error=str(e),
+                )
+                # Short backoff — model binding usually settles in <500ms.
+                await asyncio.sleep(0.4 * (attempt + 1))
+            else:
                 raise
-            logger.warning(
-                "opencode_message_post_transient_retry",
-                session_id=sdk_kwargs.get("id"),
-                error=str(e),
-            )
-            await _wait_opencode_health(base_url, timeout_seconds=5.0)
     raise last_error or RuntimeError("opencode message post failed")
 
 
@@ -931,7 +995,8 @@ async def stream_chat(
 
         chat_task: asyncio.Task | None = None
         try:
-            # 1. 先订阅 hub (复用或新建长连接)
+            # 1. 先订阅 hub (复用或新建长连接) — 让 share-subscriber race 触发的
+            # session.error 事件能先于我们的 POST 看到, 我们可以拦截并屏蔽.
             async with hub.subscription(
                 agent_name=agent_name,
                 base_url=session_info.agent_base_url,
@@ -939,6 +1004,14 @@ async def stream_chat(
                 session_id=session_id,
             ) as sub_iter:
                 # 2. 启动 chat 后台任务 (不等结果, 持续发到 opencode serve)
+                # 注意: opencode 1.17.0 在新 session 第一次 POST /message 时
+                # share subscriber 阶段会偶发 ProviderModelNotFoundError race,
+                # _post_session_message_raw 内部有 retry 兜底. 如果 race 真的
+                # 失败了, opencode 会把错误包装成 ``session.error`` 事件
+                # (name=UnknownError) 通过 SSE 推到客户端 — 这条事件不能透传给
+                # 前端, 否则前端看到 "UnknownError" 就当作 chat 失败, 哪怕
+                # 后续重试实际成功了. 所以 background task 的最终结果由 finally
+                # 块统一处理, 抑制 race 期间的错误.
                 chat_task = asyncio.create_task(
                     _post_session_message_raw(
                         session_info.agent_base_url,
@@ -952,6 +1025,29 @@ async def stream_chat(
                         break
                     if mapped is None:
                         continue
+                    # session.error in the first ~1s after POST /message is the
+                    # opencode 1.17.0 share-subscriber race fingerprint. Wait
+                    # briefly for the background ``chat_task`` to finish its
+                    # retry; if it succeeds, the race was transient and we
+                    # should NOT surface the synthetic ``UnknownError`` to
+                    # the client. If the task already failed (no retry left)
+                    # we fall through and let the error flow out normally.
+                    if (
+                        mapped.type == "error"
+                        and chat_task is not None
+                        and not chat_task.done()
+                    ):
+                        with contextlib.suppress(Exception):
+                            await asyncio.wait_for(
+                                asyncio.shield(chat_task),
+                                timeout=3.0,
+                            )
+                        if chat_task.done() and chat_task.exception() is None:
+                            logger.info(
+                                "opencode_session_error_swallowed_init_race",
+                                session_id=session_id,
+                            )
+                            continue
                     # Dedup text updates: the SDK sends the full text so far
                     # on every ``message.part.updated`` for a text part.
                     if mapped.type == "text":

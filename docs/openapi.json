@@ -582,7 +582,7 @@
           },
           "model": {
             "type": "string",
-            "description": "指定模型 (claude-sonnet-4-5 等)"
+            "description": "指定模型 (MiniMax-M2.7-highspeed 等)"
           },
           "system_prompt": {
             "type": "string",

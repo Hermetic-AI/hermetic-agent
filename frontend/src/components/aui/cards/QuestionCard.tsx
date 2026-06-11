@@ -59,7 +59,7 @@ export function QuestionCard({
     );
   }
 
-  const isDone = suspended || submitted;
+  const isDone = !!(suspended || submitted);
 
   const updatePicked = (idx: number, labels: string[]) => {
     setPicked((prev) => {

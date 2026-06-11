@@ -1,3 +1,4 @@
+
 """policy.json → opencode config.json 渲染器.
 
 输入: /opt/sandbox/policy.json (ro bind mount, Hub 注入)
@@ -99,12 +100,13 @@ def _deep_merge(base: dict, overlay: dict) -> dict:
 def _resolve_provider(model_string: str) -> tuple[str, str]:
     """从 'openai/deepseek-chat' 拆出 ('openai', 'deepseek-chat').
 
-    没 '/' 时: provider=model_string, model_id=model_string (opencode 自己处理).
+    没 '/' 时走 OpenAI-compatible 默认 provider. Hub 发 chat 时固定使用
+    providerID="openai", 所以 config 也必须把裸 model 注册到 provider.openai 下.
     """
     if "/" in model_string:
         provider, model_id = model_string.split("/", 1)
         return provider.strip(), model_id.strip()
-    return model_string, model_string
+    return "openai", model_string.strip()
 
 
 # minimax 上游当前已知的 model 列表 — 当 policy.agent.models 没显式列时
@@ -276,7 +278,10 @@ def render(policy: dict) -> dict:
 
     if model_string:
         provider, model_id = _resolve_provider(model_string)
-        cfg["model"] = f"{provider}/{model_id}" if "/" not in model_string else model_string
+        # opencode 1.16+ 解析 model 字段为 ``provider/modelID`` 格式 (slash 分隔).
+        # 拆出来: provider = "openai", modelID = "MiniMax-M2.7-highspeed".
+        # opencode 自己负责去 prefix, 把 modelID 单独发给 OPENAI_BASE_URL 上游.
+        cfg["model"] = model_string
         # opencode 1.16.2 在没列出 model 时会硬抛 ProviderModelNotFoundError
         # (suggestions: []), 即便 OPENAI_BASE_URL 上游其实认 model. 因此我们
         # 把 policy.agent.models (或 MINIMAX_KNOWN_MODELS 兜底列表) 写进
@@ -291,6 +296,7 @@ def render(policy: dict) -> dict:
     # → 500 拉崩整个 chat 流 (opencode POST /session/{id}/message 返 500).
     # 显式把 small_model 设成 main model 同一型号, 避免 fallback.
     # policy 里 agent.small_model 不存在时默认走 main model.
+    # 跟 cfg["model"] 一样: 写 ``provider/modelID`` 格式, opencode 自己拆.
     small_model_string = agent.get("small_model") or model_string
     if small_model_string:
         cfg["small_model"] = small_model_string

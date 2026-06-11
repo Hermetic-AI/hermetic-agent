@@ -232,3 +232,47 @@ def test_partial_duration_formats_do_not_break_fastest_plan() -> None:
     assert card is not None
     fastest = next(plan for plan in card.body["plans"] if plan["id"] == "fastest")
     assert fastest["flights"][0]["flightNo"] == "MU5102"
+
+
+def test_compact_flight_fields_without_legs_are_mapped() -> None:
+    """工具只返回扁平/精简字段时, card 仍应保留航班号、航司和城市。"""
+    output = {
+        "searchType": "全量查询",
+        "flightCount": 196,
+        "filteredCount": 196,
+        "departureCity": "北京",
+        "arrivalCity": "上海",
+        "departureDate": "2026-06-12",
+        "airways": [{"companyNo": "MF", "companyName": "厦门航空"}],
+        "flightList": [
+            {
+                "flightNumber": "MF8561",
+                "airlineCode": "MF",
+                "aircraft": "321(中)",
+                "departureCity": "北京",
+                "arrivalCity": "上海",
+                "departureAirport": "大兴机场",
+                "arrivalAirport": "浦东机场",
+                "departureAirportCode": "PKX",
+                "arrivalAirportCode": "PVG",
+                "departTime": "2026-06-12 07:50:00",
+                "arriveTime": "2026-06-12 09:45:00",
+                "durationMin": 115,
+                "price": 400,
+                "cabin": "经济舱",
+            }
+        ],
+    }
+
+    card = maybe_assemble_flight_card("feihe-travel_queryFlightBasic", output)
+
+    assert card is not None
+    assert card.title == "北京 → 上海 2026-06-12 航班方案"
+    flight = card.body["plans"][0]["flights"][0]
+    assert flight["flightId"] == "MF8561"
+    assert flight["flightNo"] == "MF8561"
+    assert flight["airline"] == {"code": "MF", "name": "厦门航空"}
+    assert flight["departure"]["city"] == "北京"
+    assert flight["arrival"]["city"] == "上海"
+    assert flight["duration"] == "115分钟"
+    assert flight["price"] == 400.0

@@ -103,6 +103,20 @@ def test_build_session_prompt_payload_uses_current_opencode_schema() -> None:
     assert payload["tools"]["feihe-travel_queryFlightBasic"] is True
 
 
+def test_build_session_prompt_payload_strips_provider_prefixed_model() -> None:
+    from openagent.providers.opencode_chat import _build_session_prompt_payload
+
+    payload = _build_session_prompt_payload({
+        "provider_id": "openai",
+        "model_id": "openai/MiniMax-M3",
+        "parts": [{"type": "text", "text": "hello", "id": "prt_1"}],
+        "system": "system",
+        "tools": {},
+    })
+
+    assert payload["model"] == {"providerID": "openai", "modelID": "MiniMax-M3"}
+
+
 def test_resolve_tool_names_disables_unlisted_opencode_builtins() -> None:
     from openagent.providers.opencode_chat import _resolve_tool_names
 
@@ -190,6 +204,60 @@ def test_render_config_preserves_explicit_tool_output(monkeypatch) -> None:
     })
 
     assert cfg["tool_output"] == {"max_lines": 100, "max_bytes": 200000}
+
+
+def test_render_config_preserves_provider_prefix_in_model_field() -> None:
+    """opencode 1.16+ config.json 的 ``model`` 字段是 ``provider/modelID`` 格式.
+
+    拆分:
+    - ``cfg["model"] = "MiniMax-M2.7-highspeed"`` (opencode 自己拆)
+    - ``cfg["provider"]["openai"]["models"]["MiniMax-M2.7-highspeed"] = {...}``
+      (opencode 看到 ``provider.<p>.models`` 列出 known model 才会接受请求,
+       否则抛 ``ProviderModelNotFoundError`` (suggestions: [])).
+
+    历史上这里反过 2 次:
+    - 一次: cfg["model"] = model_id (无前缀), opencode 把 modelID 当 provider
+      找不到, 报 ProviderModelNotFoundError
+    - 另一次 (用户报告的): cfg["model"] = model_string (带前缀), opencode
+      自己的 log 显示 ``modelID=MiniMax-M2.7-highspeed``, 但实际
+      解析后发到上游的是 ``MiniMax-M2.7-highspeed`` (我们的测试证实)
+    最终方案: cfg["model"] 保持 ``provider/modelID`` 整段 (opencode 文档
+    标准格式), opencode 自己拆 + provider 块里列出 known models.
+    """
+    from docker.render_config import render
+
+    cfg = render({
+        "agent": {
+            "name": "opencode",
+            "model": "MiniMax-M2.7-highspeed",
+            "small_model": "MiniMax-M2.7-highspeed",
+        },
+        "tool_level": "standard",
+    })
+    # model 字段保留 provider/modelID 格式 (opencode 内部拆)
+    assert cfg["model"] == "MiniMax-M2.7-highspeed", (
+        f"cfg[model] should be provider/modelID, got {cfg['model']!r}"
+    )
+    assert cfg["small_model"] == "MiniMax-M2.7-highspeed"
+    # provider 块正确列出 known models (避免 ProviderModelNotFoundError)
+    assert "openai" in cfg["provider"]
+    openai_block = cfg["provider"]["openai"]
+    assert "models" in openai_block
+    assert "MiniMax-M2.7-highspeed" in openai_block["models"]
+    assert "MiniMax-M3" in openai_block["models"]
+
+
+def test_render_config_handles_bare_model_without_prefix() -> None:
+    """scenario 写裸 model 时也注册到 chat payload 使用的 openai provider."""
+    from docker.render_config import render
+
+    cfg = render({
+        "agent": {"name": "opencode", "model": "MiniMax-M2.7-highspeed"},
+        "tool_level": "standard",
+    })
+    assert cfg["model"] == "MiniMax-M2.7-highspeed"
+    assert "openai" in cfg["provider"]
+    assert "MiniMax-M2.7-highspeed" in cfg["provider"]["openai"]["models"]
 
 
 # ---------------------------------------------------------------------------

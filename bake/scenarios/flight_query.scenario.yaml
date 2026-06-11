@@ -156,7 +156,7 @@ resource_dirs:
 # ============================================================
 resources:
   agent: opencode-default          # 对应 launcher.py 注册的 agent 名称
-  model: claude-sonnet-4-5
+  model: MiniMax-M2.7-highspeed
   timeout: 120
 
 # ============================================================

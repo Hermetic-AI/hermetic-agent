@@ -1,64 +1,76 @@
-# OpenAgent 容器化部署 (Phase 1)
+# OpenAgent 容器化部署 (Phase 1) — 统一 compose
 #
-# 启动: docker compose build && docker compose up -d
-# 验证: curl http://localhost:8000/ready
-# 聊天: curl -X POST http://localhost:8000/agent/chat -H "Content-Type: application/json" \
-#         -d '{"message":"你好"}'
+# 3 个 service:
+#   - openagent-hub      (Sanic, L1-L3)               :18000→8000
+#   - opencode-1         (sandbox,  L4)               :14096/:7778 (调试用)
+#   - openagent-frontend (nginx,  静态 + /api 反代)    :13000→3000  [profile: frontend]
 #
-# 架构:
-#   openagent-hub  (L1~L3)  :8000
-#       ↓ 调 SDK
-#   opencode-1      (L4 sandbox 容器)  :7777 (health) / :7778 (admin) / :14096 (opencode serve)
+# 启动模式 (2 选 1):
+#   * local  (默认):   本地 Dockerfile 构建, tag = openagent:dev 等
+#                      docker compose up -d --build
+#                      (PULL_POLICY 默认 missing: 本地有就用, 没才拉 — 即"优先 build 产物")
+#   * registry (生产): 从 registry 拉, 用 OPENAGENT_HUB_IMAGE 等
+#                      PULL_POLICY=always docker compose up -d
+#                      (强制从 registry 拉, 忽略本地 build 产物)
 #
-# 关键点 (跟 agent-sandbox-overview.md §5 一致):
-#   - 凭证走 env 挂载, 不引入 egress 代理
-#   - workspace bind mount 到 host 绝对路径 (不是 /workspace)
-#   - skill 走 ro bind mount 到 workspace/.skills/<name>/
-#   - 容器根 FS --read-only, tmpfs 给 /tmp
-#   - 1 hub + 1 opencode 节点 (要加就复制 service 块)
-#   - admin_server (容器内 :7778) 改 model/url/key 不用 rebuild 镜像:
-#     改完调 POST /admin/policy[/env][/reload] 即可, 详见 docker/admin_server.py
-#     (走 Hub 代理: POST /agent/admin/opencode/opencode-1/policy[/env][/reload])
-#     想直接调: 7778 端口暴露到 host, 也能用 Swagger UI (http://localhost:7778/docs)
+# 启动 frontend (默认不启, 因为 frontend 不是必需):
+#   docker compose --profile frontend up -d --build
+#   PULL_POLICY=always docker compose --profile frontend up -d
+#
+# 关键设计 (跟 agent-sandbox-overview.md §5 一致):
+#   - workspace bind mount 到 host 绝对路径 (host 跟容器同路径, agent 透明)
+#   - 容器根 FS --read-only, 写目录走 tmpfs / named volume
+#   - 1 hub + 1 opencode 节点 (要 N 个就复制 opencode-1 块, 改 hostname)
+#   - 改 model/url/key 不 rebuild 镜像:
+#     走 admin API (容器内 :7778) 或 Hub 代理 (POST /agent/admin/opencode/opencode-1/policy[/env][/reload])
+#     想直接调: 7778 端口已暴露 host, 可用 Swagger UI (http://localhost:7778/docs)
+#
+# 调试端口 (生产环境把对应 ports 段注释掉, sandbox/frontend 不应直接对外):
+#   http://localhost:18000                 Hub 主 API
+#   http://localhost:18000/ready          Hub 就绪检查
+#   http://localhost:14096/doc            opencode 原生 OpenAPI Swagger
+#   http://localhost:14096/global/health  opencode 健康
+#   http://localhost:7778/docs            sandbox admin API Swagger
+#   http://localhost:13000                frontend 入口 (/api/* 反代 Hub)
+#
+# ----------------------------------------------------------------------------
+# local / registry 二选一实现:
+#   * 每个 service 同时声明 ``image:`` + ``build:`` 字段
+#   * ``pull_policy: ${PULL_POLICY:-missing}``
+#       - missing (默认): 本地有就用, 没才拉 (= "优先 build 产物", 跟原 build 等价)
+#       - never:          严格只用本地, 缺镜像报错
+#       - always:         强制从 registry 拉, 忽略本地
+#   * 镜像 tag 由 ``${OPENAGENT_HUB_IMAGE:-openagent:dev}`` 等 env 决定
+#   * 用 PULL_POLICY=always 触发 registry 模式 (典型: 生产 deploy)
+# ----------------------------------------------------------------------------
 
 services:
   # ============================================================
-  # 1. OpenAgent Hub (主服务, L1~L3, Sanic + scenarios + skills)
+  # 1. OpenAgent Hub (主服务, L1-L3, Sanic + scenarios + skills)
   # ============================================================
   openagent-hub:
+    image: ${OPENAGENT_HUB_IMAGE:-openagent:dev}
     build:
       context: .
       dockerfile: docker/Dockerfile.openagent
-    image: openagent:dev
-    container_name: openagent-hub
+    pull_policy: ${PULL_POLICY:-missing}
     restart: unless-stopped
-    # 把 .env 整个读进容器 (pydantic-settings 用)
-    env_file: .env
+    env_file:
+      - path: .env
+        required: false
     ports:
       - "18000:8000"
     environment:
-      # ---- LLM 凭证 (model 字符串决定用哪个 provider, 见 §5.8) ----
-      # Anthropic (用 anthropic/* 时填)
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
-      # OpenAI 兼容 (用 openai/* 时填, 推荐 — DeepSeek/Qwen/GLM/Ollama/自建)
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
       - OPENAI_BASE_URL=${OPENAI_BASE_URL:-}
-      # ---- skill 业务 API ----
       - FLIGHT_API_KEY=${FLIGHT_API_KEY:-}
-      # ---- 内部: opencode 节点位置 ----
-      - OPENCODE_NODES=http://opencode-1:14096
-      - ROUTING_STRATEGY=sticky_session
-      # ---- 日志 ----
       - PYTHONUNBUFFERED=1
       - AGENT_SCHEDULER_LOG_LEVEL=${AGENT_SCHEDULER_LOG_LEVEL:-INFO}
       - AGENT_SCHEDULER_LOG_FORMAT=${AGENT_SCHEDULER_LOG_FORMAT:-json}
       - AGENT_SCHEDULER_LOG_LLM_PAYLOAD=${AGENT_SCHEDULER_LOG_LLM_PAYLOAD:-true}
-      # 容器 stdout 不是 TTY, Rich 默认关色。强制开 ANSI 颜色, 让
-      # ``docker logs -f`` 在 iTerm2 / VSCode / Windows Terminal 等
-      # 智能终端里直接渲染颜色。json 模式 renderer 不输出 ANSI, 无害。
       - FORCE_COLOR=1
       - TERM=xterm-256color
-      # ---- 场景资源 (Hub 容器内路径) ----
       - AGENT_SCHEDULER_WORK_ROOT=/app/work
       - AGENT_SCHEDULER_SCENARIO_PATHS=["/app/work/scenarios"]
     depends_on:
@@ -66,95 +78,124 @@ services:
         condition: service_healthy
     networks: [sandbox-net]
     volumes:
-      # Hub 需要读取场景 YAML、shared docs/skills/mcp 等资源.
       - ./work:/app/work:ro
-    # 开发模式 (挂源码 + 开 Sanic reload) 用 docker-compose.override.yml 覆盖
+    # 开发模式 (取消注释):
     # volumes:
     #   - ./:/app
     # command: ["python", "-m", "openagent.main", "--reload"]
 
   # ============================================================
-  # 2. opencode 节点 (L4 sandbox 容器, 1 个 — 要加就复制)
+  # 2. opencode 节点 (L4 sandbox, 1 个 — 要 N 个就复制)
   # ============================================================
   opencode-1:
+    image: ${OPENCODE_SANDBOX_IMAGE:-opencode-sandbox:dev}
     build:
       context: .
       dockerfile: docker/Dockerfile.opencode-sandbox
-    image: opencode-sandbox:dev
-    container_name: opencode-1
+    pull_policy: ${PULL_POLICY:-missing}
     hostname: opencode-1
     restart: unless-stopped
-    # 容器安全加固
     read_only: true
     cap_drop: [ALL]
     security_opt:
       - no-new-privileges
-    # 资源限制
     mem_limit: 2g
     cpus: "2.0"
     pids_limit: 128
-    # 临时目录 (容器根 FS 是 --read-only, 需要可写的都走 tmpfs)
-    # 注意: 镜像里 COPY 的 entrypoint.sh 等在 /opt/sandbox, **不能** tmpfs 覆盖 (会丢失文件)
     tmpfs:
       - /tmp:size=200m,mode=1777
-      # opencode 自己的运行时目录 (config.json + session-db 等)
-      - /root/.config:size=50m,mode=0755
+      - /root/.config:size=300m,mode=0755
       - /root/.local:size=100m,mode=0755
-      # opencode plugin 系统 init 时拉 npm 包, 写 ~/.npm 缓存; 同时
-      # 拉 models.dev 模型索引, 写 ~/.cache/opencode/. 容器根 FS 是
-      # read_only, 这两个目录必须进 tmpfs, 否则 EROFS 拉崩 plugin install.
       - /root/.npm:size=200m,mode=0755
       - /root/.cache:size=200m,mode=0755
-    # LLM 凭证 (跟 hub 同源, opencode serve 容器内自己读)
     environment:
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
       - OPENAI_BASE_URL=${OPENAI_BASE_URL:-}
       - FLIGHT_API_KEY=${FLIGHT_API_KEY:-}
-      # opencode 工作目录 (host 上 workspace 绝对路径, 容器内同样路径)
-      - WORKSPACE_CWD=${WORKSPACE_CONTAINER_PATH:-/work/tenant-A/project-1}
+      - WORKSPACE_CWD=${WORKSPACE_PATH:-/work/tenant-A/project-1}
       - OPENCODE_PORT=14096
       - OPENCODE_HOST=0.0.0.0
       - HEALTH_PORT=7777
-    # bind mount
     volumes:
-      # 主 workspace (rw) — host 绝对路径 bind 到容器同路径
-      # agent 看到 /work/tenant-A/project-1, host 上也是这个路径
-      - ${WORKSPACE_HOST_PATH:-./work/tenant-A/project-1}:${WORKSPACE_CONTAINER_PATH:-/work/tenant-A/project-1}
-      # skill 源 (ro, 中心服务的 skill 目录)
+      - ${WORKSPACE_PATH:-/work/tenant-A/project-1}:${WORKSPACE_PATH:-/work/tenant-A/project-1}
       - ${SKILLS_SHARED_DIR:-./work/shared/skills}:/work/shared/skills:ro
-      # policy.json 走镜像 bake (Dockerfile COPY), 不再 bind mount:
-      #   原因 — Docker Desktop + WSL2 9P 文件系统会看到 host 跟 daemon 视图不一致
-      #   (host: file 684B, daemon: directory 1024B), bind mount 永远把目标当目录.
-      #   改 policy 后: docker build -f docker/Dockerfile.opencode-sandbox + force-recreate.
-      # workspace/skills 仍是 bind mount (目录, 9P 没事, 仅 file 受影响).
-      # 命名 volume 持久化 admin API 写的 runtime overlay (env.runtime / policy.runtime.json),
-      # 这样 `docker compose up -d --force-recreate` 不会丢用户的 model/KEY 改动.
-      # (单容器名 volume, 跟 opencode-1 服务生命周期绑定, down -v 才清)
       - opencode-1-runtime:/tmp/opencode-sandbox
     networks: [sandbox-net]
-    # 调试期: 暴露 opencode serve + admin API 到 host, 方便用浏览器/OpenAPI UI 排查
-    # 路径:
-    #   http://localhost:14096/doc                   (opencode 原生 OpenAPI 3.1 Swagger UI)
-    #   http://localhost:14096/global/health
-    #   POST http://localhost:14096/session          (建会话)
-    #   http://localhost:7778/docs                   (admin API Swagger UI)
-    #   http://localhost:7778/admin/opencode/status  (看 opencode pid + active_model)
-    #   POST http://localhost:7778/admin/policy      -d '{"agent":{"model":"..."}}'
-    #   POST http://localhost:7778/admin/env         -d '{"OPENAI_API_KEY":"sk-..."}'
-    #   POST http://localhost:7778/admin/reload
-    # 或者走 Hub 代理: POST /agent/admin/opencode/opencode-1/policy[/env][/reload]
-    # 生产环境删掉这段, sandbox 不应直接对外
-    #
-    # /opt/sandbox 是 read-only (COPY 进来的 baked 资源), runtime 文件写 /tmp/opencode-sandbox/ (named volume)
     ports:
       - "14096:14096"
       - "7778:7778"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:7777/healthz"]
+      interval: 5s
+      timeout: 2s
+      start_period: 10s
+      retries: 3
+
+  # ============================================================
+  # 3. OpenAgent Frontend (nginx serve 静态 + /api 反代 Hub)
+  #    默认不启, 启用: --profile frontend
+  # ============================================================
+  openagent-frontend:
+    profiles: ["frontend"]
+    image: ${OPENAGENT_FRONTEND_IMAGE:-openagent-frontend:dev}
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.frontend
+      args:
+        VITE_BACKEND_URL: /api
+    pull_policy: ${PULL_POLICY:-missing}
+    hostname: openagent-frontend
+    restart: unless-stopped
+    # 不开 ``read_only: true`` — 跟 nginx 官方 entrypoint 的 chown 行为不兼容.
+    # 不 ``cap_drop: [ALL]`` — 那样会丢 CAP_CHOWN / CAP_SETUID / CAP_SETGID,
+    # nginx master (root) 没法 chown + setuid/setgid 切到 nginx 用户启 worker.
+    # 改用: cap_drop 显式列出要丢的 (保留 CHOWN/SETUID/SETGID/DAC_OVERRIDE),
+    # 仍保留 no-new-privileges 加固. frontend 只 serve 静态 + 反代, 没
+    # untrusted code, 安全风险低.
+    cap_drop:
+      - SYS_ADMIN
+      - SYS_MODULE
+      - SYS_RAWIO
+      - SYS_PTRACE
+      - SYS_BOOT
+      - NET_RAW
+      - SYS_TIME
+      - SYSLOG
+      - MKNOD
+      - AUDIT_WRITE
+      - SETFCAP
+    security_opt:
+      - no-new-privileges
+    mem_limit: 256m
+    cpus: "0.5"
+    pids_limit: 64
+    # nginx 写目录仍用 tmpfs (性能 + 不污染镜像层, 容器删了就没)
+    tmpfs:
+      - /var/cache/nginx:size=50m,mode=0755
+      - /var/run:size=10m,mode=0755
+      - /var/log/nginx:size=20m,mode=0755
+      - /tmp:size=20m,mode=1777
+    ports:
+      - "13000:13000"
+    networks: [sandbox-net]
+    depends_on:
+      openagent-hub:
+        condition: service_started
+    env_file:
+      - path: .env
+        required: false
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O- -T 2 http://127.0.0.1:13000/ >/dev/null 2>&1 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      start_period: 5s
+      retries: 3
 
 volumes:
   opencode-1-runtime:
-    # 命名 volume, 不指定 driver (默认 local). 容器 recreate 时保留内容.
-    # 清理: docker compose down -v
+    # 命名 volume: 容器 recreate 时保留 runtime overlay (admin API 写的
+    # env.runtime / policy.runtime.json).  清理: docker compose down -v
 
 networks:
   sandbox-net:

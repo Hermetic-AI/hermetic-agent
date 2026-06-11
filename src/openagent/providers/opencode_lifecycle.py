@@ -26,6 +26,81 @@ if TYPE_CHECKING:
 logger = structlog.get_logger(__name__)
 
 
+def _parse_opencode_model_id(model: str | None) -> dict[str, str] | None:
+    """把 ``"MiniMax-M2.7-highspeed"`` 解析成 opencode session 接受的
+    ``{"providerID": "openai", "id": "MiniMax-M2.7-highspeed"}``.
+
+    Opencode session.create 端点的 body schema 把 model 字段定义为嵌套对象
+    ``{providerID, id, variant?}``. 关键: 它的 ``id`` 字段接受
+    ``"<providerID>/<modelID>"`` 拼接字符串 — opencode 内部 share subscriber
+    在准备 session-level model 时会按这个拼接格式去查 LLM, 如果只写裸 modelID
+    (``"MiniMax-M2.7-highspeed"``) 它会自己再加 ``"openai/"`` 前缀变成
+    ``"MiniMax-M2.7-highspeed"`` 存回去, 之后 ``SessionPrompt.getModel``
+    拿着这个拼接后的字符串去 provider 注册表查就报 ProviderModelNotFoundError.
+    显式在 id 字段里就带 ``<providerID>/`` 前缀能避免 opencode 二次拼接后
+    出现找不到的 model.
+
+    Hub 端一直用 ``<provider>/<id>`` 形式 (跟 scenario yaml 和 policy.json
+    对齐), 这里在 create 时拆出 provider_id 后**保持 id 字段拼接形式**.
+
+    解析失败 (没斜杠, 空白 model 等) 返回 None, 调用方跳过 model 字段.
+    """
+    if not model:
+        return None
+    text = str(model).strip()
+    if not text or "/" not in text:
+        return None
+    provider_id, _, model_id = text.partition("/")
+    provider_id = provider_id.strip()
+    model_id = model_id.strip()
+    if not provider_id or not model_id:
+        return None
+    return {"providerID": provider_id, "id": f"{provider_id}/{model_id}"}
+
+
+async def _post_session_create_raw(
+    base_url: str,
+    *,
+    body: dict[str, Any],
+    params: dict[str, Any] | None = None,
+) -> str:
+    """Direct ``POST /session`` to opencode, bypassing the SDK.
+
+    The opencode-ai SDK ``client.session.create()`` does not expose a
+    ``body=`` argument and silently drops ``extra_body`` because the
+    internal ``FinalRequestOptions`` model does not declare that field.
+    We need to send ``{"agent": "build", "model": {...}}`` to lock the
+    session-level agent/model at create time, so we have to hit the HTTP
+    endpoint directly with httpx.
+
+    Args:
+        base_url: opencode serve base URL.
+        body: JSON body, e.g. ``{"agent": "build", "model": {...}}``.
+        params: Query string, e.g. ``{"directory": "..."}``.
+
+    Returns:
+        New session id.
+
+    Raises:
+        httpx.HTTPStatusError: Non-2xx response from opencode.
+        RuntimeError: Response body missing the session id.
+    """
+    from openagent.providers.opencode_chat import _build_http_client
+
+    async with _build_http_client() as http:
+        resp = await http.post(
+            f"{base_url}/session",
+            params=params or None,
+            json=body,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+    sid = data.get("id") if isinstance(data, dict) else None
+    if not sid:
+        raise RuntimeError(f"opencode /session returned no id: {data!r}")
+    return str(sid)
+
+
 async def create_session(
     adapter: "OpenCodeAdapter",
     agent_name: str,
@@ -67,19 +142,43 @@ async def create_session(
         base_url=base_url,
         has_session_id=bool(session_id),
         has_directory=bool(directory),
+        has_model=bool(model),
+        model=model,
     )
     base_url = base_url or "http://localhost:4096"
-    client = get_client(adapter, agent_name, base_url)
+    # Warm the SDK client cache even on the raw-HTTP path; abort/delete later
+    # in this module still go through the SDK, so they need a cached client.
+    get_client(adapter, agent_name, base_url)
     if session_id:
         sid = session_id
     else:
-        # workspace 绑定: 通过 extra_query 把 directory 传给 opencode server
-        create_kwargs: dict[str, Any] = {}
+        # session.create 必传 agent+model: opencode 1.17.0 在新会话第一次
+        # prompt 时会自动跑内置的 ``title`` agent 生成 session 标题, 它的
+        # model 完全继承 session-level. 如果 session-level 没绑, title
+        # agent 的 SessionPrompt.getModel 会抛 ProviderModelNotFoundError,
+        # share subscriber 阶段先于主 prompt 失败, opencode server 整体
+        # 返回 500. 显式把 agent="build" + model={providerID, id} 写在
+        # POST /session body 里能消除这个 race.
+        #
+        # 注意: opencode-ai SDK 的 ``client.session.create()`` 签名只接受
+        # extra_headers/extra_query/extra_body/timeout, 内部 base_client.post
+        # 把 extra_body 走 ``FinalRequestOptions.construct(**options)`` (这个
+        # model 没有 extra_body 字段 → pydantic construct 静默丢弃), 所以
+        # extra_body 在 session.create 这种 body=None 场景下其实没发出去.
+        # 这里直接走 httpx 发 POST /session 绕开 SDK 限制.
+        session_create_body: dict[str, Any] = {
+            "agent": "build",
+        }
+        parsed_model = _parse_opencode_model_id(model)
+        if parsed_model is not None:
+            session_create_body["model"] = parsed_model
+        params: dict[str, Any] = {}
         if directory:
-            create_kwargs["extra_query"] = {"directory": directory}
+            params["directory"] = directory
         try:
-            result = await client.session.create(**create_kwargs)
-            sid = result.id if hasattr(result, "id") else str(result)
+            sid = await _post_session_create_raw(
+                base_url, body=session_create_body, params=params,
+            )
         except Exception as e:
             logger.error("opencode_session_create_failed", agent_name=agent_name, error=str(e))
             raise RuntimeError(f"Failed to create session: {e}") from e

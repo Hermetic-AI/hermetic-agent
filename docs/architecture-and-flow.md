@@ -377,7 +377,7 @@ resource_dirs:
 # === 资源分配（routing 原 schema）===
 resources:
   agent: claude-core
-  model: claude-sonnet-4-5
+  model: MiniMax-M2.7-highspeed
   timeout: 300
 
 # === 元数据 ===

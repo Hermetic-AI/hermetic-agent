@@ -117,7 +117,6 @@ export function AUIRenderer({ card, suspended, submitted, onSubmit }: AUIRendere
           card={card}
           suspended={suspended}
           submitted={submitted}
-          onSubmit={onSubmit}
         />
       );
     case 'TODO_LIST':

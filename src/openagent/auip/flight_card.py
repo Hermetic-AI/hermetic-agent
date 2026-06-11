@@ -72,77 +72,181 @@ def _normalize_aircraft(name: str | None) -> str:
     return re.sub(r"[(（](大|中|小)[)）]\s*$", "", name).strip()
 
 
-def _flight_to_auip(raw: dict[str, Any]) -> dict[str, Any]:
+def _first_text(*values: Any) -> str:
+    for value in values:
+        if value is None:
+            continue
+        if isinstance(value, dict):
+            value = value.get("name") or value.get("companyName") or value.get("text")
+        text = str(value).strip()
+        if text:
+            return text
+    return ""
+
+
+def _first_number(*values: Any) -> float:
+    for value in values:
+        if value is None or value == "":
+            continue
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            continue
+    return 0.0
+
+
+def _date_part(value: Any) -> str:
+    text = _first_text(value)
+    return text.split(" ")[0] if text else ""
+
+
+def _duration_text(raw: dict[str, Any], leg: dict[str, Any]) -> str:
+    duration = _first_text(raw.get("totalDuration"), raw.get("duration"), leg.get("duration"))
+    if duration:
+        return duration
+    duration_min = raw.get("durationMin") or raw.get("totalDurationMin")
+    if duration_min is None:
+        return ""
+    try:
+        return f"{int(duration_min)}分钟"
+    except (TypeError, ValueError):
+        return ""
+
+
+def _airway_names(data: dict[str, Any]) -> dict[str, str]:
+    names: dict[str, str] = {}
+    for item in data.get("airways") or data.get("airlines") or []:
+        if not isinstance(item, dict):
+            continue
+        code = _first_text(item.get("companyNo"), item.get("code"), item.get("airId"))
+        name = _first_text(item.get("companyName"), item.get("fullCompanyName"), item.get("name"))
+        if code and name:
+            names[code] = name
+    return names
+
+
+def _extract_data(output: Any) -> dict[str, Any] | None:
+    if isinstance(output, dict):
+        data = output
+    elif isinstance(output, str):
+        try:
+            data = json.loads(output)
+        except (json.JSONDecodeError, TypeError):
+            logger.warning("flight_card_parse_failed", tool_name="feihe-travel_queryFlightBasic", output_head=str(output)[:200])
+            return None
+    else:
+        return None
+
+    content = data.get("result", {}).get("content") if isinstance(data.get("result"), dict) else data.get("content")
+    if isinstance(content, list) and content:
+        text = content[0].get("text") if isinstance(content[0], dict) else None
+        if isinstance(text, str):
+            try:
+                return json.loads(text)
+            except (json.JSONDecodeError, TypeError):
+                return data
+    return data
+
+
+def _flight_to_auip(raw: dict[str, Any], airway_names: dict[str, str] | None = None) -> dict[str, Any]:
     """MCP flightList[] 单项 → AUIP flights[] 单项 (跟 ask_user.schema.json 对齐)."""
     leg = raw.get("legs", [{}])[0] if raw.get("legs") else {}
+    airway_names = airway_names or {}
+    flight_no = _first_text(
+        raw.get("flightNo"),
+        raw.get("outboundFlightNo"),
+        raw.get("flightNumber"),
+        raw.get("flightNum"),
+        raw.get("flightCode"),
+        leg.get("flightNo"),
+    )
+    airline_code = _first_text(
+        raw.get("airId"), raw.get("airlineCode"), raw.get("companyNo"), raw.get("carrierCode")
+    ) or flight_no[:2]
+    airline_name = _first_text(
+        leg.get("airlineName"),
+        raw.get("airlineName"),
+        raw.get("airline"),
+        raw.get("airName"),
+        raw.get("companyName"),
+        raw.get("carrierName"),
+        airway_names.get(airline_code),
+    )
+    dep_time = _first_text(
+        leg.get("depTime"), raw.get("depTime"), raw.get("departTime"), raw.get("departureTime"), raw.get("outboundDepDate")
+    )
+    arr_time = _first_text(
+        leg.get("arrTime"), raw.get("arrTime"), raw.get("arriveTime"), raw.get("arrivalTime"), raw.get("outboundArrDate")
+    )
+    duration = _duration_text(raw, leg)
     return {
-        "flightId": raw.get("flightId") or raw.get("flightNo", ""),
-        "flightNo": raw.get("flightNo", ""),
+        "flightId": _first_text(raw.get("flightId"), raw.get("outboundFlightId"), raw.get("id"), flight_no),
+        "flightNo": flight_no,
         "shareFlight": bool(raw.get("shareFlight")),
         "shareInfo": raw.get("shareId") or None,
         "airline": {
-            "code": raw.get("airId") or "",
-            "name": leg.get("airlineName") or raw.get("airlineName") or "",
+            "code": airline_code,
+            "name": airline_name,
         },
-        "aircraft": _normalize_aircraft(leg.get("aircraftName") or raw.get("aircraftName")),
-        "date": raw.get("depDate") or "",
+        "aircraft": _normalize_aircraft(_first_text(leg.get("aircraftName"), raw.get("aircraftName"), raw.get("aircraft"), raw.get("planeType"))),
+        "date": _first_text(raw.get("depDate"), leg.get("depDate"), _date_part(raw.get("outboundDepDate")), _date_part(dep_time)),
         "departure": {
-            "city": raw.get("depCityName") or "",
-            "airport": leg.get("depAirportName") or raw.get("depAirportName") or "",
-            "airportCode": raw.get("depAirportCode") or "",
+            "city": _first_text(raw.get("depCityName"), raw.get("departureCity"), raw.get("depCity"), raw.get("originCity")),
+            "airport": _first_text(leg.get("depAirportName"), raw.get("depAirportName"), raw.get("departureAirport"), raw.get("origin")),
+            "airportCode": _first_text(raw.get("depAirportCode"), raw.get("departureAirportCode"), raw.get("originCode")),
             "terminal": leg.get("depTerminal"),
-            "time": leg.get("depTime") or raw.get("depTime") or "",
+            "time": dep_time,
         },
         "arrival": {
-            "city": raw.get("arrCityName") or "",
-            "airport": leg.get("arrAirportName") or raw.get("arrAirportName") or "",
-            "airportCode": raw.get("arrAirportCode") or "",
+            "city": _first_text(raw.get("arrCityName"), raw.get("arrivalCity"), raw.get("arrCity"), raw.get("destinationCity")),
+            "airport": _first_text(leg.get("arrAirportName"), raw.get("arrAirportName"), raw.get("arrivalAirport"), raw.get("destination")),
+            "airportCode": _first_text(raw.get("arrAirportCode"), raw.get("arrivalAirportCode"), raw.get("destinationCode")),
             "terminal": leg.get("arrTerminal"),
-            "time": leg.get("arrTime") or raw.get("arrTime") or "",
+            "time": arr_time,
         },
-        "duration": raw.get("totalDuration") or "",
-        "stops": int(raw.get("stopCount", 0) or 0),
-        "cabin": raw.get("lowestCabinName") or "",
-        "cabinClass": raw.get("lowestCabinName") or "",
-        "price": float(raw.get("lowestPrice", 0) or 0),
-        "fullPrice": float(raw.get("fullPrice", 0) or 0),
+        "duration": duration,
+        "stops": int(raw.get("stopCount", raw.get("transferCount", 0)) or 0),
+        "cabin": _first_text(raw.get("lowestCabinName"), raw.get("cabin"), raw.get("cabinName")),
+        "cabinClass": _first_text(raw.get("lowestCabinName"), raw.get("cabinClass"), raw.get("cabin")),
+        "price": _first_number(raw.get("lowestPrice"), raw.get("price"), raw.get("totalPrice")),
+        "fullPrice": _first_number(raw.get("fullPrice"), raw.get("price"), raw.get("totalPrice")),
     }
 
 
-def _build_plans(flight_list: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def _build_plans(flight_list: list[dict[str, Any]], airway_names: dict[str, str] | None = None) -> list[dict[str, Any]]:
     """从 flightList 抽 3 个 plan: cheapest / fastest / comfortable, 各 1 班."""
     if not flight_list:
         return []
     # cheapest: 按 price 升序
-    cheapest = sorted(flight_list, key=lambda f: float(f.get("lowestPrice", 9e9) or 9e9))
+    cheapest = sorted(flight_list, key=lambda f: _first_number(f.get("lowestPrice"), f.get("price"), f.get("totalPrice")) or 9e9)
     # fastest: 按 duration 升序 (parse 2h20m)
-    fastest = sorted(flight_list, key=lambda f: _parse_minutes(f.get("totalDuration")))
+    fastest = sorted(flight_list, key=lambda f: f.get("durationMin") or _parse_minutes(_duration_text(f, f.get("legs", [{}])[0] if f.get("legs") else {})))
     # comfortable: 大机型优先, 同机型起飞早优先
     comfortable = sorted(
         flight_list,
-        key=lambda f: (_aircraft_priority(f.get("planeSize") or ""), f.get("outboundDepDate") or ""),
+        key=lambda f: (_aircraft_priority(f.get("planeSize") or f.get("aircraftName") or f.get("aircraft") or ""), f.get("outboundDepDate") or f.get("departTime") or ""),
     )
     return [
         {
             "id": "cheapest",
             "title": "最便宜",
-            "subtitle": f"¥{cheapest[0].get('lowestPrice', '?')} 起",
+            "subtitle": f"¥{_first_number(cheapest[0].get('lowestPrice'), cheapest[0].get('price'), cheapest[0].get('totalPrice')) or '?'} 起",
             "criteria": "price",
-            "flights": [_flight_to_auip(cheapest[0])],
+            "flights": [_flight_to_auip(cheapest[0], airway_names)],
         },
         {
             "id": "fastest",
             "title": "最快抵达",
-            "subtitle": fastest[0].get("totalDuration", "?"),
+            "subtitle": _duration_text(fastest[0], fastest[0].get("legs", [{}])[0] if fastest[0].get("legs") else {}) or "?",
             "criteria": "duration",
-            "flights": [_flight_to_auip(fastest[0])],
+            "flights": [_flight_to_auip(fastest[0], airway_names)],
         },
         {
             "id": "comfortable",
             "title": "舒适首选",
-            "subtitle": comfortable[0].get("aircraftName") or comfortable[0].get("planeSize") or "舒适机型",
+            "subtitle": comfortable[0].get("aircraftName") or comfortable[0].get("aircraft") or comfortable[0].get("planeSize") or "舒适机型",
             "criteria": "comfort",
-            "flights": [_flight_to_auip(comfortable[0])],
+            "flights": [_flight_to_auip(comfortable[0], airway_names)],
         },
     ]
 
@@ -160,23 +264,17 @@ def maybe_assemble_flight_card(tool_name: str, output: Any) -> Card | None:
     """
     if tool_name != "feihe-travel_queryFlightBasic":
         return None
-    # output 可能是 str (JSON string) 或 dict
-    if isinstance(output, dict):
-        data = output
-    elif isinstance(output, str):
-        try:
-            data = json.loads(output)
-        except (json.JSONDecodeError, TypeError):
-            logger.warning("flight_card_parse_failed", tool_name=tool_name, output_head=str(output)[:200])
-            return None
-    else:
+    # output 可能是 str (JSON string), dict, 或 MCP content[].text 包装.
+    data = _extract_data(output)
+    if data is None:
         return None
 
     flight_list = data.get("flightList") or []
     if not isinstance(flight_list, list) or not flight_list:
         return None
 
-    plans = _build_plans(flight_list)
+    airway_names = _airway_names(data)
+    plans = _build_plans(flight_list, airway_names)
     if not plans:
         return None
 
@@ -184,8 +282,8 @@ def maybe_assemble_flight_card(tool_name: str, output: Any) -> Card | None:
     first_legs = first_flight.get("legs") if isinstance(first_flight.get("legs"), list) else []
     first_leg = first_legs[0] if first_legs and isinstance(first_legs[0], dict) else {}
     first_dep_date = (
-        first_flight.get("depDate")
-        or str(first_flight.get("outboundDepDate") or "").split(" ")[0]
+        _first_text(first_flight.get("depDate"), first_leg.get("depDate"))
+        or _date_part(first_flight.get("outboundDepDate") or first_flight.get("departTime"))
         or first_leg.get("depDate")
         or ""
     )
@@ -193,9 +291,9 @@ def maybe_assemble_flight_card(tool_name: str, output: Any) -> Card | None:
         "totalCount": int(data.get("flightCount") or data.get("totalCount") or 0),
         "filteredCount": int(data.get("filteredCount") or len(flight_list)),
         "searchType": data.get("searchType") or "全量查询",
-        "depCity": data.get("depCityName") or first_flight.get("depCityName") or "",
-        "arrCity": data.get("arrCityName") or first_flight.get("arrCityName") or "",
-        "depDate": data.get("depDate") or first_dep_date,
+        "depCity": _first_text(data.get("depCityName"), data.get("departureCity"), first_flight.get("depCityName"), first_flight.get("departureCity"), first_flight.get("depCity")),
+        "arrCity": _first_text(data.get("arrCityName"), data.get("arrivalCity"), first_flight.get("arrCityName"), first_flight.get("arrivalCity"), first_flight.get("arrCity")),
+        "depDate": _first_text(data.get("depDate"), data.get("departureDate"), first_dep_date),
     }
     return Card(
         card_id=f"card-{uuid.uuid4().hex[:12]}",

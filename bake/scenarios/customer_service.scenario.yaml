@@ -103,7 +103,7 @@ resource_dirs:
 
 resources:
   agent: claude-core
-  model: claude-sonnet-4-5
+  model: MiniMax-M2.7-highspeed
   timeout: 120
 
 metadata:

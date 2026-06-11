@@ -48,7 +48,7 @@ export type ChatEvent =
   | {
       type: 'card';
       id: string;
-      card: import('./api').CardDescriptor;
+      card: CardDescriptor;
       correlationId?: string;
       suspended?: boolean;
       submitted?: boolean;
@@ -268,10 +268,9 @@ export interface TodoView {
   at: string;
 }
 
-export interface StreamEvent<T extends StreamEventType = StreamEventType> {
-  type: T;
-  data: StreamEventPayloadMap[T];
-}
+export type StreamEvent<T extends StreamEventType = StreamEventType> = T extends StreamEventType
+  ? { type: T; data: StreamEventPayloadMap[T] }
+  : never;
 
 export interface ToolEventView {
   id: string;
@@ -314,6 +313,10 @@ export interface CardAction {
   label: string;
   style?: 'primary' | 'secondary' | 'danger' | 'ghost' | string;
   confirm?: boolean;
+  /** Optional opencode-style decision code (e.g. POLICY_DECISION buttons). */
+  code?: string;
+  /** Optional surcharge amount (POLICY_DECISION). */
+  surcharge?: number;
 }
 
 export interface CardField {
