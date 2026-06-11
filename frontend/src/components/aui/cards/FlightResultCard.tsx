@@ -284,12 +284,12 @@ function normalizeFlightSegment(
   idx: number,
 ): FlightSegment {
   const flightNo = stringValue(raw.flightNo ?? raw.flight_no) ?? '';
-  const depTime = stringValue(raw.departure_time ?? raw.departureTime) ?? '';
-  const arrTime = stringValue(raw.arrival_time ?? raw.arrivalTime) ?? '';
-  const departureText = stringValue(raw.departure ?? raw.departureAirport) ?? '';
-  const arrivalText = stringValue(raw.arrival ?? raw.arrivalAirport) ?? '';
+  const depTime = stringValue(raw.departure_time ?? raw.departureTime ?? raw.depTime) ?? '';
+  const arrTime = stringValue(raw.arrival_time ?? raw.arrivalTime ?? raw.arrTime) ?? '';
+  const departureText = stringValue(raw.departureAirport ?? raw.depAirport ?? raw.departure) ?? '';
+  const arrivalText = stringValue(raw.arrivalAirport ?? raw.arrAirport ?? raw.arrival) ?? '';
   const airline = normalizeAirline(raw.airline);
-  const stops = typeof raw.stops === 'number' ? raw.stops : 0;
+  const stops = numberValue(raw.stops ?? raw.stopCount) ?? 0;
   const seats = raw.seats == null ? '' : `余票${String(raw.seats)}`;
   const tags = Array.isArray(raw.tags) ? (raw.tags as string[]) : [seats].filter(Boolean);
 
@@ -341,6 +341,15 @@ function stringValue(value: unknown): string | undefined {
   if (typeof value === 'object') return undefined;
   const text = String(value);
   return text ? text : undefined;
+}
+
+function numberValue(value: unknown): number | undefined {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string' && value.trim()) {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : undefined;
+  }
+  return undefined;
 }
 
 function planIndex(id: string | undefined, title: string | undefined, fallbackIndex: number): string {
