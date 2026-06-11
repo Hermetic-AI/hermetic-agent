@@ -216,31 +216,6 @@ async def _resolve_or_create_session(
         agent_name = next(iter(agents))
 
     try:
-        # If the request carries an MCP token, write it to the opencode
-        # sandbox before creating the session. The write may trigger an
-        # opencode reload; doing it after session creation invalidates the
-        # fresh session and makes POST /session/{id}/message return 503.
-        if request is not None:
-            mcp_token = _extract_effective_mcp_token(request)
-            if mcp_token:
-                config = bridge.get_config(agent_name)
-                if getattr(config, "sdk_type", None) == "opencode":
-                    from openagent.providers.opencode_chat import (
-                        _close_cached_opencode_client,
-                        _push_flight_token_to_opencode,
-                    )
-
-                    token_changed = await _push_flight_token_to_opencode(
-                        agent_base_url=config.base_url,
-                        mcp_token=mcp_token,
-                    )
-                    if token_changed:
-                        with contextlib.suppress(Exception):
-                            await _close_cached_opencode_client(
-                                bridge.get_provider(agent_name),
-                                agent_name,
-                                config.base_url,
-                            )
         session_info = await bridge.create_session(
             agent_name=agent_name,
             model=body.model or model_hint,

@@ -202,6 +202,22 @@ def test_intercept_stream_emits_card_and_suppresses_tool_result() -> None:
     assert result[1].data["card_type"] == "FLIGHT_RESULT"
 
 
+def test_pseudo_ask_user_text_is_detected() -> None:
+    """Weak models may emit ask_user markup as text after the real card event."""
+    from openagent.providers.opencode_chat import _is_pseudo_ask_user_text
+
+    assert _is_pseudo_ask_user_text(
+        "[TOOL_CALL]\n"
+        "{tool => \"ask_user_ask_user\", args => {\n"
+        "  --card_type \"FLIGHT_RESULT\"\n"
+        "  --body {\"plans\": []}\n"
+        "}}\n"
+        "[/TOOL_CALL]"
+    )
+    assert not _is_pseudo_ask_user_text("正在为您查询航班，请稍候")
+    assert not _is_pseudo_ask_user_text("[TOOL_CALL] {tool => \"bash\"} [/TOOL_CALL]")
+
+
 def test_intercept_stream_passes_through_normal_tool_results() -> None:
     """非 ask_user 的 tool_result 不应被抑制."""
     events = [

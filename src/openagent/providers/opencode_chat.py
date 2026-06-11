@@ -17,6 +17,7 @@ import asyncio
 import contextlib
 import inspect
 import os
+import re
 import traceback
 from collections.abc import AsyncIterator
 from typing import TYPE_CHECKING, Any
@@ -56,6 +57,20 @@ logger = structlog.get_logger(__name__)
 # 如果 LLM 在一轮对话里多次调 queryFlightBasic (用户追问细化), Hub 只组装第一
 # 次的卡片, 后续当普通 tool_result 透传 (避免重复轰炸前端).
 _FLIGHT_CARD_EMITTED: set[str] = set()
+
+_PSEUDO_TOOL_CALL_RE = re.compile(
+    r"^\s*\[TOOL_CALL\]\s*(.*?)\s*\[/TOOL_CALL\]\s*$",
+    re.DOTALL,
+)
+
+
+def _is_pseudo_ask_user_text(text: str) -> bool:
+    """Detect tool-call markup that weak models emitted as plain text."""
+    match = _PSEUDO_TOOL_CALL_RE.match(text or "")
+    if not match:
+        return False
+    payload = match.group(1)
+    return "ask_user" in payload and "card_type" in payload
 
 # 缓存: 同一 opencode 节点 (按 base_url 标识) 上一次写入的 FLIGHT_API_KEY.
 # 同一个用户连发 N 条消息, 只在 token 变化时调一次 admin API 写 env +
@@ -104,15 +119,7 @@ OPENCODE_ADMIN_PORT = OPENCODE_ADMIN_PORT_FALLBACK
 
 
 def _is_transient_opencode_error(exc: BaseException) -> bool:
-    """Return True for opencode restart/reload and readiness races."""
-    if isinstance(exc, httpx.HTTPStatusError):
-        # opencode can return a body-less 503 immediately after admin reload:
-        # /global/health is already 200, but the per-directory instance is
-        # still bootstrapping. Retrying the same message is safe and usually
-        # succeeds once the instance is ready.
-        if exc.response.status_code == 503:
-            return True
-
+    """Return True for connection resets caused by opencode restart/reload."""
     transient_names = {
         "ReadError",
         "ConnectError",
@@ -642,12 +649,11 @@ async def _post_session_message_raw(
     payload = _build_session_prompt_payload(sdk_kwargs)
     params = sdk_kwargs.get("extra_query") or {}
     last_error: Exception | None = None
-    # Up to 6 attempts total: reload/readiness 503s can last a few seconds
-    # after /global/health is already green.
+    # Up to 3 attempts total: 1 original + up to 2 retries.
     # Each retry handles a different transient class — one
     # connect/reload class (waits for /global/health) and one
     # session-init race class (short backoff).
-    for attempt in range(6):
+    for attempt in range(3):
         try:
             async with _build_http_client() as client:
                 response = await client.post(
@@ -668,7 +674,6 @@ async def _post_session_message_raw(
                     error=str(e),
                 )
                 await _wait_opencode_health(base_url, timeout_seconds=5.0)
-                await asyncio.sleep(min(0.5 * (attempt + 1), 2.0))
             elif _is_opencode_session_init_race(e):
                 logger.warning(
                     "opencode_message_post_init_race_retry",
@@ -1065,6 +1070,8 @@ async def stream_chat(
                         if text == last_text:
                             continue
                         last_text = text
+                        if _is_pseudo_ask_user_text(text):
+                            continue
                         accumulated_text = text
                     # ask_user (AUIP card) is converted by chat_controller's
                     # outer stream interceptor. Keeping it as tool_use here
@@ -1140,7 +1147,7 @@ async def stream_chat(
                             continue
                         if part.get("type") == "text":
                             text = part.get("text", "") or ""
-                            if text and text != accumulated_text:
+                            if text and text != accumulated_text and not _is_pseudo_ask_user_text(text):
                                 yield StreamEvent.text(content=text)
                                 accumulated_text = text
                         mapped_part = _tool_part_to_result(part)

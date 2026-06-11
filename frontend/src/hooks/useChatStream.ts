@@ -128,6 +128,31 @@ function newId(prefix: string): string {
   return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
+function hasRenderableFlightPlans(card: CardDescriptor): boolean {
+  if (card.card_type !== 'FLIGHT_RESULT') return true;
+  const plans = card.body?.plans;
+  return Array.isArray(plans) && plans.some((plan) => Array.isArray(plan.flights) && plan.flights.length > 0);
+}
+
+function flightResultSignature(card: CardDescriptor): string | null {
+  if (card.card_type !== 'FLIGHT_RESULT') return null;
+  const plans = card.body?.plans;
+  if (!Array.isArray(plans)) return null;
+  const flights = plans.flatMap((plan) =>
+    Array.isArray(plan.flights)
+      ? plan.flights.map((flight) => [flight.flightId, flight.flightNo, flight.price].filter(Boolean).join(':'))
+      : [],
+  );
+  return flights.length > 0 ? flights.join('|') : null;
+}
+
+function messageHasCard(message: ChatMessage, card: CardDescriptor): boolean {
+  if ((message.cards ?? []).some((item) => item.card_id === card.card_id)) return true;
+  const nextSignature = flightResultSignature(card);
+  if (!nextSignature) return false;
+  return (message.cards ?? []).some((item) => flightResultSignature(item.card) === nextSignature);
+}
+
 export function useChatStream(options: UseChatStreamOptions = {}): UseChatStreamResult {
   const [messages, setMessages] = useState<ChatMessage[]>(EMPTY_MESSAGES);
   const [status, setStatus] = useState<ChatStatus>('idle');
@@ -484,11 +509,15 @@ export function useChatStream(options: UseChatStreamOptions = {}): UseChatStream
           correlation_id: data.correlation_id,
           at: new Date().toISOString(),
         };
-        patchAssistant(assistantId, (m) => ({
-          ...m,
-          cards: [...(m.cards ?? []), cardView],
-          events: appendCard(m.events ?? [], cardView),
-        }));
+        if (!hasRenderableFlightPlans(cardView.card)) return;
+        patchAssistant(assistantId, (m) => {
+          if (messageHasCard(m, cardView.card)) return m;
+          return {
+            ...m,
+            cards: [...(m.cards ?? []), cardView],
+            events: appendCard(m.events ?? [], cardView),
+          };
+        });
         return;
       }
       case 'state': {

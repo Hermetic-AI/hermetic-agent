@@ -73,6 +73,7 @@ services:
       - TERM=xterm-256color
       - AGENT_SCHEDULER_WORK_ROOT=/app/work
       - AGENT_SCHEDULER_SCENARIO_PATHS=["/app/work/scenarios"]
+      - WORKSPACE_PATH=${WORKSPACE_PATH:-/work/tenant-A/project-1}
     depends_on:
       opencode-1:
         condition: service_healthy

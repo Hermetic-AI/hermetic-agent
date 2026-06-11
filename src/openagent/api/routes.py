@@ -20,6 +20,7 @@
 
 from __future__ import annotations
 
+import os
 from dataclasses import asdict
 from typing import Any, Optional
 from uuid import uuid4
@@ -239,6 +240,15 @@ def _resolve_session_directory(request: Request) -> str | None:
     未命中 scenario 时返回 ``None`` — opencode serve 会回落到启动时的
     ``--cwd``,与 launcher.py 行为一致。
     """
+    # Docker deployment has two filesystem views:
+    # - Hub sees scenarios under /app/work (read-only bind)
+    # - opencode sandbox sees the actual project at WORKSPACE_PATH
+    # The directory query is consumed by opencode, so it must be a path that
+    # exists inside the sandbox container, not the Hub-only /app/work path.
+    workspace_path = os.environ.get("WORKSPACE_PATH")
+    if workspace_path:
+        return workspace_path
+
     scenario = getattr(request.ctx, "scenario", None)
     if scenario is None:
         return None
