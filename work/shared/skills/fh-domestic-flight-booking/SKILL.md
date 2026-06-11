@@ -14,6 +14,7 @@ Operate the existing fh-travel MCP service as the source of truth for domestic f
 Start with this file only. Then load one resource based on the task:
 
 - Architecture and boundaries: `references/architecture.md`
+- Context memory governance: `references/context-memory-governance.md`
 - MCP call map: `references/mcp-tool-map.md`
 - OpenCode invocation guidance: `references/opencode-mcp.md`
 - Java source alignment: `references/source-alignment.md`
@@ -77,6 +78,7 @@ Branches: `PASSENGER_FILLED -> PRICE_CONFIRMED` for price changes, policy decisi
 12. Call tools in state order. Run `scripts/stage_guard.py` when stage is known and the next tool is uncertain.
 13. Treat MCP output as authoritative. If the skill conflicts with MCP behavior, inspect Java source and update the skill.
 14. Do not load or delegate to the legacy `flight-query` skill inside this scenario. This scenario owns search and booking.
+15. Before reusing route, date, passenger, selected flight, cabin, or `sessionId` from history, apply `references/context-memory-governance.md`; a new origin-destination/date intent starts a new search context and must not inherit stale flight-selection state.
 
 ## AUIP / ask_user Contract
 
