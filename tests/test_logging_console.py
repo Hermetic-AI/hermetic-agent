@@ -17,7 +17,7 @@ import structlog
 from rich.console import Console
 from rich.logging import RichHandler
 
-from openagent.api.logging_setup import (
+from openagent.api.http.logging_setup import (
     LOG_THEME,
     _compact_event_renderer,
     _drop_redundant_keys,

@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import pytest
 
-from openagent.skill_runtime.errors import StateGuardViolation
-from openagent.skill_runtime.manifest import SkillManifest, StateSpec
-from openagent.skill_runtime.state_guard import StateGuard
+from openagent.skills.runtime.errors import StateGuardViolation
+from openagent.skills.runtime.manifest import SkillManifest, StateSpec
+from openagent.skills.runtime.state_guard import StateGuard
 
 
 def _manifest() -> SkillManifest:

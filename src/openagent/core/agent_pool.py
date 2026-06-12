@@ -11,8 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import enum
-from dataclasses import dataclass, field
-from typing import Optional
+from dataclasses import dataclass
 
 import httpx
 import structlog
@@ -41,8 +40,8 @@ class AgentInstance:
     name: str
     base_url: str
     status: AgentStatus = AgentStatus.IDLE
-    current_session_id: Optional[str] = None
-    last_health_check: Optional[float] = None
+    current_session_id: str | None = None
+    last_health_check: float | None = None
     health_check_failures: int = 0
 
     @property
@@ -89,7 +88,7 @@ class AgentPoolService:
             self._health_check_interval = 30.0
             self._health_check_http_timeout = 5.0
             self._max_health_check_failures = 3
-        self._health_check_task: Optional[asyncio.Task[None]] = None
+        self._health_check_task: asyncio.Task[None] | None = None
 
     @property
     def instances(self) -> dict[str, AgentInstance]:
@@ -145,7 +144,7 @@ class AgentPoolService:
         logger.info("agent_unregistered", name=name)
         return True
 
-    async def acquire_idle_instance(self) -> Optional[AgentInstance]:
+    async def acquire_idle_instance(self) -> AgentInstance | None:
         """获取一个空闲的 Agent 实例。
 
         使用简单的轮询策略，从所有 IDLE 实例中返回第一个并把状态置为 BUSY。
@@ -195,7 +194,7 @@ class AgentPoolService:
         logger.info("agent_released", name=name)
         return True
 
-    def get_instance(self, name: str) -> Optional[AgentInstance]:
+    def get_instance(self, name: str) -> AgentInstance | None:
         """按名称获取实例；不存在则返回 None。"""
         return self._instances.get(name)
 

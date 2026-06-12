@@ -6,8 +6,8 @@ from pathlib import Path
 
 import pytest
 
-from openagent.skill_runtime.errors import ManifestLoadError
-from openagent.skill_runtime.manifest import SkillManifest, StateSpec
+from openagent.skills.runtime.errors import ManifestLoadError
+from openagent.skills.runtime.manifest import SkillManifest, StateSpec
 
 
 SAMPLE_YAML = """

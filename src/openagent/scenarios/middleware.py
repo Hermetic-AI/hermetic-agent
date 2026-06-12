@@ -17,8 +17,6 @@ from sanic import Sanic
 from sanic.request import Request
 
 from openagent.scenarios.errors import ScenarioError
-from openagent.scenarios.injector import ScenarioInjector
-from openagent.scenarios.router import ScenarioRouter
 
 logger = structlog.get_logger(__name__)
 
@@ -41,19 +39,20 @@ class ScenarioMiddleware:
     headers: dict = {}
 
     def __init__(self, app: Sanic) -> None:
+        # P0 重构: 不再在 __init__ 缓存 router/injector 引用.
+        # 旧实现会在 reload 后 _router 仍指向旧对象, ``scenario_reload``
+        # 端点替换 app.ctx.scenario_router 后, middleware 内部依然用旧
+        # 引用 (fallthrough 路径), 导致 reload 不生效.
+        #
+        # 现在每次 __call__ 都从 ``self._app.ctx`` 现读, 保证 reload 透明.
         self._app = app
-        # 引用保存 — 避免在 hot-reload 后访问 app.ctx 拿到旧对象
-        self._router: ScenarioRouter | None = getattr(app.ctx, "scenario_router", None)
-        self._injector: ScenarioInjector | None = getattr(
-            app.ctx, "scenario_injector", None
-        )
 
     async def __call__(self, request: Request) -> None:
         if not self._is_chat_path(request.path):
             return
-        # 引用可能在中途被热重载替换 (e.g. /agent/scenarios/reload)
-        router = getattr(self._app.ctx, "scenario_router", None) or self._router
-        injector = getattr(self._app.ctx, "scenario_injector", None) or self._injector
+        # 每次都从 app.ctx 重新读 — 支持 scenario_reload 热替换
+        router = getattr(self._app.ctx, "scenario_router", None)
+        injector = getattr(self._app.ctx, "scenario_injector", None)
         if router is None or injector is None:
             request.ctx.scenario_error = ScenarioError(
                 "Scenario router/injector not initialized; "

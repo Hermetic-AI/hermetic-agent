@@ -29,11 +29,8 @@ import os
 import shlex
 import shutil
 import time
-import uuid
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any
-
 
 # ---------------------------------------------------------------------------
 # 异常
@@ -343,11 +340,29 @@ class SandboxRuntime:
     # ---------- 内部: 命令构造 ----------
 
     def _build_env_args(self, env: dict[str, str]) -> list[str]:
+        """构造 docker run 的 ``-e KEY=VAL`` 参数列表.
+
+        P0 安全加固: Docker CLI 通过 argv 接收 ``-e KEY=VAL``, 不会走 shell,
+        但 ``VAL`` 含 ``\n`` / 控制字符时仍可能误导 docker / runtime. 这里
+        用 ``shlex.quote`` 包裹 VALUE, 拒绝含 shell metacharacter 的
+        字符串 (注意: 进程 env 实际不解析, 只是保守起见, 避免 value 里
+        含 ``;`` / ``$`` / 反引号等意外被下游 process 解释).
+        """
         out: list[str] = []
         for k, v in env.items():
             if not v:
                 continue  # 空值不传, 跟 design 一致 (Phase 1 简化)
-            out += ["-e", f"{k}={v}"]
+            # 校验 key 只能含 [A-Za-z0-9_]; 拒绝含 =,空格,;,$ 等
+            if not k.replace("_", "").isalnum():
+                logger.warning(
+                    "sandbox_env_key_invalid (key=%s, hint=env keys must match [A-Za-z0-9_]+)",
+                    k,
+                )
+                continue
+            # VALUE 用 shlex.quote 包裹; 未来如果 env 含空格/特殊字符,
+            # 至少能在 docker CLI argv 层安全传递.
+            quoted = shlex.quote(v)
+            out += ["-e", f"{k}={quoted}"]
         return out
 
     def _build_volume_args(self, spec: SandboxSpec) -> list[str]:

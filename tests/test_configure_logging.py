@@ -19,7 +19,7 @@ import logging
 
 import structlog
 
-from openagent.api.app import _configure_logging
+from openagent.api.app.app import _configure_logging
 from openagent.config.settings import Settings
 from openagent.providers.llm_payload import build_opencode_payload, log_opencode_request
 

@@ -5,13 +5,11 @@
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 import structlog
-import yaml
 
 logger = structlog.get_logger(__name__)
 
@@ -136,7 +134,7 @@ class SkillRegistry:
         logger.info("skills_loaded", count=len(loaded), paths=list(paths))
         return loaded
 
-    def _parse_skill_md(self, path: Path) -> Optional[Skill]:
+    def _parse_skill_md(self, path: Path) -> Skill | None:
         """解析单个 SKILL.md 文件（实际逻辑委托给 frontmatter 模块）。"""
         from openagent.skills.frontmatter import parse_skill_md
 
@@ -181,7 +179,7 @@ class SkillRegistry:
         self.register(skill)
         return skill
 
-    def get(self, name: str) -> Optional[Skill]:
+    def get(self, name: str) -> Skill | None:
         """按名称获取技能。
 
         Args:
@@ -196,7 +194,7 @@ class SkillRegistry:
         """返回当前注册表内全部技能的列表（拷贝）。"""
         return list(self._skills.values())
 
-    def inject(self, name: str, **kwargs: Any) -> Optional[Skill]:
+    def inject(self, name: str, **kwargs: Any) -> Skill | None:
         """复制一个技能并覆盖指定字段。
 
         Args:

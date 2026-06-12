@@ -14,8 +14,8 @@ from openagent.providers.base import (
     ChatResult,
     SessionInfo,
 )
-from openagent.providers.claude_code_adapter import ClaudeCodeAdapter
-from openagent.providers.opencode_adapter import OpenCodeAdapter
+from openagent.providers.claude_code.adapter import ClaudeCodeAdapter
+from openagent.providers.opencode.adapter import OpenCodeAdapter
 from openagent.store.base import SessionRepository
 
 logger = structlog.get_logger(__name__)

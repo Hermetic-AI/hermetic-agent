@@ -32,14 +32,14 @@ from openagent.scenarios import (
 )
 from openagent.scenarios.errors import RoutingFailedError
 from openagent.scenarios.injector import InMemoryAuditLogger
-from openagent.skill_runtime import (
+from openagent.skills.runtime import (
     FragmentLoader,
     PromptBuilder,
     SkillManifest,
     StateGuard,
     StateSpec,
 )
-from openagent.skill_runtime.errors import (
+from openagent.skills.runtime.errors import (
     SkillBudgetExceeded,
     StateGuardViolation,
 )

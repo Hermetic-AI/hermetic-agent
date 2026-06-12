@@ -84,32 +84,33 @@ LINE_LIMITS: dict[str, int] = {
 
 # P0-P6 已知豁免 (绝对路径归一化后匹配, 跨平台)
 KNOWN_VIOLATIONS: set[str] = {
-    # L1 (api/) — 5 个 controller + 主 routes.py, 业务集中
-    "src/openagent/api/routes.py",
-    "src/openagent/api/controllers/chat_controller.py",
-    "src/openagent/api/controllers/scenario_controller.py",
-    "src/openagent/api/controllers/session_controller.py",
-    "src/openagent/api/controllers/registry_controller.py",
-    "src/openagent/api/controllers/auth_controller.py",  # 505 lines, feihe 代理业务集中 (集中配置 refactor 后)
-    # L1 (api/turn_routes.py) — F3 HITL 5 端点集成, 业务集中 (P0-P6 后新增)
-    "src/openagent/api/turn_routes.py",
-    # L1 (api/lifecycle.py) — startup/shutdown 集成多子系统 (P0-P6 累积)
-    "src/openagent/api/lifecycle.py",
-    # L1 (api/app.py) — 238 lines, 超 L1 上限 200 (P7 之前累积)
-    "src/openagent/api/app.py",
+    # L1 (api/http/controllers/ + api/lifecycle/ + api/app/) — 业务集中
+    # P0 拆 4 子包后路径变化, 老路径仍保留作 shim, 这里列新路径.
+    "src/openagent/api/http/routes.py",  # P5 兼容 shim, 26 行
+    "src/openagent/api/http/controllers/chat_controller.py",
+    "src/openagent/api/http/controllers/scenario_controller.py",
+    "src/openagent/api/http/controllers/session_controller.py",
+    "src/openagent/api/http/controllers/registry_controller.py",
+    "src/openagent/api/http/controllers/auth_controller.py",  # 505 lines, feihe 代理业务集中
+    "src/openagent/api/http/turn_routes.py",  # F3 HITL 5 端点集成
+    "src/openagent/api/lifecycle/lifecycle.py",  # startup/shutdown 集成多子系统
+    "src/openagent/api/app/app.py",  # create_app 工厂 + 错误处理
     # L3 (core/) — HITL 完整事件流 (P5)
     "src/openagent/core/suspendable_scheduler.py",
-    # L3 (skill_runtime/) — fragments 预存在超 250
-    "src/openagent/skill_runtime/fragments.py",
+    # L3 (skills/runtime/) — fragments 预存在超 250 (从 skill_runtime 合并后)
+    "src/openagent/skills/runtime/fragments.py",
     # L2 (scenarios/) — config 254 lines, 超 L2 上限 250
     "src/openagent/scenarios/config.py",
     # L4 (providers/) — 双 SDK 适配 + bridge (P3)
     "src/openagent/providers/base.py",
     "src/openagent/providers/agent_bridge.py",
-    "src/openagent/providers/claude_code_chat.py",
-    "src/openagent/providers/claude_code_lifecycle.py",
-    "src/openagent/providers/opencode_chat.py",
-    "src/openagent/providers/opencode_lifecycle.py",
+    "src/openagent/providers/claude_code/chat.py",  # 422 lines, 双 SDK 适配 + bridge (P3)
+    "src/openagent/providers/claude_code/lifecycle.py",  # 224 lines
+    "src/openagent/providers/opencode/chat.py",  # 1286 lines, 历史累积, 待 Phase 重构
+    "src/openagent/providers/opencode/lifecycle.py",  # 328 lines
+    "src/openagent/providers/opencode/adapter.py",  # 204 lines, 超 L4 上限 4 行
+    "src/openagent/providers/opencode/event_hub.py",  # 252 lines, P8 TTFT hub
+    "src/openagent/providers/streaming.py",  # P0 streaming.py 移到 providers/ 下, 514 行 (L4 协议工具, 历史累积)
     "src/openagent/providers/opencode_adapter.py",  # 201 lines, 超 L4 上限 200 (P7 之前 1 行)
     "src/openagent/providers/opencode_event_hub.py",  # 258 lines, L4 上限 200 (P8 TTFT hub + _HubSubscription)
     "src/openagent/providers/launcher.py",  # 238 lines, 集中配置 refactor 后 (settings 接入 + forbidden_cwds 兜底)

@@ -16,21 +16,21 @@ from types import SimpleNamespace
 
 import pytest
 
-from openagent.skill_runtime import (
+from openagent.skills.runtime import (
     FragmentLoader,
     PromptBuilder,
     SkillManifest,
     StateGuard,
     StateSpec,
 )
-from openagent.skill_runtime.errors import (
+from openagent.skills.runtime.errors import (
     FragmentNotFoundError,
     SkillBudgetExceeded,
     SkillNotFoundError,
     StateGuardViolation,
 )
-from openagent.skill_runtime.fragments import FragmentLoadReport
-from openagent.skill_runtime.prompt_builder import PromptBuilder as _PB
+from openagent.skills.runtime.fragments import FragmentLoadReport
+from openagent.skills.runtime.prompt_builder import PromptBuilder as _PB
 from openagent.skills.registry import Skill, SkillRegistry
 
 

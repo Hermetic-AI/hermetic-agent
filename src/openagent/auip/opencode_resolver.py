@@ -14,8 +14,8 @@ from __future__ import annotations
 
 import structlog
 
-from openagent.providers.opencode_chat import get_client
-from openagent.providers.opencode_native_sdk import (
+from openagent.providers.opencode.chat import get_client
+from openagent.providers.opencode.native_sdk import (
     question_list,
     question_reject,
     question_reply,

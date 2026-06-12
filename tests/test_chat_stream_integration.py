@@ -6,7 +6,7 @@ import asyncio
 
 from openagent.core.suspendable_scheduler import SuspendableScheduler, UserInput
 from openagent.core.turn_store import InMemoryTurnStore
-from openagent.skill_runtime.manifest import SkillManifest, StateSpec
+from openagent.skills.runtime.manifest import SkillManifest, StateSpec
 
 # ---------------------------------------------------------------------------
 # 验证 1: chat_controller 真的用 injection.final_*
@@ -17,8 +17,8 @@ def test_chat_uses_injection_final_system_prompt():
     """验证: chat_controller 的 _effective_params 从 injection 取 final_*, 而不是从 body."""
     from types import SimpleNamespace
 
-    from openagent.api.controllers.chat_controller import _effective_params
-    from openagent.api.schemas import ChatRequest
+    from openagent.api.http.controllers.chat_controller import _effective_params
+    from openagent.api.http.schemas import ChatRequest
 
     # 构造 mock injection (有 final_* 字段)
     injection = SimpleNamespace(
@@ -35,8 +35,8 @@ def test_chat_uses_injection_final_system_prompt():
 
 def test_chat_falls_back_to_body_when_no_injection():
     """injection 为 None 时用 body 的 system_prompt/skills/tools (向后兼容)."""
-    from openagent.api.controllers.chat_controller import _effective_params
-    from openagent.api.schemas import ChatRequest
+    from openagent.api.http.controllers.chat_controller import _effective_params
+    from openagent.api.http.schemas import ChatRequest
 
     body = ChatRequest(message="hello", system_prompt="[BODY]", skills=["a"], tools=["t"])
     params = _effective_params(body, None)
@@ -48,7 +48,7 @@ def test_chat_falls_back_to_body_when_no_injection():
 def test_scenario_model_reads_resources_model():
     from types import SimpleNamespace
 
-    from openagent.api.controllers.chat_controller import _scenario_model
+    from openagent.api.http.controllers.chat_controller import _scenario_model
 
     scenario = SimpleNamespace(resources=SimpleNamespace(model="MiniMax-M3"))
     assert _scenario_model(scenario) == "MiniMax-M3"
@@ -60,7 +60,7 @@ def test_chat_response_includes_scenario_info():
     """_build_chat_response 真的把 scenario / routing 字段塞进 response."""
     from types import SimpleNamespace
 
-    from openagent.api.controllers.chat_controller import _build_chat_response
+    from openagent.api.http.controllers.chat_controller import _build_chat_response
 
     msg = SimpleNamespace(role="assistant", content="reply")
     result = SimpleNamespace(
@@ -86,8 +86,8 @@ def test_resolve_or_create_session_uses_scenario_workspace_directory():
     """新建 opencode session 时必须绑定 scenario workspace, 否则 question reply 会跨 InstanceState 404。"""
     from types import SimpleNamespace
 
-    from openagent.api.controllers.chat_controller import _resolve_or_create_session
-    from openagent.api.schemas import ChatRequest
+    from openagent.api.http.controllers.chat_controller import _resolve_or_create_session
+    from openagent.api.http.schemas import ChatRequest
 
     class Bridge:
         def __init__(self):
@@ -127,7 +127,7 @@ def test_resolve_or_create_session_uses_scenario_workspace_directory():
 def test_resolve_session_directory_prefers_sandbox_workspace_path(monkeypatch):
     from types import SimpleNamespace
 
-    from openagent.api.routes import _resolve_session_directory
+    from openagent.api.http.routes import _resolve_session_directory
 
     monkeypatch.setenv("WORKSPACE_PATH", "/mnt/c/WorkSpace/Coding/OpenAgent/work/tenant-A/project-1")
     request = SimpleNamespace(
@@ -150,7 +150,7 @@ def test_resolve_session_directory_prefers_sandbox_workspace_path(monkeypatch):
 def test_build_scenario_dict_with_routing_ctx():
     from types import SimpleNamespace
 
-    from openagent.api.controllers.chat_controller import _build_scenario_dict
+    from openagent.api.http.controllers.chat_controller import _build_scenario_dict
 
     scenario = SimpleNamespace(name="fb", version="1.0.0", execution=SimpleNamespace(orchestration="hitl"))
     routing_ctx = SimpleNamespace(matched_by="header")
@@ -161,7 +161,7 @@ def test_build_scenario_dict_with_routing_ctx():
 
 
 def test_build_scenario_dict_with_no_scenario():
-    from openagent.api.controllers.chat_controller import _build_scenario_dict
+    from openagent.api.http.controllers.chat_controller import _build_scenario_dict
     assert _build_scenario_dict(None, None) is None
 
 
@@ -172,7 +172,7 @@ def test_build_scenario_dict_with_no_scenario():
 
 def test_turn_event_to_sse_all_11_types():
     """_turn_event_to_sse 翻译 11 种 TurnEventType 为 StreamEvent."""
-    from openagent.api.controllers.chat_controller import _turn_event_to_sse
+    from openagent.api.http.controllers.chat_controller import _turn_event_to_sse
     from openagent.auip import TurnEvent, TurnEventType
 
     samples = [
@@ -211,7 +211,7 @@ def test_turn_event_to_sse_all_11_types():
 def test_fh_domestic_clear_query_bypasses_hitl_placeholder():
     from types import SimpleNamespace
 
-    from openagent.api.controllers.chat_controller import (
+    from openagent.api.http.controllers.chat_controller import (
         _should_bypass_hitl_placeholder,
     )
 
@@ -271,7 +271,7 @@ def test_suspendable_scheduler_full_cycle():
 
 def test_stream_event_scenario_card_state_suspend():
     """StreamEvent 新增 scenario / card / state / suspend 4 种事件."""
-    from openagent.streaming import StreamEvent
+    from openagent.providers.streaming import StreamEvent
 
     # scenario 事件
     e = StreamEvent.scenario("flight_booking", "1.2.0", "keyword")
@@ -305,8 +305,8 @@ def test_stream_event_scenario_card_state_suspend():
 
 
 def test_bridge_session_event_is_private_to_controller():
-    from openagent.api.controllers.chat_controller import _should_skip_bridge_event
-    from openagent.streaming import StreamEvent
+    from openagent.api.http.controllers.chat_controller import _should_skip_bridge_event
+    from openagent.providers.streaming import StreamEvent
 
     assert _should_skip_bridge_event(StreamEvent.session("ses_1"), "ses_1")
     assert not _should_skip_bridge_event(StreamEvent.session("ses_2"), "ses_1")
@@ -322,7 +322,7 @@ def test_lifecycle_hitl_factory_creates_working_scheduler():
     """lifecycle._init_turn_subsystem 里的 hitl_factory 构造的 SuspendableScheduler 真的能跑."""
     from openagent.core.suspendable_scheduler import SuspendableScheduler
     from openagent.core.turn_store import InMemoryTurnStore
-    from openagent.skill_runtime.manifest import SkillManifest, StateSpec
+    from openagent.skills.runtime.manifest import SkillManifest, StateSpec
 
     # 模拟 lifecycle 里的 hitl_factory 内部
     def _default_manifest(scenario):

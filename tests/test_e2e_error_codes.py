@@ -41,8 +41,8 @@ from openagent.scenarios.loader import resolve_placeholders
 from openagent.providers.launcher import EngineLauncher, LauncherError, LauncherRefusedRoot
 from openagent.providers.base import AgentConfig
 from openagent.policy import path_check, command_check, network_check
-from openagent.skill_runtime import FragmentLoader
-from openagent.skill_runtime.errors import SkillBudgetExceeded
+from openagent.skills.runtime import FragmentLoader
+from openagent.skills.runtime.errors import SkillBudgetExceeded
 
 
 # ---------------------------------------------------------------------------
@@ -481,7 +481,7 @@ def test_policy_exceptions_have_action():
 
 def test_skill_runtime_exceptions_have_action_or_details():
     """SkillRuntime 异常带 action 或 details."""
-    from openagent.skill_runtime.errors import SkillRuntimeError, ManifestLoadError
+    from openagent.skills.runtime.errors import SkillRuntimeError, ManifestLoadError
     excs = [
         SkillRuntimeError("test", action="Do X"),
         ManifestLoadError("/path", "reason"),

@@ -6,7 +6,7 @@
 旧名字作为兼容别名。
 """
 
-from openagent.core.agent_pool import AgentPoolService, AgentInstance
+from openagent.core.agent_pool import AgentInstance, AgentPoolService
 from openagent.core.scheduler import SchedulerService
 from openagent.core.services.chat_step_service import ChatStepService
 from openagent.core.task_result import TaskResult

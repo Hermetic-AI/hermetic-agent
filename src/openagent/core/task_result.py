@@ -7,7 +7,7 @@ import it without creating a circular dependency on scheduler.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Any
 
 
 @dataclass
@@ -27,8 +27,8 @@ class TaskResult:
     """
 
     success: bool
-    result: Optional[Any] = None
-    error: Optional[str] = None
-    agent_name: Optional[str] = None
-    session_id: Optional[str] = None
-    duration: Optional[float] = None
+    result: Any | None = None
+    error: str | None = None
+    agent_name: str | None = None
+    session_id: str | None = None
+    duration: float | None = None

@@ -17,11 +17,11 @@ from typing import AsyncIterator
 
 import pytest
 
-from openagent.api.controllers.chat_controller import (
+from openagent.api.http.controllers.chat_controller import (
     _ask_user_to_card,
     _stream_with_ask_user_intercept,
 )
-from openagent.streaming import StreamEvent
+from openagent.providers.streaming import StreamEvent
 
 
 # ---------------------------------------------------------------------------
@@ -204,7 +204,7 @@ def test_intercept_stream_emits_card_and_suppresses_tool_result() -> None:
 
 def test_pseudo_ask_user_text_is_detected() -> None:
     """Weak models may emit ask_user markup as text after the real card event."""
-    from openagent.providers.opencode_chat import _is_pseudo_ask_user_text
+    from openagent.providers.opencode.chat import _is_pseudo_ask_user_text
 
     assert _is_pseudo_ask_user_text(
         "[TOOL_CALL]\n"

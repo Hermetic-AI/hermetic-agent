@@ -7,6 +7,8 @@ from __future__ import annotations
 
 import structlog
 
+from openagent.auip._duration import parse_minutes
+
 logger = structlog.get_logger(__name__)
 
 
@@ -108,24 +110,15 @@ def _comfort_score(f: dict) -> int:
 
 
 def _parse_duration(s: str) -> int:
-    """'2h20m' -> 140. '150m' -> 150. '3h' -> 180."""
+    """``"2h20m"`` → 140. ``"150m"`` → 150. ``"3h"`` → 180. 失败返 0.
+
+    P1 重构: 共享到 ``openagent.auip._duration.parse_minutes``. presenter
+    旧语义要求 "无效输入 → 0" (让上层 ``_duration_minutes`` 替换成 99999),
+    所以这里用 ``invalid_sentinel=0`` 显式覆盖默认的 9999.
+    """
     if not s:
         return 0
-    h, m = 0, 0
-    if "h" in s:
-        try:
-            h = int(s.split("h")[0].strip())
-        except (ValueError, IndexError):
-            h = 0
-        rest = s.split("h", 1)[1]
-    else:
-        rest = s
-    if "m" in rest:
-        try:
-            m = int(rest.replace("m", "").strip())
-        except ValueError:
-            m = 0
-    return h * 60 + m
+    return parse_minutes(s, invalid_sentinel=0)
 
 
 # ---- Field mapping (MCP flightList[i] → AUIP FlightSegment) -----------------

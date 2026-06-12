@@ -25,8 +25,8 @@ from openagent.core.turn_store import (
     InMemoryTurnStore,
     TurnStore,
 )
-from openagent.skill_runtime.manifest import SkillManifest
-from openagent.skill_runtime.state_guard import StateGuard
+from openagent.skills.runtime.manifest import SkillManifest
+from openagent.skills.runtime.state_guard import StateGuard
 
 # ask_user 工具 schema (暴露给 provider, 让 LLM 知道有哪些 card_type 可选)
 ASK_USER_TOOL: dict[str, Any] = {

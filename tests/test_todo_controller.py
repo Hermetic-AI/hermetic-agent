@@ -8,7 +8,7 @@ import httpx
 import pytest
 from sanic import Sanic
 
-from openagent.api.controllers.todo_controller import todo_bp
+from openagent.api.http.controllers.todo_controller import todo_bp
 from openagent.config.settings import Settings
 
 

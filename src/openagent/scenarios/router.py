@@ -86,6 +86,9 @@ class ScenarioRouter:
         body = body or {}
         message = str(body.get("message", ""))
 
+        # 显式指定 (URL/header/body) 路径: 直接拿 cfg, 但**仍走一遍 keyword**
+        # 阶段以收集 rejected 列表. 这样 4xx 响应能告诉前端"我之前已经
+        # 被 keyword 拒过 N 个 scenario 了, 不要再重复建议".
         for label, name in (
             ("url", _from_url(request_path)),
             ("header", _from_header(headers)),
@@ -94,9 +97,15 @@ class ScenarioRouter:
             if name:
                 cfg = self._try_get_enabled(name)
                 if cfg is not None:
-                    return RoutingContext(
+                    # 顺手跑 keyword 收集 rejected (不参与决策)
+                    self._route_keyword(message)
+                    all_rejected = list(self._last_keyword_rejected)
+                    ctx = RoutingContext(
                         scenario=cfg, matched_by=label, candidates=[cfg]
                     )
+                    if all_rejected:
+                        ctx.rejected = all_rejected
+                    return ctx
 
         ctx = self._route_keyword(message)
         if ctx is not None:

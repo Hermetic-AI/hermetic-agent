@@ -55,7 +55,7 @@ def test_agent_bridge_create_session_uses_agent_default_model(monkeypatch) -> No
 
 
 def test_extract_mcp_token_falls_back_to_flight_api_key(monkeypatch) -> None:
-    from openagent.api.controllers.chat_controller import _extract_effective_mcp_token
+    from openagent.api.http.controllers.chat_controller import _extract_effective_mcp_token
 
     monkeypatch.setenv("FLIGHT_API_KEY", "env-token-123")
     request = SimpleNamespace(headers={})
@@ -64,7 +64,7 @@ def test_extract_mcp_token_falls_back_to_flight_api_key(monkeypatch) -> None:
 
 
 def test_runtime_context_does_not_expose_mcp_token() -> None:
-    from openagent.providers.opencode_chat import _build_runtime_context
+    from openagent.providers.opencode.chat import _build_runtime_context
 
     out = _build_runtime_context("base", "secret-token-123")
 
@@ -76,7 +76,7 @@ def test_runtime_context_does_not_expose_mcp_token() -> None:
 
 
 def test_resolve_tool_names_adds_feihe_native_alias() -> None:
-    from openagent.providers.opencode_chat import _resolve_tool_names
+    from openagent.providers.opencode.chat import _resolve_tool_names
 
     out = _resolve_tool_names(SimpleNamespace(), ["queryFlightBasic", "ask_user"])
 
@@ -87,7 +87,7 @@ def test_resolve_tool_names_adds_feihe_native_alias() -> None:
 
 
 def test_build_session_prompt_payload_uses_current_opencode_schema() -> None:
-    from openagent.providers.opencode_chat import _build_session_prompt_payload
+    from openagent.providers.opencode.chat import _build_session_prompt_payload
 
     payload = _build_session_prompt_payload({
         "provider_id": "openai",
@@ -104,7 +104,7 @@ def test_build_session_prompt_payload_uses_current_opencode_schema() -> None:
 
 
 def test_build_session_prompt_payload_strips_provider_prefixed_model() -> None:
-    from openagent.providers.opencode_chat import _build_session_prompt_payload
+    from openagent.providers.opencode.chat import _build_session_prompt_payload
 
     payload = _build_session_prompt_payload({
         "provider_id": "openai",
@@ -118,7 +118,7 @@ def test_build_session_prompt_payload_strips_provider_prefixed_model() -> None:
 
 
 def test_resolve_tool_names_disables_unlisted_opencode_builtins() -> None:
-    from openagent.providers.opencode_chat import _resolve_tool_names
+    from openagent.providers.opencode.chat import _resolve_tool_names
 
     out = _resolve_tool_names(SimpleNamespace(), ["queryFlightBasic", "ask_user"])
 
@@ -128,7 +128,7 @@ def test_resolve_tool_names_disables_unlisted_opencode_builtins() -> None:
 
 
 def test_resolve_tool_names_allows_explicit_builtin_tool() -> None:
-    from openagent.providers.opencode_chat import _resolve_tool_names
+    from openagent.providers.opencode.chat import _resolve_tool_names
 
     out = _resolve_tool_names(SimpleNamespace(), ["question"])
 
@@ -317,7 +317,7 @@ async def _noop():
 
 def test_push_flight_token_writes_env_and_reload_first_time(monkeypatch) -> None:
     """首次写入: 应触发 POST /admin/env + POST /admin/reload, body 含 token."""
-    from openagent.providers import opencode_chat
+    from openagent.providers.opencode import chat as opencode_chat
 
     monkeypatch.setenv("OPENCODE_RELOAD_SETTLE_SECONDS", "0")
     _FakeAsyncClient.instances.clear()
@@ -352,7 +352,7 @@ def test_push_flight_token_writes_env_and_reload_first_time(monkeypatch) -> None
 
 def test_push_flight_token_skipped_when_token_unchanged(monkeypatch) -> None:
     """同一 token 反复调用: 不应触发任何 HTTP 请求 (避免每条 chat 都 reload)."""
-    from openagent.providers import opencode_chat
+    from openagent.providers.opencode import chat as opencode_chat
 
     _FakeAsyncClient.instances.clear()
     monkeypatch.setattr(opencode_chat, "httpx", SimpleNamespace(
@@ -376,7 +376,7 @@ def test_push_flight_token_skipped_when_token_unchanged(monkeypatch) -> None:
 
 def test_push_flight_token_writes_again_on_token_change(monkeypatch) -> None:
     """用户重新登录 (token 变化): 必须再次触发 admin env + reload."""
-    from openagent.providers import opencode_chat
+    from openagent.providers.opencode import chat as opencode_chat
 
     monkeypatch.setenv("OPENCODE_RELOAD_SETTLE_SECONDS", "0")
     _FakeAsyncClient.instances.clear()
@@ -402,7 +402,7 @@ def test_push_flight_token_writes_again_on_token_change(monkeypatch) -> None:
 
 def test_push_flight_token_swallows_network_errors(monkeypatch) -> None:
     """admin 端点不通 (容器未起 / 端口被挡): 不能让 chat 抛异常, 仅 warn."""
-    from openagent.providers import opencode_chat
+    from openagent.providers.opencode import chat as opencode_chat
 
     class _BoomClient:
         def __init__(self, *a, **kw):
@@ -435,7 +435,7 @@ def test_push_flight_token_swallows_network_errors(monkeypatch) -> None:
 def test_routes_extract_mcp_token_accepts_bare_token_header() -> None:
     """飞鹤 traveldev 后端用单 `token` header (跟 logonV2 响应头同名),
     routes._extract_mcp_token 必须能从这个 header 提取出来."""
-    from openagent.api.routes import _extract_mcp_token
+    from openagent.api.http.routes import _extract_mcp_token
 
     request = SimpleNamespace(headers={
         "token": "feihe-session-xyz",

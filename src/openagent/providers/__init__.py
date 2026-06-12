@@ -21,8 +21,8 @@ from openagent.providers.base import (
     SessionInfo,
     ToolCall,
 )
-from openagent.providers.claude_code_adapter import ClaudeCodeAdapter
-from openagent.providers.opencode_adapter import OpenCodeAdapter
+from openagent.providers.claude_code.adapter import ClaudeCodeAdapter
+from openagent.providers.opencode.adapter import OpenCodeAdapter
 
 __all__ = [
     "AgentProvider",

@@ -4,12 +4,12 @@ import importlib.util
 import json
 from pathlib import Path
 
-from openagent.api.controllers.chat_controller import _ask_user_to_card
-from openagent.api.lifecycle import _skill_paths_with_fallbacks
+from openagent.api.http.controllers.chat_controller import _ask_user_to_card
+from openagent.api.lifecycle.lifecycle import _skill_paths_with_fallbacks
 from openagent.auip.cards import CARD_TYPES_SET
 from openagent.scenarios.loader import load_scenario
 from openagent.skills.registry import SkillRegistry
-from openagent.streaming import StreamEvent
+from openagent.providers.streaming import StreamEvent
 
 WORK_DIR = Path(__file__).resolve().parents[1] / "work"
 SCENARIO_PATH = WORK_DIR / "scenarios" / "fh_domestic_flight_booking.scenario.yaml"

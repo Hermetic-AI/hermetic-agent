@@ -1,6 +1,6 @@
 """test_auth_controller.py — Hub 端 feihe 登录代理的核心断言.
 
-策略: monkeypatch `openagent.api.controllers.auth_controller.httpx.AsyncClient`
+策略: monkeypatch `openagent.api.http.controllers.auth_controller.httpx.AsyncClient`
 → _FakeClient. 在 fake 里记录调用的 URL + 返预设 Response, 不真走网络.
 
 为什么不用 sanic test_client + 真 app:
@@ -59,7 +59,7 @@ def fake_feihe(monkeypatch):
     用 queue 喂预设响应 (httpx.Response 或 Exception).
     暴露 fake.post_calls / fake.get_calls 供测试断言.
     """
-    from openagent.api.controllers import auth_controller
+    from openagent.api.http.controllers import auth_controller
 
     fake = MagicMock()
     fake.post_calls = []
@@ -125,7 +125,7 @@ def _make_request(json_body: dict | None = None) -> MagicMock:
 @pytest.mark.asyncio
 async def test_logon_success_pulls_token_from_feihe_response_header(fake_feihe) -> None:
     """Hub 应从 feihe response header `token` 抓 token (跟抓包一致)."""
-    from openagent.api.controllers.auth_controller import logon
+    from openagent.api.http.controllers.auth_controller import logon
 
     fake_feihe.responses.append(
         _feihe_response(
@@ -172,7 +172,7 @@ async def test_logon_success_pulls_token_from_feihe_response_header(fake_feihe) 
 @pytest.mark.asyncio
 async def test_logon_preserves_already_hashed_password(fake_feihe) -> None:
     """前端/调试请求已传 32 位 MD5 时, Hub 不应二次 hash."""
-    from openagent.api.controllers.auth_controller import logon
+    from openagent.api.http.controllers.auth_controller import logon
 
     fake_feihe.responses.append(_feihe_response(200, headers={"token": "abc"}))
 
@@ -188,7 +188,7 @@ async def test_logon_preserves_already_hashed_password(fake_feihe) -> None:
 @pytest.mark.asyncio
 async def test_logon_passes_captcha_to_feihe(fake_feihe) -> None:
     """带 captcha 时 Hub 应原样转发到 feihe."""
-    from openagent.api.controllers.auth_controller import logon
+    from openagent.api.http.controllers.auth_controller import logon
 
     fake_feihe.responses.append(
         _feihe_response(200, headers={"token": "token-with-captcha"})
@@ -213,7 +213,7 @@ async def test_logon_success_pulls_token_from_feihe_body_data(fake_feihe) -> Non
     """真实 feihe 登录成功把 token 放在 body.data.token."""
     import json
 
-    from openagent.api.controllers.auth_controller import logon
+    from openagent.api.http.controllers.auth_controller import logon
 
     fake_feihe.responses.append(
         _feihe_response(
@@ -249,7 +249,7 @@ async def test_logon_4xx_returns_message_and_no_captcha(fake_feihe) -> None:
     """feihe 4xx 鉴权失败: Hub 把 message 转给前端, needs_captcha 默认 false."""
     import json
 
-    from openagent.api.controllers.auth_controller import logon
+    from openagent.api.http.controllers.auth_controller import logon
 
     fake_feihe.responses.append(
         _feihe_response(401, body={"code": "1001", "message": "账号或密码错误"})
@@ -272,7 +272,7 @@ async def test_logon_captcha_required_in_message_sets_flag(fake_feihe) -> None:
     """feihe 报错 '请输入验证码' → Hub 设 needs_captcha=true (前端会自动 loadCaptcha)."""
     import json
 
-    from openagent.api.controllers.auth_controller import logon
+    from openagent.api.http.controllers.auth_controller import logon
 
     fake_feihe.responses.append(
         _feihe_response(400, body={"code": "1002", "message": "请先输入图形验证码"})
@@ -293,7 +293,7 @@ async def test_logon_wrong_captcha_also_marks_needs_captcha(fake_feihe) -> None:
     """用户填了 captcha 但填错 → Hub 也让前端再拉一次."""
     import json
 
-    from openagent.api.controllers.auth_controller import logon
+    from openagent.api.http.controllers.auth_controller import logon
 
     fake_feihe.responses.append(
         _feihe_response(400, body={"code": "1003", "message": "验证码错误"})
@@ -314,7 +314,7 @@ async def test_logon_network_error_returns_502(fake_feihe) -> None:
     """feihe 不可达 → Hub 502, 前端可重试."""
     import json
 
-    from openagent.api.controllers.auth_controller import logon
+    from openagent.api.http.controllers.auth_controller import logon
 
     fake_feihe.responses.append(httpx.ConnectError("connection refused"))
 
@@ -331,7 +331,7 @@ async def test_logon_network_error_returns_502(fake_feihe) -> None:
 async def test_logon_timeout_returns_502(fake_feihe) -> None:
     import json
 
-    from openagent.api.controllers.auth_controller import logon
+    from openagent.api.http.controllers.auth_controller import logon
 
     fake_feihe.responses.append(httpx.ReadTimeout("read timeout"))
 
@@ -349,7 +349,7 @@ async def test_logon_2xx_without_token_returns_logical_failure(fake_feihe) -> No
     """feihe 2xx 但没 token 通常是业务失败, Hub 应转成 400 而不是 502."""
     import json
 
-    from openagent.api.controllers.auth_controller import logon
+    from openagent.api.http.controllers.auth_controller import logon
 
     fake_feihe.responses.append(_feihe_response(200, body={"message": "请输入验证码"}, headers={}))
 
@@ -369,7 +369,7 @@ async def test_logon_invalid_body_returns_400_and_no_call(fake_feihe) -> None:
     """缺字段 → Hub 400, 不调 feihe (避免无谓流量 + 密码泄露)."""
     import json
 
-    from openagent.api.controllers.auth_controller import logon
+    from openagent.api.http.controllers.auth_controller import logon
 
     resp = await logon(_make_request({"company_code": "10043"}))  # 缺 userCode + password
 
@@ -389,7 +389,7 @@ async def test_captcha_success(fake_feihe) -> None:
     """Hub 把 feihe captchaId + image 转成 captchaId + imageDataUrl."""
     import json
 
-    from openagent.api.controllers.auth_controller import captcha
+    from openagent.api.http.controllers.auth_controller import captcha
 
     fake_feihe.responses.append(
         _feihe_response(
@@ -418,7 +418,7 @@ async def test_captcha_success_from_image_response(fake_feihe) -> None:
     """真实 feihe captcha 返回 image/jpeg, captcha id 在 X-Captcha-Id header."""
     import json
 
-    from openagent.api.controllers.auth_controller import captcha
+    from openagent.api.http.controllers.auth_controller import captcha
 
     fake_feihe.responses.append(
         _feihe_binary_response(
@@ -444,7 +444,7 @@ async def test_captcha_handles_data_nested_response(fake_feihe) -> None:
     """feihe 老版本把字段包在 data.* 里, Hub 也要能取到."""
     import json
 
-    from openagent.api.controllers.auth_controller import captcha
+    from openagent.api.http.controllers.auth_controller import captcha
 
     fake_feihe.responses.append(
         _feihe_response(
@@ -471,7 +471,7 @@ async def test_captcha_missing_fields_returns_502(fake_feihe) -> None:
     """feihe 响应缺 captchaId / image → Hub 502."""
     import json
 
-    from openagent.api.controllers.auth_controller import captcha
+    from openagent.api.http.controllers.auth_controller import captcha
 
     fake_feihe.responses.append(_feihe_response(200, body={"unrelated": "field"}))
 
@@ -486,7 +486,7 @@ async def test_captcha_missing_fields_returns_502(fake_feihe) -> None:
 async def test_captcha_feihe_5xx_returns_502(fake_feihe) -> None:
     import json
 
-    from openagent.api.controllers.auth_controller import captcha
+    from openagent.api.http.controllers.auth_controller import captcha
 
     fake_feihe.responses.append(_feihe_response(500, body={"msg": "internal"}))
 
@@ -516,7 +516,7 @@ def real_app(monkeypatch):
         ),
     )
 
-    from openagent.api.controllers.auth_controller import auth_bp
+    from openagent.api.http.controllers.auth_controller import auth_bp
 
     app = Sanic(f"test-auth-route-{uuid.uuid4().hex[:8]}")
     app.blueprint(auth_bp)
@@ -535,7 +535,7 @@ def test_auth_blueprint_url_prefix_is_nginx_compatible() -> None:
     成 /, 所以 Hub 真实路径去掉 /api/ 前缀. 其它 bp (chat/session) 都用
     /agent /session 这种 "去 /api/" 形式. auth_bp 必须跟齐, 否则 404.
     """
-    from openagent.api.controllers.auth_controller import auth_bp
+    from openagent.api.http.controllers.auth_controller import auth_bp
 
     assert auth_bp.url_prefix == "/auth", (
         f"auth_bp.url_prefix 必须是 '/auth' (被 nginx 替换前缀), 实际: {auth_bp.url_prefix!r}. "
@@ -545,7 +545,7 @@ def test_auth_blueprint_url_prefix_is_nginx_compatible() -> None:
 
 def test_auth_routes_real_path_no_api_prefix() -> None:
     """验挂在 app 上后, 真实路径是 /auth/logon 跟 /auth/captcha."""
-    from openagent.api.controllers.auth_controller import auth_bp
+    from openagent.api.http.controllers.auth_controller import auth_bp
 
     app = Sanic(f"test-routes-{uuid.uuid4().hex[:8]}")
     app.blueprint(auth_bp)
@@ -557,7 +557,7 @@ def test_auth_routes_real_path_no_api_prefix() -> None:
 
 def test_logon_via_real_app_returns_200(real_app, monkeypatch) -> None:
     """集成: 真 Sanic app + 替 httpx, 验 GET /auth/captcha 跟 POST /auth/logon 真返 200."""
-    from openagent.api.controllers import auth_controller
+    from openagent.api.http.controllers import auth_controller
 
     async def fake_get():
         return _feihe_response(200, body={

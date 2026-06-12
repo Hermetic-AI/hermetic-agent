@@ -8,7 +8,7 @@ wrap into TaskResult" boilerplate that used to be duplicated in
 from __future__ import annotations
 
 import time
-from typing import Any, Optional
+from typing import Any
 
 import structlog
 
@@ -35,7 +35,7 @@ class ChatStepService:
         """
         self._bridge = bridge
 
-    async def select_agent(self, agent_name: Optional[str]) -> tuple[Optional[str], Optional[TaskResult]]:
+    async def select_agent(self, agent_name: str | None) -> tuple[str | None, TaskResult | None]:
         """选择本次步骤要使用的 Agent。
 
         Args:
@@ -63,14 +63,14 @@ class ChatStepService:
     async def execute(
         self,
         prompt: str,
-        agent_name: Optional[str] = None,
+        agent_name: str | None = None,
         *,
-        model: Optional[str] = None,
-        system_prompt: Optional[str] = None,
-        skills: Optional[list[str]] = None,
-        tools: Optional[list[str]] = None,
-        timeout: Optional[float] = None,
-        existing_session_id: Optional[str] = None,
+        model: str | None = None,
+        system_prompt: str | None = None,
+        skills: list[str] | None = None,
+        tools: list[str] | None = None,
+        timeout: float | None = None,
+        existing_session_id: str | None = None,
     ) -> TaskResult:
         """执行一次 chat 步骤并返回 ``TaskResult``。
 
@@ -135,8 +135,8 @@ class ChatStepService:
 
     @staticmethod
     def _failure(
-        agent_name: Optional[str],
-        session_id: Optional[str],
+        agent_name: str | None,
+        session_id: str | None,
         exc: Exception,
         start: float,
     ) -> TaskResult:

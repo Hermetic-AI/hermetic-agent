@@ -8,8 +8,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from openagent.skill_runtime.fragments import FragmentLoader, FragmentLoadReport
-from openagent.skill_runtime.prompt_builder import PromptBuilder
+from openagent.skills.runtime.fragments import FragmentLoader, FragmentLoadReport
+from openagent.skills.runtime.prompt_builder import PromptBuilder
 from openagent.skills.registry import Skill, SkillRegistry
 
 

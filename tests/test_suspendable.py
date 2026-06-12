@@ -20,7 +20,7 @@ from openagent.core.turn_store import (
     TURN_STATUS_SUSPENDED,
     InMemoryTurnStore,
 )
-from openagent.skill_runtime.manifest import SkillManifest, StateSpec
+from openagent.skills.runtime.manifest import SkillManifest, StateSpec
 
 # ---------------------------------------------------------------------------
 # Fixtures

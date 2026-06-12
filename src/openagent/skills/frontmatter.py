@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
-from typing import Optional
 
 import structlog
 import yaml
@@ -22,7 +21,7 @@ logger = structlog.get_logger(__name__)
 _FRONTMATTER_RE = re.compile(r"^---\n(.*?)\n---\n(.*)$", re.DOTALL)
 
 
-def parse_skill_md(path: Path) -> Optional[Skill]:
+def parse_skill_md(path: Path) -> Skill | None:
     """解析单个 SKILL.md 文件。
 
     文件结构：开头是 YAML frontmatter 块（用 ``---`` 包围），之后是 markdown

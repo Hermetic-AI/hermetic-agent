@@ -12,7 +12,7 @@ from typing import Any
 
 import pytest
 
-from openagent.streaming import (
+from openagent.providers.streaming import (
     OPENCODE_STREAM_END,
     StreamEvent,
     map_opencode_event,
@@ -70,7 +70,7 @@ def _evt(props: dict[str, Any]):
 @pytest.mark.asyncio
 async def test_stream_chat_emits_card_after_queryflightbasic_result() -> None:
     """工具流经 map_opencode_event → ask_user/flight card 分支 → SSE card 事件."""
-    from openagent.providers.opencode_chat import _FLIGHT_CARD_EMITTED
+    from openagent.providers.opencode.chat import _FLIGHT_CARD_EMITTED
 
     # 清空 dedup set (别的测试可能已经放过 session_id)
     _FLIGHT_CARD_EMITTED.clear()
@@ -142,7 +142,7 @@ async def test_stream_chat_emits_card_after_queryflightbasic_result() -> None:
 @pytest.mark.asyncio
 async def test_flight_card_dedup_per_session() -> None:
     """同 session 多次 tool_result 只 emit 一次 card."""
-    from openagent.providers.opencode_chat import _FLIGHT_CARD_EMITTED
+    from openagent.providers.opencode.chat import _FLIGHT_CARD_EMITTED
 
     _FLIGHT_CARD_EMITTED.clear()
 
@@ -187,7 +187,7 @@ async def test_flight_card_dedup_per_session() -> None:
 @pytest.mark.asyncio
 async def test_other_tool_results_pass_through_without_card() -> None:
     """非 feihe-travel_queryFlightBasic 的 tool_result 不触发 card 发射."""
-    from openagent.providers.opencode_chat import _FLIGHT_CARD_EMITTED
+    from openagent.providers.opencode.chat import _FLIGHT_CARD_EMITTED
 
     _FLIGHT_CARD_EMITTED.clear()
 

@@ -11,7 +11,7 @@ from pathlib import Path
 import pytest
 from sanic import Sanic
 
-from openagent.api.controllers.scenario_controller import scenario_bp
+from openagent.api.http.controllers.scenario_controller import scenario_bp
 from openagent.config.settings import Settings
 from openagent.scenarios.config import (
     ExecutionConfig,

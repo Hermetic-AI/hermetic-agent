@@ -12,7 +12,7 @@ from typing import Any, AsyncIterator
 
 import pytest
 
-from openagent.providers.opencode_event_hub import OpenCodeEventHub
+from openagent.providers.opencode.event_hub import OpenCodeEventHub
 
 
 class _FakeStream:

@@ -13,7 +13,7 @@ import httpx
 import pytest
 from sanic import Sanic
 
-from openagent.api.controllers.question_controller import question_bp
+from openagent.api.http.controllers.question_controller import question_bp
 from openagent.config.settings import Settings
 
 

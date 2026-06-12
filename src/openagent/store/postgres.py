@@ -3,9 +3,8 @@
 from __future__ import annotations
 
 import json
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from datetime import datetime
-from typing import Any, AsyncIterator
 
 import asyncpg
 import structlog

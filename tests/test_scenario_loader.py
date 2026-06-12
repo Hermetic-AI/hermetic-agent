@@ -283,7 +283,7 @@ def test_reload_work_scenarios_loads_all() -> None:
     之前 _check_workspace 把 readonly_dir 缺失当硬错 → reload 返回 0.
     修完后 8 个都该加载 (v3 新增 flight_query_v3).
     """
-    from openagent.api.scenario_lifecycle import _build_placeholder_ctx, find_project_root
+    from openagent.api.lifecycle.lifecycle.scenario_lifecycle import _build_placeholder_ctx, find_project_root
     from openagent.config.settings import Settings
     from openagent.scenarios.registry import ScenarioRegistry
 

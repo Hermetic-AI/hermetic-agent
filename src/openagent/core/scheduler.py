@@ -11,16 +11,15 @@ from __future__ import annotations
 
 import asyncio
 import time
-from typing import Optional
 
 import structlog
 
 from openagent.core.services.chat_step_service import ChatStepService
 from openagent.core.task_result import TaskResult
+from openagent.mcp.registry import MCPRegistry
 from openagent.providers.agent_bridge import AgentBridge
 from openagent.providers.base import ChatMessage
 from openagent.skills.registry import SkillRegistry
-from openagent.mcp.registry import MCPRegistry
 
 logger = structlog.get_logger(__name__)
 
@@ -51,12 +50,12 @@ class SchedulerService:
     async def run(
         self,
         prompt: str,
-        agent_name: Optional[str] = None,
-        model: Optional[str] = None,
-        system_prompt: Optional[str] = None,
-        timeout: Optional[float] = None,
-        skills: Optional[list[str]] = None,
-        tools: Optional[list[str]] = None,
+        agent_name: str | None = None,
+        model: str | None = None,
+        system_prompt: str | None = None,
+        timeout: float | None = None,
+        skills: list[str] | None = None,
+        tools: list[str] | None = None,
     ) -> TaskResult:
         """执行单个任务。
 
@@ -88,10 +87,10 @@ class SchedulerService:
     async def run_parallel(
         self,
         prompts: list[str],
-        agent_names: Optional[list[str]] = None,
-        timeout: Optional[float] = None,
-        skills: Optional[list[str]] = None,
-        tools: Optional[list[str]] = None,
+        agent_names: list[str] | None = None,
+        timeout: float | None = None,
+        skills: list[str] | None = None,
+        tools: list[str] | None = None,
     ) -> list[TaskResult]:
         """并行执行多个任务。
 
@@ -137,12 +136,12 @@ class SchedulerService:
     async def run_chain(
         self,
         prompts: list[str],
-        agent_name: Optional[str] = None,
-        model: Optional[str] = None,
-        system_prompt: Optional[str] = None,
-        timeout: Optional[float] = None,
-        skills: Optional[list[str]] = None,
-        tools: Optional[list[str]] = None,
+        agent_name: str | None = None,
+        model: str | None = None,
+        system_prompt: str | None = None,
+        timeout: float | None = None,
+        skills: list[str] | None = None,
+        tools: list[str] | None = None,
     ) -> TaskResult:
         """顺序执行多个任务（任务链），上一个输出会作为上下文传入下一步。
 
@@ -175,7 +174,7 @@ class SchedulerService:
                 duration=time.time() - start,
             )
 
-        results: list[Optional[str]] = []
+        results: list[str | None] = []
         accumulated = ""
         for i, prompt in enumerate(prompts):
             full = (
@@ -208,9 +207,9 @@ class SchedulerService:
         self,
         session_id: str,
         prompt: str,
-        timeout: Optional[float] = None,
-        skills: Optional[list[str]] = None,
-        tools: Optional[list[str]] = None,
+        timeout: float | None = None,
+        skills: list[str] | None = None,
+        tools: list[str] | None = None,
     ) -> TaskResult:
         """在已有会话中继续对话，不创建新会话。
 

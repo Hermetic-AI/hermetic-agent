@@ -33,7 +33,7 @@ from openagent.core.suspendable_scheduler import (
     UserInput,
 )
 from openagent.core.turn_store import InMemoryTurnStore
-from openagent.skill_runtime.manifest import SkillManifest, StateSpec
+from openagent.skills.runtime.manifest import SkillManifest, StateSpec
 
 
 # ---------------------------------------------------------------------------
@@ -212,7 +212,7 @@ async def test_playbook_b_round_trip_s05_allows_query_flight():
     """剧本 B: 往返, S05 状态允许 query_flight_basic (book-flight §4.1.2)."""
     manifest = _make_full_manifest(initial="S05")
     # StateGuard 校验
-    from openagent.skill_runtime import StateGuard
+    from openagent.skills.runtime import StateGuard
     guard = StateGuard(manifest, current_state="S05")
     ok, _ = guard.can_call_tool("query_flight_basic")
     assert ok, "S05 必须允许 query_flight_basic"
@@ -257,7 +257,7 @@ async def test_playbook_c_price_changed_uses_policy_decision_card():
     # 这个测试不真跑 (SuspendableScheduler 走 S10→S11 还没实现),
     # 仅验证: 在 S10 状态, ai 想调 record_policy_user_decision → 允许
     manifest = _make_full_manifest(initial="S11")
-    from openagent.skill_runtime import StateGuard
+    from openagent.skills.runtime import StateGuard
     guard = StateGuard(manifest, current_state="S11")
     ok, _ = guard.can_call_tool("record_policy_user_decision")
     assert ok, "S11 必须允许 record_policy_user_decision"
@@ -268,7 +268,7 @@ async def test_playbook_c_price_changed_uses_policy_decision_card():
 async def test_playbook_c_state_guard_s11_to_s10():
     """剧本 C: S11 状态校验 S10 转移合法."""
     manifest = _make_full_manifest(initial="S10")
-    from openagent.skill_runtime import StateGuard
+    from openagent.skills.runtime import StateGuard
     # S10 → S11 (变价)
     guard = StateGuard(manifest, current_state="S10")
     assert guard.can_transition("S11")
@@ -291,7 +291,7 @@ async def test_playbook_d_no_permission_terminates_at_f2():
     但 transitions 表明 S08 → F2 合法.
     """
     manifest = _make_full_manifest(initial="S08")
-    from openagent.skill_runtime import StateGuard
+    from openagent.skills.runtime import StateGuard
     guard = StateGuard(manifest, current_state="S08")
     ok, _ = guard.can_call_tool("fill_passenger")
     assert ok
@@ -317,7 +317,7 @@ async def test_playbook_d_no_permission_terminates_at_f2():
 async def test_playbook_e_policy_violation_terminates_at_f3():
     """剧本 E: 差标超标 → F3 POLICY_MULTI_CONDITION, 用户决策后回 S10."""
     manifest = _make_full_manifest(initial="S10")
-    from openagent.skill_runtime import StateGuard
+    from openagent.skills.runtime import StateGuard
     # S10 → F3 合法 (policyOverrun)
     guard_s10 = StateGuard(manifest, current_state="S10")
     assert guard_s10.can_transition("F3"), "S10 差标超标必须能转 F3"

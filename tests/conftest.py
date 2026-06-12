@@ -3,7 +3,7 @@
 import pytest
 from sanic import Sanic
 
-from openagent.api.app import create_app
+from openagent.api.app.app import create_app
 from openagent.config.settings import Settings
 from openagent.core import AgentPoolManager, Scheduler
 from openagent.mcp.registry import MCPRegistry

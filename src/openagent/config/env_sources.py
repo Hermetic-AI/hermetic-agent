@@ -19,7 +19,6 @@ from typing import Any
 
 from pydantic_settings import DotEnvSettingsSource, EnvSettingsSource
 
-
 # Fields that accept either an inline JSON string or a path to a JSON file.
 PATH_AWARE_FIELDS: frozenset[str] = frozenset(
     {"mcp_tools_config", "default_agents_json"}

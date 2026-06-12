@@ -1654,7 +1654,7 @@ def card_to_event(card_yaml_path: Path) -> dict:
 import pytest
 from openagent.scenarios import ScenarioRegistry, ScenarioRouter, ScenarioInjector
 from openagent.policy import PolicyEngine
-from openagent.skill_runtime import FragmentLoader, StateGuard
+from openagent.skills.runtime import FragmentLoader, StateGuard
 
 def test_5_scenarios_load():
     """6 个 scenario 全部加载成功."""

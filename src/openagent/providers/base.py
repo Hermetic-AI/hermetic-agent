@@ -7,8 +7,9 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
-from typing import Any, AsyncIterator, Literal
+from typing import Any, Literal
 
 SDKType = Literal["opencode", "claude_code"]
 

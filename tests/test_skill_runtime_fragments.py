@@ -8,12 +8,12 @@ from types import SimpleNamespace
 
 import pytest
 
-from openagent.skill_runtime.errors import (
+from openagent.skills.runtime.errors import (
     FragmentNotFoundError,
     SkillBudgetExceeded,
     SkillNotFoundError,
 )
-from openagent.skill_runtime.fragments import FragmentLoader
+from openagent.skills.runtime.fragments import FragmentLoader
 from openagent.skills.registry import Skill, SkillRegistry
 
 

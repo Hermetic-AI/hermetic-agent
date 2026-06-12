@@ -18,8 +18,11 @@ import pytest
 
 def test_check_unified_chat_entry_passes():
     """scripts/check_unified_chat_entry.py 必须 0 退出."""
+    import shutil
+    import sys
+    py = shutil.which("python") or sys.executable
     result = subprocess.run(
-        ["python", "scripts/check_unified_chat_entry.py"],
+        [py, "scripts/check_unified_chat_entry.py"],
         capture_output=True, text=True, timeout=10,
     )
     assert result.returncode == 0, (
@@ -36,11 +39,11 @@ def test_check_unified_chat_entry_passes():
 
 def _build_app():
     """直接 build 一个有 unique name 的 Sanic app, 复用 create_app 的 init 流程."""
-    from openagent.api.app import create_app
+    from openagent.api.app.app import create_app
     from openagent.config.settings import Settings
     # 关键: Sanic 全局按 name 注册, 但 create_app 用 "agent-scheduler-hub".
     # 第一次调用是 OK 的, 之后会被 fixture 缓存. 我们直接 build 一次拿 router.
-    import openagent.api.app as app_mod
+    import openagent.api.app.app as app_mod
     if not getattr(app_mod, "_test_app_cache", None):
         app_mod._test_app_cache = create_app(Settings())
     return app_mod._test_app_cache

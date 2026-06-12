@@ -14,19 +14,28 @@
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
 from dataclasses import dataclass
-from typing import Any, AsyncIterator, Optional
+from typing import Any
 from uuid import uuid4
 
 import structlog
 
-# Try to import the official opencode Python SDK, fall back to stub if not available.
+# Try to import the official opencode Python SDK; let ImportError propagate
+# (pyproject.toml 把 opencode-ai 写死为运行时依赖, 不存在就应该启动失败
+# 而不是 fallback 到一个永远 NotImplementedError 的 stub).
+#
+# P0 重构: 删掉 ``openagent._vendor.opencode`` stub (5 处 except 分支都依赖它,
+# 全是死代码). 后续如果需要给 SDK 留降级口子, 应该走 "可选依赖 + 明确报错"
+# 而不是 "静默提供不工作的 fallback".
 try:
     from opencode_ai import AsyncOpencode  # type: ignore
     from opencode_ai.types.text_part_input_param import TextPartInputParam  # type: ignore
-except ImportError:
-    from openagent._vendor.opencode import AsyncOpencode  # type: ignore
-    TextPartInputParam = dict  # type: ignore
+except ImportError as e:
+    raise ImportError(
+        "opencode-ai SDK is required. Install via `pip install opencode-ai` "
+        "(see pyproject.toml [project.dependencies])."
+    ) from e
 
 from openagent.core.agent_pool import AgentInstance, AgentPoolManager
 
@@ -40,7 +49,7 @@ class SessionInfo:
     session_id: str
     agent_name: str
     agent_base_url: str
-    model: Optional[str] = None
+    model: str | None = None
 
 
 class SessionManager:
@@ -70,9 +79,9 @@ class SessionManager:
     async def create(
         self,
         agent_name: str,
-        model: Optional[str] = None,
-        system_prompt: Optional[str] = None,
-        session_id: Optional[str] = None,
+        model: str | None = None,
+        system_prompt: str | None = None,
+        session_id: str | None = None,
     ) -> SessionInfo:
         """创建新会话
 
@@ -137,7 +146,7 @@ class SessionManager:
         self,
         session_id: str,
         message: str,
-        timeout: Optional[float] = None,
+        timeout: float | None = None,
     ) -> dict[str, Any]:
         """向会话发送消息并获取回复
 
@@ -183,7 +192,7 @@ class SessionManager:
         self,
         session_id: str,
         message: str,
-        timeout: Optional[float] = None,
+        timeout: float | None = None,
     ) -> AsyncIterator[dict[str, Any]]:
         """向会话发送消息并获取流式回复
 
@@ -322,7 +331,7 @@ class SessionManager:
             logger.error("session_revert_failed", session_id=session_id, error=str(e))
             return False
 
-    async def summarize(self, session_id: str) -> Optional[str]:
+    async def summarize(self, session_id: str) -> str | None:
         """对会话进行摘要
 
         Args:
@@ -386,7 +395,7 @@ class SessionManager:
             logger.error("session_delete_failed", session_id=session_id, error=str(e))
             return False
 
-    def get_session(self, session_id: str) -> Optional[SessionInfo]:
+    def get_session(self, session_id: str) -> SessionInfo | None:
         """获取指定会话的信息"""
         return self._sessions.get(session_id)
 

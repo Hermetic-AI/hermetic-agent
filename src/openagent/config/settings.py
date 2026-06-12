@@ -37,7 +37,6 @@
 from __future__ import annotations
 
 from functools import lru_cache
-from typing import Optional
 
 from pydantic import Field
 from pydantic_settings import (
@@ -93,11 +92,11 @@ class Settings(BaseSettings):
         default="http://localhost:4096",
         description="OpenCode serve 地址. Docker 部署时 = http://opencode-1:14096",
     )
-    opencode_username: Optional[str] = Field(
+    opencode_username: str | None = Field(
         default=None,
         description="OpenCode Basic Auth 用户名 (目前没启)",
     )
-    opencode_password: Optional[str] = Field(
+    opencode_password: str | None = Field(
         default=None,
         description="OpenCode Basic Auth 密码 (目前没启)",
     )

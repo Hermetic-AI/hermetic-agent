@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from openagent.streaming import OPENCODE_STREAM_END, StreamEvent, map_opencode_event
+from openagent.providers.streaming import OPENCODE_STREAM_END, StreamEvent, map_opencode_event
 
 
 def _pydantic_like_event(etype: str, props):
