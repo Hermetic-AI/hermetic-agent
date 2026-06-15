@@ -1,110 +1,72 @@
-"""ChatTurn Model — 单轮执行单元(含本 turn token 用量)."""
+"""ChatTurn Model — 单轮执行单元(含本 turn token 用量, Tortoise ORM).
 
+对应表: ``chat_turns``
+状态: ``pending / running / success / failed / cancelled``
+
+注意: ``user_message_id`` / ``assistant_message_id`` 是 **软引用** (CharField),
+不建 FK. 原因: messages 表有 ``turn_id`` FK 反向引用 chat_turns, 跟
+``chat_turns.user_message_id`` FK 形成循环依赖, ``Tortoise.generate_schemas()``
+不支持循环 FK. 软引用在应用层校验一致性, 跟 ``AuditLog.resource_id`` 同模式.
+"""
 from __future__ import annotations
 
-import uuid
-from dataclasses import dataclass, field
-from datetime import datetime
-from decimal import Decimal
-from typing import Any
-
-from openagent.store.models._common import (
-    from_db_bool,
-    from_db_json,
-    to_db_bool,
-    to_db_json,
-    utcnow,
-)
+from tortoise import fields
+from tortoise.models import Model
 
 
-@dataclass
-class ChatTurn:
-    """单轮执行单元: 一次 user -> assistant 往返.
+class ChatTurn(Model):
+    """单轮执行单元: 一次 user -> assistant 往返."""
 
-    对应表: ``chat_turns``
-    状态: ``pending / running / success / failed / cancelled``
-    """
+    id = fields.UUIDField(pk=True, binary=False)
 
-    session_id: str
-    status: str = "pending"
-    user_message_id: str | None = None
-    assistant_message_id: str | None = None
-    agent_name: str | None = None
-    model: str | None = None
-    started_at: datetime | None = None
-    finished_at: datetime | None = None
-    duration_ms: int | None = None
+    session = fields.ForeignKeyField(
+        "models.Session",
+        related_name="turns",
+        on_delete=fields.CASCADE,
+        description="所属 session",
+    )
+    user_message_id = fields.CharField(
+        max_length=36,
+        null=True,
+        description="触发本 turn 的 user 消息(软引用 messages.id, 不建 FK)",
+    )
+    assistant_message_id = fields.CharField(
+        max_length=36,
+        null=True,
+        description="本 turn 产出的 assistant 消息(软引用 messages.id, 不建 FK)",
+    )
+    agent_name = fields.CharField(max_length=128, null=True, description="执行 agent 名(快照)")
+    model = fields.CharField(max_length=128, null=True, description="调用模型(快照)")
+    status = fields.CharField(max_length=32, default="pending", description="pending / running / success / failed / cancelled")
+    started_at = fields.DatetimeField(null=True, description="执行开始")
+    finished_at = fields.DatetimeField(null=True, description="执行结束")
+    duration_ms = fields.IntField(null=True, description="耗时(毫秒)")
 
-    cost: Decimal = field(default_factory=lambda: Decimal("0"))
-    tokens_input: int = 0
-    tokens_output: int = 0
-    tokens_reasoning: int = 0
-    tokens_cache_read: int = 0
-    tokens_cache_write: int = 0
+    cost = fields.DecimalField(max_digits=12, decimal_places=6, default=0, description="本 turn 花费 USD")
+    tokens_input = fields.IntField(default=0, description="本 turn input tokens")
+    tokens_output = fields.IntField(default=0, description="本 turn output tokens")
+    tokens_reasoning = fields.IntField(default=0, description="本 turn reasoning tokens")
+    tokens_cache_read = fields.IntField(default=0, description="本 turn cache read tokens")
+    tokens_cache_write = fields.IntField(default=0, description="本 turn cache write tokens")
 
-    error_code: str | None = None
-    error_message: str | None = None
-    metadata: dict[str, Any] | None = None
+    error_code = fields.CharField(max_length=64, null=True, description="错误码")
+    error_message = fields.TextField(null=True, description="错误信息")
+    metadata = fields.JSONField(
+        null=True,
+        description="扩展元数据",
+    )
+    is_deleted = fields.BooleanField(default=False, description="软删除标记")
+    deleted_at = fields.DatetimeField(null=True, description="软删除时间")
+    created_at = fields.DatetimeField(auto_now_add=True, description="创建时间")
+    updated_at = fields.DatetimeField(auto_now=True, description="更新时间")
 
-    id: str = field(default_factory=lambda: str(uuid.uuid4()))
-    is_deleted: bool = False
-    deleted_at: datetime | None = None
-    created_at: datetime = field(default_factory=utcnow)
-    updated_at: datetime = field(default_factory=utcnow)
+    class Meta:
+        table = "chat_turns"
+        indexes = [
+            ("session_id", "is_deleted", "created_at", "id"),
+            ("status", "is_deleted", "created_at", "id"),
+            ("started_at",),
+        ]
 
-    def to_db_dict(self) -> dict[str, Any]:
-        return {
-            "id": self.id,
-            "session_id": self.session_id,
-            "user_message_id": self.user_message_id,
-            "assistant_message_id": self.assistant_message_id,
-            "agent_name": self.agent_name,
-            "model": self.model,
-            "status": self.status,
-            "started_at": self.started_at,
-            "finished_at": self.finished_at,
-            "duration_ms": self.duration_ms,
-            "cost": self.cost,
-            "tokens_input": int(self.tokens_input),
-            "tokens_output": int(self.tokens_output),
-            "tokens_reasoning": int(self.tokens_reasoning),
-            "tokens_cache_read": int(self.tokens_cache_read),
-            "tokens_cache_write": int(self.tokens_cache_write),
-            "error_code": self.error_code,
-            "error_message": self.error_message,
-            "metadata": to_db_json(self.metadata),
-            "is_deleted": to_db_bool(self.is_deleted),
-            "deleted_at": self.deleted_at,
-            "created_at": self.created_at,
-            "updated_at": self.updated_at,
-        }
 
-    @classmethod
-    def from_db_dict(cls, row: dict[str, Any]) -> ChatTurn:
-        cost = row.get("cost", 0)
-        cost_dec = cost if isinstance(cost, Decimal) else Decimal(str(cost))
-        return cls(
-            id=row["id"],
-            session_id=row["session_id"],
-            user_message_id=row.get("user_message_id"),
-            assistant_message_id=row.get("assistant_message_id"),
-            agent_name=row.get("agent_name"),
-            model=row.get("model"),
-            status=row.get("status") or "pending",
-            started_at=row.get("started_at"),
-            finished_at=row.get("finished_at"),
-            duration_ms=row.get("duration_ms"),
-            cost=cost_dec,
-            tokens_input=int(row.get("tokens_input", 0)),
-            tokens_output=int(row.get("tokens_output", 0)),
-            tokens_reasoning=int(row.get("tokens_reasoning", 0)),
-            tokens_cache_read=int(row.get("tokens_cache_read", 0)),
-            tokens_cache_write=int(row.get("tokens_cache_write", 0)),
-            error_code=row.get("error_code"),
-            error_message=row.get("error_message"),
-            metadata=from_db_json(row.get("metadata")),
-            is_deleted=from_db_bool(row.get("is_deleted", 0)),
-            deleted_at=row.get("deleted_at"),
-            created_at=row["created_at"],
-            updated_at=row["updated_at"],
-        )
+__all__ = ["ChatTurn"]

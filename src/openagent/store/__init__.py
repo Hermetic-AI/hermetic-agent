@@ -2,11 +2,10 @@
 
 层次结构(自下而上):
 
-    driver.py         MySQL 驱动封装 (连接池 / 事务 / DDL 启动执行)
     exceptions.py     异常体系
-    models/           Models 层 = @dataclass DO/Entity (6 个实体)
+    models/           Models 层 = Tortoise Model (6 个实体) — schema 自动生成
     dto/              DTO 层 = pydantic 入参/出参 (Create/Update/Response)
-    repositories/     Repositories 层 = ABC + MySQL/Memory 实现 (6 个实体)
+    repositories/     Repositories 层 = ABC + Tortoise/MySQL/Memory 实现 (6 个实体)
     services/         Services 层 = 业务编排 + 跨 Repository 协作
 
 公开 API:
@@ -15,16 +14,14 @@
         Scenario, Session, ChatTurn, Message, Part, AuditLog,
         # DTO
         CreateScenarioRequest, ScenarioResponse, ...
-        # Driver
-        MySQLConfig, MySQLPool,
         # 工厂
         ServiceContainer, build_default_container, build_container_from_settings,
         # 旧版(向后兼容, 给老 caller 用)
         SessionRepository, MemorySessionRepository, MySQLScenarioRepository, ...
     )
 
-Schema DDL (``docs/db/openagent-schema.sql``) 在 init 阶段由 driver.MySQLPool.init_schema() 加载,
-本模块不重复嵌入.
+ORM: Tortoise ORM (tortoise-orm[asyncmy]). ``Tortoise.init()`` + ``Tortoise.generate_schemas()``
+在启动期自动建表, 不再需要外部 ``docs/db/openagent-schema.sql`` 文件.
 """
 
 from openagent.store import dto, models, repositories, services
@@ -45,7 +42,6 @@ from openagent.store.base import (
     StorageBackend,
     StorageBackendFactory,
 )
-from openagent.store.driver import MySQLConfig, MySQLPool
 from openagent.store.exceptions import (
     DriverError,
     DuplicateError,
@@ -63,10 +59,8 @@ from openagent.store.postgres import PostgresStorage
 
 # Auto-register legacy ``SessionRepositoryFactory`` backends so callers
 # (``api/lifecycle/lifecycle.py``, ``AgentBridge`` adapters) can ``create(name)``
-# without depending on import side-effects from subpackages. Previously the
-# registry was always empty and ``memory``/``postgres`` would also raise
-# ``Unknown storage backend``. ``mysql`` is the v2 default — registered here
-# so the lifecycle startup succeeds end-to-end.
+# without depending on import side-effects from subpackages. ``mysql`` is the
+# v2 default — registered here so the lifecycle startup succeeds end-to-end.
 SessionRepositoryFactory.register("memory", MemoryStorage)
 SessionRepositoryFactory.register("postgres", PostgresStorage)
 SessionRepositoryFactory.register("mysql", MySQLStorage)
@@ -141,9 +135,6 @@ __all__ = [
     "ValidationError",
     "TransactionError",
     "DriverError",
-    # Driver
-    "MySQLConfig",
-    "MySQLPool",
     # Models
     "Scenario",
     "Session",

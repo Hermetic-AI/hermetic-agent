@@ -1,15 +1,18 @@
-"""Models 层 — 领域实体 dataclass.
+"""Models 层 — 领域实体 (Tortoise ORM Model).
 
 层次:
-    Models 层 = 等同 Java DO/Entity = 纯数据载体, 与 DB schema 1:1.
-    规则:
-        - 全部 ``@dataclass(frozen=False)``, 字段可变(Repository 写完会改 is_deleted 等)
-        - 字段命名 = DB 列名 (snake_case)
-        - 字段类型用 Python 原生 (str / int / Decimal / datetime / dict)
-        - 必填字段在 ``__init__`` 上无默认值
-        - 可选字段用 ``field(default=None)`` 或 ``field(default_factory=...)``
-        - 每个 Model 提供 ``to_db_dict()`` / ``from_db_dict()`` 两个方法,
-          处理 bool <-> 0/1 转换. datetime / dict / Decimal 由 asyncmy 自动处理.
+    Models 层 = 等同 Java DO/Entity = Tortoise ``Model`` 子类, schema 字段由
+    ``tortoise.fields`` 直接描述, 启动期由 ``Tortoise.init()`` + 
+    ``Tortoise.generate_schemas()`` 自动建表, 不再需要外部 DDL 文件.
+
+字段命名约定:
+    - 全部 snake_case, Python 属性 = DB 列名 (例如 ``metadata`` 字段对应
+      ``metadata`` 列, ``id`` 字段对应 ``id`` 列)
+    - FK 字段: ``scenario`` / ``session`` / ``turn`` / ``message`` / 
+      ``user_message_id`` / ``assistant_message_id`` (后者是软引用, 不建 FK)
+    - 软引用场景: ``ChatTurn.user_message_id`` / ``assistant_message_id`` 和
+      ``AuditLog.resource_id`` 都是 ``CharField``, 不建 FK, 避免 ``generate_schemas``
+      不支持的循环依赖
 """
 
 from openagent.store.models.audit_log import AuditLog
@@ -18,6 +21,12 @@ from openagent.store.models.message import Message
 from openagent.store.models.part import Part
 from openagent.store.models.scenario import Scenario
 from openagent.store.models.session import Session
+
+# 在所有 Model 类已定义后, 修复已实例化 ``JSONField`` 的 ``encoder`` 默认值.
+# 见 ``openagent.store.models._common._patch_existing_jsonfield_encoders`` 注释.
+from openagent.store.models._common import _patch_existing_jsonfield_encoders
+_patch_existing_jsonfield_encoders()
+
 
 __all__ = [
     "Scenario",

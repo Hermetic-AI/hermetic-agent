@@ -51,15 +51,28 @@ class MemoryScenarioRepository(MemoryRepository[Scenario], ScenarioRepository):
         return await self.list(status="enabled", limit=limit)
 
     async def create_new_version(
-        self, parent: Scenario, new_config: dict, new_name: str | None = None
+        self, parent, new_config: dict, new_name: str | None = None
     ) -> Scenario:
+        """基于父版本创建新版本. ``parent`` 可传 ``Scenario`` 对象或 parent id 字符串.
+
+        兼容老调用方 ``create_new_version(parent_id_str, ...)`` — 内部自动 fetch.
+
+        注意: Tortoise 的 ``Model.__init__`` 不会处理 FK 列名 (``parent_id``),
+        只处理 FK 关系名 (``parent``). 所以这里构造完 Model 后显式 ``setattr``
+        设 ``parent_id``, 让 ``new.parent_id`` 可访问 (测试 / DTO 转换都靠这个).
+        """
+        if not isinstance(parent, Scenario):
+            fetched = await self.get_by_id(str(parent))
+            if fetched is None:
+                raise ValueError(f"parent scenario not found: {parent}")
+            parent = fetched
         new = Scenario(
             code=parent.code,
             name=new_name or parent.name,
             version=parent.version + 1,
-            parent_id=parent.id,
             config=new_config,
             source=parent.source,
             status="draft",
         )
+        new.parent_id = parent.id
         return await self.create(new)

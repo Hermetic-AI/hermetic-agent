@@ -1,8 +1,12 @@
 """Service Container — 6 个 Service 的统一装配.
 
 业务层只 import ServiceContainer, 通过 ``container.xxx_service.method()`` 调用.
-"""
 
+启动期 (``build_container_from_settings``):
+- ``memory``  → 直接用 ``Memory*Repository`` 装配, 无 DB 依赖
+- ``mysql``   → ``Tortoise.init()`` + ``Tortoise.generate_schemas()`` 自动建表,
+                然后用 ``MySQL*Repository`` (Tortoise ORM) 装配
+"""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -39,7 +43,7 @@ class ServiceContainer:
     part: PartService
 
     async def close(self) -> None:
-        """关闭底层资源(由 factory 注入, 此处不直接关 pool)."""
+        """关闭底层资源. ``Tortoise.close_connections()`` 由 lifecycle 调, 这里不重复."""
         logger.info("service_container_close")
 
 
@@ -64,24 +68,12 @@ def build_container(
         Service 之间的依赖(SessionService 写聚合 / ChatTurnService 用 SessionService
         写聚合 / MessageService 用 SessionService 写 message_count)通过循环引用解决.
     """
-    # 1. AuditLogService 无依赖
     audit = AuditLogService(audit_log_repo)
-
-    # 2. SessionService 依赖 audit
     session = SessionService(session_repo, audit)
-
-    # 3. ScenarioService 依赖 audit
     scenario = ScenarioService(scenario_repo, audit)
-
-    # 4. ChatTurnService 依赖 audit + session (聚合)
     chat_turn = ChatTurnService(chat_turn_repo, audit, session)
-
-    # 5. MessageService 依赖 audit + part_repo + session (message_count)
     message = MessageService(message_repo, part_repo, audit, session)
-
-    # 6. PartService 依赖 audit
     part = PartService(part_repo, audit)
-
     logger.info("service_container_built")
     return ServiceContainer(
         audit_log=audit,
@@ -102,7 +94,7 @@ def build_default_container(
     part_repo: PartRepository,
     audit_log_repo: AuditLogRepository,
 ) -> ServiceContainer:
-    """build_container 别名(README 文档用)."""
+    """``build_container`` 别名(README 文档用)."""
     return build_container(
         scenario_repo=scenario_repo,
         session_repo=session_repo,
@@ -113,22 +105,24 @@ def build_default_container(
     )
 
 
-def build_container_from_settings(
+async def build_container_from_settings(
     settings, ddl_sql: str | None = None
 ) -> ServiceContainer:
     """从全局 settings 自动装配 ServiceContainer.
 
     行为:
-    - settings.storage_backend == "memory" -> MemoryRepository 装配(自动)
-    - settings.storage_backend == "mysql"  -> MySQLRepository 装配, 启动期 init_schema
+    - ``settings.storage_backend == "memory"`` -> ``MemoryRepository`` 装配
+    - ``settings.storage_backend == "mysql"``  -> ``Tortoise.init()`` + 建表 +
+      ``MySQLRepository`` (Tortoise ORM) 装配
 
     Args:
-        settings: openagent.config.settings.Settings 实例
-        ddl_sql: MySQL 后端启动期 DDL(可空, 不传则不执行)
+        settings: ``openagent.config.settings.Settings`` 实例
+        ddl_sql: 兼容老参数, 忽略 (Tortoise 用 ``generate_schemas`` 自动建表)
 
     Returns:
         装好的 ServiceContainer
     """
+    from openagent.store.models._common import init_tortoise
     from openagent.store.repositories.memory import (
         MemoryAuditLogRepository,
         MemoryChatTurnRepository,
@@ -160,26 +154,23 @@ def build_container_from_settings(
         )
 
     if backend == "mysql":
-        from openagent.store.driver import MySQLConfig, MySQLPool
-
         dsn = getattr(settings, "mysql_dsn", "mysql://root@127.0.0.1:3306/openagent")
-        cfg = MySQLConfig.from_dsn(dsn)
-        pool = MySQLPool(
-            cfg,
-            min_size=getattr(settings, "mysql_pool_min_size", 5),
-            max_size=getattr(settings, "mysql_pool_max_size", 20),
-            echo=getattr(settings, "mysql_echo", False),
+        echo = getattr(settings, "mysql_echo", False)
+        # Tortoise DSN: ``mysql://user:pass@host:port/db`` 同 asyncmy 一致,
+        # echo 通过配置开启 SQL 日志 (Tortoise.use_tz 等高级配置未来再加).
+        await init_tortoise(dsn, generate_schemas=True)
+        logger.info(
+            "container_backend_mysql",
+            echo=echo,
+            note="Tortoise.init + generate_schemas; no separate MySQLPool needed",
         )
-        # 注: pool.connect() 需在应用启动期显式调 (lifecycle / app startup),
-        # 这里只建 pool 不连, 保持函数纯.
-        logger.info("container_backend_mysql", url=cfg.to_url_safe())
         return build_container(
-            scenario_repo=MySQLScenarioRepository(pool),
-            session_repo=MySQLSessionRepository(pool),
-            chat_turn_repo=MySQLChatTurnRepository(pool),
-            message_repo=MySQLMessageRepository(pool),
-            part_repo=MySQLPartRepository(pool),
-            audit_log_repo=MySQLAuditLogRepository(pool),
+            scenario_repo=MySQLScenarioRepository(),
+            session_repo=MySQLSessionRepository(),
+            chat_turn_repo=MySQLChatTurnRepository(),
+            message_repo=MySQLMessageRepository(),
+            part_repo=MySQLPartRepository(),
+            audit_log_repo=MySQLAuditLogRepository(),
         )
 
     raise ValueError(f"Unsupported storage_backend: {backend!r}")

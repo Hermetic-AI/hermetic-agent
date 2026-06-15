@@ -1,66 +1,50 @@
-"""Message Model — 消息(parts 已拆出)."""
+"""Message Model — 消息(parts 已拆出, Tortoise ORM).
 
+对应表: ``messages``
+角色: ``user / assistant / system / tool``
+"""
 from __future__ import annotations
 
-import uuid
-from dataclasses import dataclass, field
-from datetime import datetime
-from typing import Any
-
-from openagent.store.models._common import (
-    from_db_bool,
-    from_db_json,
-    to_db_bool,
-    to_db_json,
-    utcnow,
-)
+from tortoise import fields
+from tortoise.models import Model
 
 
-@dataclass
-class Message:
-    """消息(parts 已拆出到 parts 表).
+class Message(Model):
+    """消息(parts 已拆出到 parts 表)."""
 
-    对应表: ``messages``
-    角色: ``user / assistant / system / tool``
-    """
+    id = fields.UUIDField(pk=True, binary=False)
 
-    session_id: str
-    role: str
-    content: str
-    turn_id: str | None = None
-    metadata: dict[str, Any] | None = None
+    session = fields.ForeignKeyField(
+        "models.Session",
+        related_name="messages",
+        on_delete=fields.CASCADE,
+        description="所属 session",
+    )
+    turn = fields.ForeignKeyField(
+        "models.ChatTurn",
+        related_name="messages",
+        null=True,
+        on_delete=fields.SET_NULL,
+        description="所属 chat_turn(可空, 系统消息/老数据)",
+    )
+    role = fields.CharField(max_length=32, description="user / assistant / system / tool")
+    content = fields.TextField(description="消息文本主体")
+    metadata = fields.JSONField(
+        null=True,
+        description="扩展元数据(工具名/trace_id 等)",
+    )
+    is_deleted = fields.BooleanField(default=False, description="软删除标记")
+    deleted_at = fields.DatetimeField(null=True, description="软删除时间")
+    created_at = fields.DatetimeField(auto_now_add=True, description="创建时间")
+    updated_at = fields.DatetimeField(auto_now=True, description="更新时间")
 
-    id: str = field(default_factory=lambda: str(uuid.uuid4()))
-    is_deleted: bool = False
-    deleted_at: datetime | None = None
-    created_at: datetime = field(default_factory=utcnow)
-    updated_at: datetime = field(default_factory=utcnow)
+    class Meta:
+        table = "messages"
+        indexes = [
+            ("session_id", "is_deleted", "created_at", "id"),
+            ("turn_id",),
+            ("role", "is_deleted"),
+        ]
 
-    def to_db_dict(self) -> dict[str, Any]:
-        return {
-            "id": self.id,
-            "session_id": self.session_id,
-            "turn_id": self.turn_id,
-            "role": self.role,
-            "content": self.content,
-            "metadata": to_db_json(self.metadata),
-            "is_deleted": to_db_bool(self.is_deleted),
-            "deleted_at": self.deleted_at,
-            "created_at": self.created_at,
-            "updated_at": self.updated_at,
-        }
 
-    @classmethod
-    def from_db_dict(cls, row: dict[str, Any]) -> Message:
-        return cls(
-            id=row["id"],
-            session_id=row["session_id"],
-            turn_id=row.get("turn_id"),
-            role=row["role"],
-            content=row.get("content") or "",
-            metadata=from_db_json(row.get("metadata")),
-            is_deleted=from_db_bool(row.get("is_deleted", 0)),
-            deleted_at=row.get("deleted_at"),
-            created_at=row["created_at"],
-            updated_at=row["updated_at"],
-        )
+__all__ = ["Message"]

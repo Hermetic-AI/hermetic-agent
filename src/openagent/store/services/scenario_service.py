@@ -77,12 +77,13 @@ class ScenarioService:
             code=req.code,
             name=req.name,
             version=req.version,
-            parent_id=req.parent_id,
             description=req.description,
             config=req.config,
             source=req.source,
             status=req.status,
         )
+        if req.parent_id is not None:
+            s.parent_id = req.parent_id
         s = await self._repo.create(s)
         await self._audit.record(
             actor_type="user",

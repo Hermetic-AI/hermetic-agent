@@ -6,7 +6,7 @@ from typing import Any
 
 from pydantic import Field
 
-from openagent.store.dto._common import DTOMixin, iso_or_none, model_to_dict
+from openagent.store.dto._common import DTOMixin, iso_or_none
 from openagent.store.models.scenario import Scenario
 
 
@@ -67,14 +67,9 @@ class ScenarioResponse(DTOMixin):
             deleted_at=iso_or_none(m.deleted_at),
         )
 
-    @classmethod
-    def from_db_row(cls, row: dict[str, Any]) -> ScenarioResponse:
-        return cls.from_model(Scenario.from_db_dict(row))
-
 
 __all__ = [
     "CreateScenarioRequest",
     "UpdateScenarioRequest",
     "ScenarioResponse",
-    "model_to_dict",  # re-export for convenience
 ]

@@ -1,99 +1,74 @@
-"""Session Model — 对话主表(含 token/cost 聚合)."""
+"""Session Model — 对话主表(含 token/cost 聚合, Tortoise ORM).
 
+对应表: ``sessions``
+聚合字段 ``message_count`` / ``cost`` / ``tokens_*`` 由 chat_turns 反向汇总,
+不强一致, 业务可接受秒级延迟.
+
+ID 格式: 不用 ``UUIDField``, 改 ``CharField(max_length=64)`` 接受任意字符串.
+原因: opencode serve 返回的 session id 是 ``ses_xxx`` 短串 (不是 UUID), 
+直接写 UUIDField 会抛 ``badly formed hexadecimal UUID string``. Hub 内部
+自己生成的 session id 仍走 ``uuid.uuid4()`` (str(uuid4())) 默认值.
+"""
 from __future__ import annotations
 
 import uuid
-from dataclasses import dataclass, field
-from datetime import datetime
-from decimal import Decimal
-from typing import Any
 
-from openagent.store.models._common import (
-    from_db_bool,
-    from_db_json,
-    to_db_bool,
-    to_db_json,
-    utcnow,
-)
+from tortoise import fields
+from tortoise.models import Model
 
 
-@dataclass
-class Session:
-    """对话主表.
+class Session(Model):
+    """对话主表."""
 
-    对应表: ``sessions``
-    聚合字段: ``message_count`` / ``cost`` / ``tokens_*`` 由 chat_turns 反向汇总,
-              不强一致, 业务可接受秒级延迟.
-    """
+    id = fields.CharField(
+        max_length=64,
+        pk=True,
+        default=lambda: str(uuid.uuid4()),
+        description="会话 ID (opencode 返回的 ``ses_xxx`` 或 Hub 生成的 UUID 字符串)",
+    )
 
-    user_id: str = ""
-    title: str = "New Session"
-    model: str | None = None
-    agent_name: str = ""
-    scenario_id: str | None = None
-    status: str = "active"
+    user_id = fields.CharField(max_length=64, default="", description="所属用户标识(外部系统传入)")
+    title = fields.CharField(max_length=255, default="New Session", description="会话标题")
+    model = fields.CharField(max_length=128, null=True, description="LLM 模型标识")
+    agent_name = fields.CharField(max_length=128, default="", description="使用的 Agent 名")
+    scenario = fields.ForeignKeyField(
+        "models.Scenario",
+        related_name="sessions",
+        null=True,
+        on_delete=fields.SET_NULL,
+        description="关联场景 ID",
+    )
+    status = fields.CharField(
+        max_length=32,
+        default="active",
+        description="状态: active / closed / archived",
+    )
 
-    message_count: int = 0
-    cost: Decimal = field(default_factory=lambda: Decimal("0"))
-    tokens_input: int = 0
-    tokens_output: int = 0
-    tokens_reasoning: int = 0
-    tokens_cache_read: int = 0
-    tokens_cache_write: int = 0
+    message_count = fields.IntField(default=0, description="消息条数缓存")
+    cost = fields.DecimalField(max_digits=12, decimal_places=6, default=0, description="累计花费 USD")
+    tokens_input = fields.IntField(default=0, description="累计 input tokens")
+    tokens_output = fields.IntField(default=0, description="累计 output tokens")
+    tokens_reasoning = fields.IntField(default=0, description="累计 reasoning tokens")
+    tokens_cache_read = fields.IntField(default=0, description="累计 cache read tokens")
+    tokens_cache_write = fields.IntField(default=0, description="累计 cache write tokens")
 
-    metadata: dict[str, Any] | None = None
+    metadata = fields.JSONField(
+        null=True,
+        description="扩展元数据",
+    )
+    is_deleted = fields.BooleanField(default=False, description="软删除标记")
+    deleted_at = fields.DatetimeField(null=True, description="软删除时间")
+    created_at = fields.DatetimeField(auto_now_add=True, description="创建时间")
+    updated_at = fields.DatetimeField(auto_now=True, description="更新时间")
 
-    id: str = field(default_factory=lambda: str(uuid.uuid4()))
-    is_deleted: bool = False
-    deleted_at: datetime | None = None
-    created_at: datetime = field(default_factory=utcnow)
-    updated_at: datetime = field(default_factory=utcnow)
+    class Meta:
+        table = "sessions"
+        indexes = [
+            ("user_id", "is_deleted", "updated_at", "id"),
+            ("agent_name", "is_deleted", "updated_at", "id"),
+            ("scenario_id",),
+            ("updated_at",),
+        ]
 
-    def to_db_dict(self) -> dict[str, Any]:
-        return {
-            "id": self.id,
-            "user_id": self.user_id,
-            "title": self.title,
-            "model": self.model,
-            "agent_name": self.agent_name,
-            "scenario_id": self.scenario_id,
-            "status": self.status,
-            "message_count": int(self.message_count),
-            "cost": self.cost,
-            "tokens_input": int(self.tokens_input),
-            "tokens_output": int(self.tokens_output),
-            "tokens_reasoning": int(self.tokens_reasoning),
-            "tokens_cache_read": int(self.tokens_cache_read),
-            "tokens_cache_write": int(self.tokens_cache_write),
-            "metadata": to_db_json(self.metadata),
-            "is_deleted": to_db_bool(self.is_deleted),
-            "deleted_at": self.deleted_at,
-            "created_at": self.created_at,
-            "updated_at": self.updated_at,
-        }
 
-    @classmethod
-    def from_db_dict(cls, row: dict[str, Any]) -> Session:
-        cost = row.get("cost", 0)
-        cost_dec = cost if isinstance(cost, Decimal) else Decimal(str(cost))
-        return cls(
-            id=row["id"],
-            user_id=row.get("user_id") or "",
-            title=row.get("title") or "New Session",
-            model=row.get("model"),
-            agent_name=row.get("agent_name") or "",
-            scenario_id=row.get("scenario_id"),
-            status=row.get("status") or "active",
-            message_count=int(row.get("message_count", 0)),
-            cost=cost_dec,
-            tokens_input=int(row.get("tokens_input", 0)),
-            tokens_output=int(row.get("tokens_output", 0)),
-            tokens_reasoning=int(row.get("tokens_reasoning", 0)),
-            tokens_cache_read=int(row.get("tokens_cache_read", 0)),
-            tokens_cache_write=int(row.get("tokens_cache_write", 0)),
-            metadata=from_db_json(row.get("metadata")),
-            is_deleted=from_db_bool(row.get("is_deleted", 0)),
-            deleted_at=row.get("deleted_at"),
-            created_at=row["created_at"],
-            updated_at=row["updated_at"],
-        )
+__all__ = ["Session"]

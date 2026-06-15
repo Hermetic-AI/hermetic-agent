@@ -79,10 +79,11 @@ class MemoryAuditLogRepository(AuditLogRepository):
         )
 
     async def next_seq(self, resource_type: str, resource_id: str) -> int:
+        target = str(resource_id)
         items = [
             s
             for s in self._store.values()
-            if s.resource_type == resource_type and s.resource_id == resource_id
+            if s.resource_type == resource_type and str(s.resource_id) == target
         ]
         max_seq = max((s.seq or 0) for s in items) if items else 0
         return max_seq + 1

@@ -10,4 +10,5 @@ opencode-ai>=0.1.0a0
 asyncpg>=0.29.0
 asyncmy>=0.2.10
 pymysql>=1.1.0
+tortoise-orm[asyncmy]>=0.21.0
 sanic-ext>=24.0.0

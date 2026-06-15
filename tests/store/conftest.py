@@ -1,30 +1,25 @@
 """openagent.store 测试 fixtures.
 
-提供:
-- ``mysql_pool``        — 真实 MySQL 连接池 (每次测试前清表)
-- ``scenario_repo``     — MySQL 场景仓储
-- ``session_repo``      — MySQL 会话仓储
-- ``message_repo``      — MySQL 消息仓储
-- ``part_repo``         — MySQL 分段仓储
-- ``chat_turn_repo``    — MySQL turn 仓储
-- ``audit_log_repo``    — MySQL 审计仓储
-- ``service_container`` — 装配好的 ServiceContainer
-- ``memory_container``  — 纯内存版 ServiceContainer (无 MySQL 依赖, 跑得快)
-"""
+Tortoise ORM 之后, 测试不需要 ``MySQLPool`` + 外部 DDL 文件.
+策略:
+- 默认用 ``sqlite://:memory:`` (Tortoise 自动建表, 跨测试用 fresh connection)
+- 设了 ``OPENAGENT_TEST_MYSQL_DSN`` env 走真实 MySQL (集成测试)
 
+提供:
+- ``tortoise_init``         — 启动期 ``Tortoise.init()`` + ``generate_schemas()``,
+                              yield 完 ``close_connections()``
+- ``truncate_all``          — 每个测试前清表 (避免脏数据)
+- ``service_container``     — 装配好的 ``ServiceContainer`` (sqlite 默认 / 可切 mysql)
+- ``memory_container``      — 纯内存版 ``ServiceContainer`` (无 DB 依赖, 跑得快)
+"""
 from __future__ import annotations
 
 import os
-from collections.abc import AsyncIterator
-from pathlib import Path
 
 import pytest_asyncio
 
-from openagent.store import (
-    ServiceContainer,
-    build_container,
-)
-from openagent.store.driver import MySQLConfig, MySQLPool
+from openagent.store import ServiceContainer, build_container
+from openagent.store.models._common import init_tortoise
 from openagent.store.repositories.memory import (
     MemoryAuditLogRepository,
     MemoryChatTurnRepository,
@@ -42,20 +37,19 @@ from openagent.store.repositories.mysql import (
     MySQLSessionRepository,
 )
 
-# 加载 v2 schema
-SCHEMA_SQL = (Path(__file__).resolve().parents[2] / "docs/db/openagent-schema.sql").read_text(
-    encoding="utf-8"
-)
 
-MYSQL_DSN = os.environ.get(
+#: 测试用 DB. 优先用 env 指定的 MySQL (集成测试), 否则用 sqlite 内存.
+TEST_DSN = os.environ.get(
     "OPENAGENT_TEST_MYSQL_DSN",
-    "mysql://root:1014@127.0.0.1:13306/openagent",
+    "sqlite://:memory:",
 )
 
 
-async def _truncate_all(pool: MySQLPool) -> None:
-    """测试 setup/teardown: 清空所有表."""
-    await pool.execute("SET FOREIGN_KEY_CHECKS=0")
+async def _truncate_all() -> None:
+    """测试 setup/teardown: 清空所有表. Tortoise ``Model.all().delete()``."""
+    from tortoise import Tortoise
+
+    conn = Tortoise.get_connection("default")
     for tbl in (
         "audit_logs",
         "parts",
@@ -64,77 +58,50 @@ async def _truncate_all(pool: MySQLPool) -> None:
         "sessions",
         "scenarios",
     ):
-        await pool.execute(f"TRUNCATE TABLE {tbl}")
-    await pool.execute("SET FOREIGN_KEY_CHECKS=1")
+        try:
+            await conn.execute_query(f"DELETE FROM {tbl}")
+        except Exception:
+            # sqlite 内存模式每次 fixture 都是新库, 第一次可能表还没建;
+            # 由调用方保证先 init.
+            pass
 
 
 @pytest_asyncio.fixture
-async def mysql_pool() -> AsyncIterator[MySQLPool]:
-    """真实 MySQL 池. 启动期 init_schema, 测试结束 close."""
-    cfg = MySQLConfig.from_dsn(MYSQL_DSN)
-    pool = MySQLPool(cfg, min_size=1, max_size=4)
-    await pool.connect()
-    await pool.init_schema(SCHEMA_SQL)
-    await _truncate_all(pool)
+async def tortoise_init():
+    """Tortoise 启动 + 拆. 跨 fixture 共享.
+
+    注意: sqlite ``:memory:`` 是 per-connection 库, Tortoise 连接池里连接
+    共享同一个库文件 (``file::memory:?cache=shared``), 同一进程内 OK.
+    """
+    from tortoise import Tortoise
+
+    await init_tortoise(TEST_DSN, generate_schemas=True)
     try:
-        yield pool
+        yield Tortoise
     finally:
-        await _truncate_all(pool)
-        await pool.close()
+        await Tortoise.close_connections()
 
 
 @pytest_asyncio.fixture
-async def scenario_repo(mysql_pool: MySQLPool) -> MySQLScenarioRepository:
-    return MySQLScenarioRepository(mysql_pool)
-
-
-@pytest_asyncio.fixture
-async def session_repo(mysql_pool: MySQLPool) -> MySQLSessionRepository:
-    return MySQLSessionRepository(mysql_pool)
-
-
-@pytest_asyncio.fixture
-async def chat_turn_repo(mysql_pool: MySQLPool) -> MySQLChatTurnRepository:
-    return MySQLChatTurnRepository(mysql_pool)
-
-
-@pytest_asyncio.fixture
-async def message_repo(mysql_pool: MySQLPool) -> MySQLMessageRepository:
-    return MySQLMessageRepository(mysql_pool)
-
-
-@pytest_asyncio.fixture
-async def part_repo(mysql_pool: MySQLPool) -> MySQLPartRepository:
-    return MySQLPartRepository(mysql_pool)
-
-
-@pytest_asyncio.fixture
-async def audit_log_repo(mysql_pool: MySQLPool) -> MySQLAuditLogRepository:
-    return MySQLAuditLogRepository(mysql_pool)
-
-
-@pytest_asyncio.fixture
-async def service_container(
-    scenario_repo,
-    session_repo,
-    chat_turn_repo,
-    message_repo,
-    part_repo,
-    audit_log_repo,
-) -> ServiceContainer:
-    return build_container(
-        scenario_repo=scenario_repo,
-        session_repo=session_repo,
-        chat_turn_repo=chat_turn_repo,
-        message_repo=message_repo,
-        part_repo=part_repo,
-        audit_log_repo=audit_log_repo,
-    )
+async def service_container(tortoise_init):
+    """装好的 ServiceContainer (MySQL/Tortoise). 每个测试前清表."""
+    await _truncate_all()
+    try:
+        yield build_container(
+            scenario_repo=MySQLScenarioRepository(),
+            session_repo=MySQLSessionRepository(),
+            chat_turn_repo=MySQLChatTurnRepository(),
+            message_repo=MySQLMessageRepository(),
+            part_repo=MySQLPartRepository(),
+            audit_log_repo=MySQLAuditLogRepository(),
+        )
+    finally:
+        await _truncate_all()
 
 
 @pytest_asyncio.fixture
 async def memory_container() -> ServiceContainer:
-    """纯内存版 ServiceContainer. 不依赖 MySQL, 跑得快."""
+    """纯内存版 ServiceContainer. 不依赖 DB, 跑得快."""
     return build_container(
         scenario_repo=MemoryScenarioRepository(),
         session_repo=MemorySessionRepository(),
@@ -143,3 +110,34 @@ async def memory_container() -> ServiceContainer:
         part_repo=MemoryPartRepository(),
         audit_log_repo=MemoryAuditLogRepository(),
     )
+
+
+# Repo-level fixtures (从 service_container 拆, 方便老风格测试).
+@pytest_asyncio.fixture
+async def scenario_repo(service_container):
+    yield service_container.scenario._repo
+
+
+@pytest_asyncio.fixture
+async def session_repo(service_container):
+    yield service_container.session._repo
+
+
+@pytest_asyncio.fixture
+async def chat_turn_repo(service_container):
+    yield service_container.chat_turn._repo
+
+
+@pytest_asyncio.fixture
+async def message_repo(service_container):
+    yield service_container.message._repo
+
+
+@pytest_asyncio.fixture
+async def part_repo(service_container):
+    yield service_container.part._repo
+
+
+@pytest_asyncio.fixture
+async def audit_log_repo(service_container):
+    yield service_container.audit_log._repo
