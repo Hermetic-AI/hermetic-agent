@@ -9,7 +9,7 @@ FLIGHT_RESULT card → emit SSE card 事件**. LLM 完全不用知道 AUIP 存�
 结构化工作. 前端照常收 card 事件渲染 FlightResultCard.
 
 触发条件:
-  - tool_result.tool_name == "feihe-travel_queryFlightBasic"
+  - tool_result.tool_name == "feihe-travel_queryFlightBasic" or "feihe-travel__queryFlightBasic"
   - 解析成功 + 含 flightList 数组
   - 一次 chat 只 emit 一次 (避免重复)
 
@@ -33,9 +33,14 @@ from openagent.auip._flight_mapping import (
     _first_text,
     flight_dict_to_auip,
 )
+from openagent.auip.agui_flight_card import build_domestic_flight_agui
 from openagent.auip.cards import Card, CardType
 
 logger = structlog.get_logger(__name__)
+QUERY_FLIGHT_BASIC_TOOL_NAMES = {
+    "feihe-travel_queryFlightBasic",
+    "feihe-travel__queryFlightBasic",
+}
 
 
 # 兼容 shim: tests 历史可能 ``from openagent.auip.flight_card import _parse_minutes``.
@@ -103,7 +108,7 @@ def _extract_data(output: Any) -> dict[str, Any] | None:
         try:
             data = json.loads(output)
         except (json.JSONDecodeError, TypeError):
-            logger.warning("flight_card_parse_failed", tool_name="feihe-travel_queryFlightBasic", output_head=str(output)[:200])
+            logger.warning("flight_card_parse_failed", tool_name="queryFlightBasic", output_head=str(output)[:200])
             return None
     else:
         return None
@@ -168,7 +173,7 @@ def maybe_assemble_flight_card(tool_name: str, output: Any) -> Card | None:
         ``Card`` 实例 (card_type=FLIGHT_RESULT), 或 ``None`` (不是这个工具 / 解析失败 /
         无航班).
     """
-    if tool_name != "feihe-travel_queryFlightBasic":
+    if tool_name not in QUERY_FLIGHT_BASIC_TOOL_NAMES:
         return None
     # output 可能是 str (JSON string), dict, 或 MCP content[].text 包装.
     data = _extract_data(output)
@@ -201,12 +206,16 @@ def maybe_assemble_flight_card(tool_name: str, output: Any) -> Card | None:
         "arrCity": _first_text(data.get("arrCityName"), data.get("arrivalCity"), first_flight.get("arrCityName"), first_flight.get("arrivalCity"), first_flight.get("arrCity")),
         "depDate": _first_text(data.get("depDate"), data.get("departureDate"), first_dep_date),
     }
+    title = "机票已发送"
+    if summary["depCity"] and summary["arrCity"]:
+        title = f"{summary['depCity']}到{summary['arrCity']}机票已发送"
+    agui = build_domestic_flight_agui(data, flight_list, airway_names, summary)
     return Card(
         card_id=f"card-{uuid.uuid4().hex[:12]}",
         card_type=CardType.FLIGHT_RESULT,
-        title="机票已发送",
-        body={"summary": summary, "plans": plans},
+        title=title,
+        body={"summary": summary, "plans": plans, "agui": agui},
     )
 
 
-__all__ = ["maybe_assemble_flight_card"]
+__all__ = ["maybe_assemble_flight_card", "QUERY_FLIGHT_BASIC_TOOL_NAMES"]

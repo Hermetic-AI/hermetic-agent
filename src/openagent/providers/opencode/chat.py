@@ -25,6 +25,7 @@ from typing import TYPE_CHECKING, Any
 import httpx
 import structlog
 
+from openagent.auip.flight_card import QUERY_FLIGHT_BASIC_TOOL_NAMES
 from openagent.providers.base import (
     ChatMessage,
     ChatResult,
@@ -1162,7 +1163,7 @@ async def stream_chat(
                     # 结构化工作, 前端照样收 card 事件渲染 FlightResultCard.
                     if (
                         mapped.type == "tool_result"
-                        and mapped.data.get("tool_name") == "feihe-travel_queryFlightBasic"
+                        and mapped.data.get("tool_name") in QUERY_FLIGHT_BASIC_TOOL_NAMES
                     ):
                         if session_id in _FLIGHT_CARD_EMITTED:
                             continue
@@ -1233,7 +1234,7 @@ async def stream_chat(
                         mapped_part = _tool_part_to_result(part)
                         if mapped_part is None:
                             continue
-                        if mapped_part.data.get("tool_name") == "feihe-travel_queryFlightBasic":
+                        if mapped_part.data.get("tool_name") in QUERY_FLIGHT_BASIC_TOOL_NAMES:
                             if session_id in _FLIGHT_CARD_EMITTED:
                                 continue
                             from openagent.auip.flight_card import maybe_assemble_flight_card

@@ -1,0 +1,462 @@
+.dagui-shell {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.dagui-reason,
+.dagui-text {
+  margin: 0;
+  color: #475569;
+  font-size: 14px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+
+.dagui-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.dagui-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #e6effb;
+  color: #42526b;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.dagui-link-btn {
+  border: 0;
+  background: transparent;
+  color: #1677ff;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 2px 0;
+}
+
+.dagui-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.dagui-scheme {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.dagui-scheme__title {
+  margin: 0;
+  color: #1d2129;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.flight-list-card__summary-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 12px;
+  color: #86909c;
+  line-height: 1.5;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+}
+
+.flight-list-card__summary-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.flight-list-card__more-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  border: 0;
+  background: transparent;
+  color: #1677ff;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 0 4px;
+  cursor: pointer;
+}
+
+.flight-list-card__more-chevron {
+  font-size: 10px;
+  opacity: 0.85;
+}
+
+.flight-card__airline-logo-img {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  object-fit: cover;
+  background: #fff;
+  flex-shrink: 0;
+}
+
+.flight-card__meal-pipe svg {
+  vertical-align: -2px;
+}
+
+.dagui-flight-item.flight-card {
+  margin: 0;
+  padding: 12px;
+  border: 1px solid #e3e8ef;
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: none;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.dagui-flight-item.flight-card:hover {
+  border-color: #1677ff;
+  box-shadow: 0 4px 14px rgba(22, 119, 255, 0.1);
+}
+
+.dagui-flight-click {
+  display: block;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font-family: inherit;
+  padding: 0;
+  text-align: left;
+}
+
+.dagui-flight-click:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.flight-card__doc-title {
+  color: #1d2129;
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.flight-journey-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  width: 100%;
+  margin-bottom: 8px;
+}
+
+.flight-journey-row__dep,
+.flight-journey-row__arr {
+  width: 72px;
+  flex-shrink: 0;
+}
+
+.flight-journey-row__mid {
+  flex: 1;
+  min-width: 56px;
+  max-width: 120px;
+  text-align: center;
+  padding-top: 2px;
+  color: #86909c;
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.flight-journey-row__time {
+  display: block;
+  color: #1d2129;
+  font-size: 17px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.flight-journey-row__ap {
+  display: block;
+  margin-top: 2px;
+  color: #86909c;
+  font-size: 11px;
+  line-height: 1.3;
+  word-break: keep-all;
+}
+
+.flight-journey-row__dur {
+  display: block;
+  white-space: nowrap;
+}
+
+.flight-journey-row__mid-line {
+  display: block;
+  height: 1px;
+  margin: 3px 8px 4px;
+  background: linear-gradient(to right, #c9cdd4, #1677ff);
+  position: relative;
+}
+
+.flight-journey-row__mid-line::after {
+  content: '›';
+  position: absolute;
+  right: -2px;
+  top: -7px;
+  color: #1677ff;
+  font-size: 14px;
+  line-height: 1;
+}
+
+.flight-journey-row__price {
+  flex-shrink: 0;
+  margin-left: auto;
+  padding-top: 2px;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.flight-journey-row__price-num,
+.flight-journey-row__price-suffix {
+  color: #1677ff;
+  font-weight: 700;
+}
+
+.flight-journey-row__price-num {
+  font-size: 16px;
+}
+
+.flight-journey-row__price-suffix {
+  font-size: 12px;
+  margin-left: 1px;
+}
+
+.flight-card__airline-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: #4e5969;
+  font-size: 12px;
+  line-height: 1.4;
+  min-width: 0;
+}
+
+.flight-card__airline-logo {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #eef5ff;
+  color: #1677ff;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.flight-card__airline-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.flight-card__meta-pipe {
+  color: #86909c;
+  white-space: nowrap;
+}
+
+.flight-share-tag {
+  margin-left: 4px;
+  color: #1677ff;
+}
+
+.dagui-pick-btn,
+.dagui-primary-btn {
+  border: 0;
+  border-radius: 999px;
+  background: #1677ff;
+  color: #fff;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 700;
+  padding: 7px 16px;
+}
+
+.dagui-pick-btn:disabled,
+.dagui-primary-btn:disabled,
+.dagui-cabin-row:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.dagui-cabin-flight {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #f7f9fc;
+  color: #1d2129;
+  font-size: 13px;
+}
+
+.dagui-cabin-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  border-radius: 10px;
+  background: #f2f5f9;
+  padding: 3px;
+  color: #4e5969;
+  font-size: 12px;
+  font-weight: 600;
+  text-align: center;
+}
+
+.dagui-cabin-tabs span:first-child {
+  border-radius: 8px;
+  background: #fff;
+  color: #1677ff;
+  box-shadow: 0 1px 4px rgba(15, 23, 42, 0.08);
+}
+
+.dagui-cabin-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  padding: 12px;
+  border: 1px solid #edf1f7;
+  border-radius: 10px;
+  background: #fff;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+.dagui-cabin-row div {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.dagui-cabin-row strong {
+  color: #f53f3f;
+  font-size: 20px;
+}
+
+.dagui-cabin-row span {
+  color: #1d2129;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.dagui-cabin-row small {
+  color: #86909c;
+  font-size: 12px;
+  max-width: 360px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dagui-seat {
+  flex-shrink: 0;
+  color: #1677ff !important;
+}
+
+.dagui-order-card {
+  border: 1px solid #e5e6eb;
+  border-radius: 10px;
+  padding: 14px;
+  background: #fff;
+}
+
+.dagui-order-head {
+  color: #1d2129;
+  font-size: 14px;
+  margin-bottom: 10px;
+}
+
+.dagui-order-flight {
+  display: flex;
+  gap: 8px;
+  padding: 10px 12px;
+  margin-bottom: 10px;
+  border: 1px solid #e8e8e8;
+  border-radius: 8px;
+  background: #fafbfc;
+}
+
+.dagui-trip-tag {
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #1677ff;
+  color: #fff;
+  font-size: 11px;
+  line-height: 22px;
+  text-align: center;
+}
+
+.dagui-order-flight div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  color: #4e5969;
+  font-size: 12px;
+}
+
+.dagui-order-flight strong {
+  color: #1d2129;
+  font-size: 13px;
+}
+
+.dagui-passenger {
+  color: #1d2129;
+  font-size: 13px;
+  line-height: 1.5;
+  margin-bottom: 4px;
+}
+
+.dagui-order-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid #f0f0f0;
+  color: #4e5969;
+  font-size: 13px;
+}
+
+.dagui-order-footer strong {
+  color: #f53f3f;
+  font-size: 18px;
+}
+
+@media (max-width: 560px) {
+  .flight-journey-row__dep,
+  .flight-journey-row__arr {
+    width: 64px;
+  }
+
+  .flight-journey-row__mid {
+    min-width: 48px;
+  }
+
+  .flight-journey-row__price-num {
+    font-size: 15px;
+  }
+}

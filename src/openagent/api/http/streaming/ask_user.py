@@ -28,10 +28,39 @@ def is_ask_user_tool(tool_name: Any) -> bool:
     return str(tool_name or "") in ASK_USER_TOOL_NAMES
 
 
+def _enrich_empty_flight_result_body(
+    card_type: str,
+    body: dict[str, Any],
+    last_query_flight_output: Any,
+) -> dict[str, Any]:
+    """FLIGHT_RESULT 卡片 body 为空时, 复用最近一次 queryFlightBasic 输出兜底.
+
+    弱模型常见模式: 调完 queryFlightBasic 后再调 ask_user(card_type=FLIGHT_RESULT)
+    但忘记填充 body. 这里在 chat 拦截层兜底, 让前端始终能拿到完整 AGUI / AUIP 数据.
+    """
+    if card_type != "FLIGHT_RESULT" or body:
+        return body
+    if not last_query_flight_output:
+        return body
+    from openagent.auip.flight_card import maybe_assemble_flight_card
+
+    try:
+        card = maybe_assemble_flight_card(
+            tool_name="feihe-travel_queryFlightBasic",
+            output=last_query_flight_output,
+        )
+    except Exception:
+        return body
+    if card is None:
+        return body
+    return dict(card.body) if isinstance(card.body, dict) else body
+
+
 def _ask_user_to_card(
     event: StreamEvent,
     *,
     allowed_card_types: set | None,
+    last_query_flight_output: Any = None,
 ) -> StreamEvent:
     """把 tool_use(ask_user) 转成 card 事件. 其它事件原样返回.
 
@@ -39,6 +68,8 @@ def _ask_user_to_card(
         event: 来自 bridge 的 StreamEvent.
         allowed_card_types: scenario.a2ui.card_schemas 白名单; None 表示
             不校验 (CARD_TYPES_SET 全部允许).
+        last_query_flight_output: 最近一次 feihe-travel_queryFlightBasic 的
+            tool_result 输出. FLIGHT_RESULT 卡片 body 缺失时, 用来兜底拼装.
 
     Returns:
         转换后的 card 事件; 非 ask_user 事件原样返回, 非法 card_type 返回 error.
@@ -75,12 +106,17 @@ def _ask_user_to_card(
     if body is None:
         # 兼容: LLM 把所有字段平铺到 ask_user input, 不是嵌套在 body 下
         body = {k: v for k, v in inp.items() if k not in {"card_type", "title"}}
+    if not isinstance(body, dict):
+        body = {}
+    body = _enrich_empty_flight_result_body(
+        card_type, body, last_query_flight_output
+    )
     card_payload: dict = {
         "card_id": card_id,
         "card_type": card_type,
         "schema_version": str(inp.get("schema_version") or "1.0"),
         "title": str(inp.get("title") or ""),
-        "body": body if isinstance(body, dict) else {},
+        "body": body,
         "fields": inp.get("fields") or [],
         "options": inp.get("options") or [],
         "actions": inp.get("actions") or inp.get("decision_buttons") or [],
@@ -109,13 +145,18 @@ async def stream_with_ask_user_intercept(
         itself is the ack.
     """
     last_ask_user_id: str | None = None
+    last_query_flight_output: Any = None
     async for event in iterator:
         if event.type == "tool_use":
             data = event.data or {}
             tool_name = data.get("name") or data.get("tool_name")
             if is_ask_user_tool(tool_name):
                 last_ask_user_id = str(data.get("id") or "")
-                yield _ask_user_to_card(event, allowed_card_types=allowed_card_types)
+                yield _ask_user_to_card(
+                    event,
+                    allowed_card_types=allowed_card_types,
+                    last_query_flight_output=last_query_flight_output,
+                )
                 continue
         if event.type == "tool_result" and last_ask_user_id is not None:
             data = event.data or {}
@@ -126,4 +167,12 @@ async def stream_with_ask_user_intercept(
             ):
                 last_ask_user_id = None
                 continue
+        if event.type == "tool_result":
+            data = event.data or {}
+            tool_name = data.get("name") or data.get("tool_name")
+            if str(tool_name or "") in {
+                "feihe-travel_queryFlightBasic",
+                "queryFlightBasic",
+            }:
+                last_query_flight_output = data.get("output")
         yield event

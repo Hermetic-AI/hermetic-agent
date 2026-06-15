@@ -10,6 +10,8 @@ import { CannotOrderCard } from './cards/CannotOrderCard';
 import { ChatFallbackCard } from './cards/ChatFallbackCard';
 import { QuestionCard } from './cards/QuestionCard';
 import { TodoListCard } from './cards/TodoListCard';
+import { DomesticAguiCard } from './cards/DomesticAguiCard';
+import { hasDomesticAgui } from './cards/domesticAgui';
 import { CardShell } from './CardShell';
 
 export interface AUIRendererProps {
@@ -23,6 +25,17 @@ export interface AUIRendererProps {
 // themselves - every submission flows through `onSubmit` so the parent
 // hook can route it to the right `/agent/turn/{id}/resume` call.
 export function AUIRenderer({ card, suspended, submitted, onSubmit }: AUIRendererProps) {
+  if (hasDomesticAgui(card)) {
+    return (
+      <DomesticAguiCard
+        card={card}
+        suspended={suspended}
+        submitted={submitted}
+        onSubmit={onSubmit}
+      />
+    );
+  }
+
   switch (card.card_type) {
     case 'OD_INPUT':
     case 'PASSENGER_FORM':

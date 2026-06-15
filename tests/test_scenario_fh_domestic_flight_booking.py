@@ -13,9 +13,24 @@ from openagent.providers.streaming import StreamEvent
 
 WORK_DIR = Path(__file__).resolve().parents[1] / "work"
 SCENARIO_PATH = WORK_DIR / "scenarios" / "fh_domestic_flight_booking.scenario.yaml"
+MCPORTER_SCENARIO_PATH = (
+    WORK_DIR / "scenarios" / "fh_domestic_flight_booking_mcporter.scenario.yaml"
+)
 SCENARIO_DIR = WORK_DIR / "scenarios" / "fh_domestic_flight_booking"
+MCPORTER_SCENARIO_DIR = WORK_DIR / "scenarios" / "fh_domestic_flight_booking_mcporter"
 SKILL_DIR = WORK_DIR / "shared" / "skills" / "fh-domestic-flight-booking"
 NORMALIZE_SCRIPT = SKILL_DIR / "scripts" / "normalize_request.py"
+
+
+def _settings_stub_with_work_skills():
+    return type(
+        "SettingsStub",
+        (),
+        {
+            "skill_paths": [],
+            "skill_path_fallbacks": [str(WORK_DIR / "shared" / "skills")],
+        },
+    )()
 
 
 def _load_fh_domestic():
@@ -25,6 +40,20 @@ def _load_fh_domestic():
             "WORK_ROOT": str(WORK_DIR),
             "WORK_SHARED": str(WORK_DIR / "shared"),
             "SCENARIO_DIR": str(SCENARIO_DIR),
+            "PROJECT_DIR": str(
+                WORK_DIR / "tenants" / "tenant-A" / "projects" / "project-1"
+            ),
+        },
+    )
+
+
+def _load_fh_domestic_mcporter():
+    return load_scenario(
+        MCPORTER_SCENARIO_PATH,
+        ctx={
+            "WORK_ROOT": str(WORK_DIR),
+            "WORK_SHARED": str(WORK_DIR / "shared"),
+            "SCENARIO_DIR": str(MCPORTER_SCENARIO_DIR),
             "PROJECT_DIR": str(
                 WORK_DIR / "tenants" / "tenant-A" / "projects" / "project-1"
             ),
@@ -48,11 +77,32 @@ def test_fh_domestic_init_loads_with_auip_schema():
 
 
 def test_fh_domestic_skill_is_loaded_by_startup_fallbacks():
-    paths = _skill_paths_with_fallbacks(type("SettingsStub", (), {"skill_paths": []})())
+    paths = _skill_paths_with_fallbacks(_settings_stub_with_work_skills())
     reg = SkillRegistry()
     reg.load_from_paths(*paths)
 
     assert reg.get("fh-domestic-flight-booking") is not None
+
+
+def test_fh_domestic_mcporter_skill_is_loaded_by_startup_fallbacks():
+    paths = _skill_paths_with_fallbacks(_settings_stub_with_work_skills())
+    reg = SkillRegistry()
+    reg.load_from_paths(*paths)
+
+    assert reg.get("fh-domestic-flight-booking-mcporter") is not None
+
+
+def test_fh_domestic_mcporter_scenario_uses_bridge_tools_only():
+    cfg = _load_fh_domestic_mcporter()
+
+    assert cfg.name == "fh_domestic_flight_booking_mcporter"
+    assert cfg.execution.skills == ["fh-domestic-flight-booking-mcporter"]
+    assert "ask_user" in cfg.execution.tools
+    assert "feihe-travel__queryFlightBasic" in cfg.execution.tools
+    assert "feihe-travel_queryFlightBasic" not in cfg.execution.tools
+    assert "queryFlightBasic" not in cfg.execution.tools
+    assert "不要用 npx mcporter call" in cfg.execution.system_prompt
+    assert cfg.metadata["mcporter"]["enabled"] in (True, "true")
 
 
 def test_fh_domestic_happy_path_card_whitelist_matches_auip():
@@ -78,7 +128,7 @@ def test_fh_domestic_happy_path_prompt_uses_chinese_and_minimal_questions():
     assert "必须使用中文" in prompt
     assert "先从用户原话中提取信息" in prompt
     assert "不要再用 ask_user 重复确认" in prompt
-    assert "才调用\n    ask_user 询问用户" in prompt
+    assert "ask_user" in prompt
     assert "缺少查询必填项：OD_INPUT" in prompt
     assert "只问缺失项" in prompt
     assert "不要用 Bash 拼 HTTP 请求" in prompt

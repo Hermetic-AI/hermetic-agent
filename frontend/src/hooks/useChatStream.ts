@@ -35,6 +35,7 @@ import type {
   StreamEvent,
   ToolEventView,
   ReasoningEventView,
+  FlightResultSummary,
   QuestionView,
   QuestionItem,
   TodoView,
@@ -152,9 +153,33 @@ function flightResultSignature(card: CardDescriptor): string | null {
 
 function messageHasCard(message: ChatMessage, card: CardDescriptor): boolean {
   if ((message.cards ?? []).some((item) => item.card_id === card.card_id)) return true;
+  if (hasAguiPayload(card) && (message.cards ?? []).some((item) => hasAguiPayload(item.card))) return true;
+  if (card.card_type === 'FLIGHT_RESULT' && !hasAguiPayload(card)) {
+    return (message.cards ?? []).some((item) => item.card.card_type === 'FLIGHT_RESULT' && hasAguiPayload(item.card));
+  }
   const nextSignature = flightResultSignature(card);
   if (!nextSignature) return false;
   return (message.cards ?? []).some((item) => flightResultSignature(item.card) === nextSignature);
+}
+
+function hasAguiPayload(card: CardDescriptor): boolean {
+  const body = card.body ?? {};
+  return Boolean(body.agui ?? body.contentJson ?? card.agui ?? card.contentJson);
+}
+
+function replaceOldFlightResultWithAgui(cards: CardView[], next: CardView): CardView[] {
+  if (next.card.card_type !== 'FLIGHT_RESULT' || !hasAguiPayload(next.card)) return [...cards, next];
+  return [...cards.filter((item) => item.card.card_type !== 'FLIGHT_RESULT' || hasAguiPayload(item.card)), next];
+}
+
+function replaceOldFlightResultEventWithAgui(events: ChatMessage['events'], next: CardView): ChatMessage['events'] {
+  if (next.card.card_type !== 'FLIGHT_RESULT' || !hasAguiPayload(next.card)) {
+    return appendCard(events ?? [], next);
+  }
+  const filtered = (events ?? []).filter(
+    (event) => event.type !== 'card' || event.card.card_type !== 'FLIGHT_RESULT' || hasAguiPayload(event.card),
+  );
+  return appendCard(filtered, next);
 }
 
 function enrichFlightResultCard(
@@ -188,13 +213,25 @@ function enrichFlightResultCard(
     ...card,
     body: {
       ...body,
-      summary: {
-        ...(typeof body.summary === 'object' && body.summary ? body.summary : {}),
-        depCity: (typeof body.summary === 'object' && body.summary ? body.summary.depCity : '') || route.depCity,
-        arrCity: (typeof body.summary === 'object' && body.summary ? body.summary.arrCity : '') || route.arrCity,
-      },
+      summary: normalizeFlightSummary(body.summary, route),
       plans,
     },
+  };
+}
+
+function normalizeFlightSummary(
+  value: unknown,
+  route: { depCity: string; arrCity: string },
+): FlightResultSummary {
+  const summary = typeof value === 'object' && value ? value as Partial<FlightResultSummary> : {};
+  return {
+    totalCount: summary.totalCount ?? 0,
+    filteredCount: summary.filteredCount ?? 0,
+    searchType: summary.searchType ?? '',
+    depCity: summary.depCity || route.depCity,
+    arrCity: summary.arrCity || route.arrCity,
+    depDate: summary.depDate ?? '',
+    weather: summary.weather,
   };
 }
 
@@ -617,8 +654,8 @@ export function useChatStream(options: UseChatStreamOptions = {}): UseChatStream
           if (messageHasCard(m, cardView.card)) return m;
           return {
             ...m,
-            cards: [...(m.cards ?? []), cardView],
-            events: appendCard(m.events ?? [], cardView),
+            cards: replaceOldFlightResultWithAgui(m.cards ?? [], cardView),
+            events: replaceOldFlightResultEventWithAgui(m.events, cardView),
           };
         });
         return;

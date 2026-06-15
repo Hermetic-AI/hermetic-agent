@@ -118,6 +118,11 @@ def test_str_json_input_yields_card() -> None:
     assert len(plans) == 3
     ids = {p["id"] for p in plans}
     assert ids == {"cheapest", "fastest", "comfortable"}
+    agui = card.body["agui"]
+    assert agui["data"]["sceneId"] == "DOMESTIC_BOOKING_FLIGHT_LIST"
+    block = agui["data"]["contentJson"]["dataList"][0]
+    assert block["basicType"] == "AIR_DOMESTIC_FLIGHT_LIST"
+    assert block["dataJson"]["flightList"][0]["flightNo"] == "CA1501"
 
 
 def test_dict_input_yields_card() -> None:
@@ -128,6 +133,16 @@ def test_dict_input_yields_card() -> None:
     )
     assert card is not None
     assert len(card.body["plans"]) == 3
+
+
+def test_mcporter_bridge_tool_name_yields_card() -> None:
+    card = maybe_assemble_flight_card(
+        "feihe-travel__queryFlightBasic",
+        _SAMPLE_MCP_OUTPUT,
+    )
+
+    assert card is not None
+    assert card.card_type == CardType.FLIGHT_RESULT
 
 
 def test_cheapest_is_lowest_price() -> None:
@@ -267,7 +282,7 @@ def test_compact_flight_fields_without_legs_are_mapped() -> None:
     card = maybe_assemble_flight_card("feihe-travel_queryFlightBasic", output)
 
     assert card is not None
-    assert card.title == "机票已发送"
+    assert card.title.endswith("机票已发送")
     assert card.body["summary"]["depCity"] == "北京"
     assert card.body["summary"]["arrCity"] == "上海"
     assert card.body["summary"]["depDate"] == "2026-06-12"
@@ -279,3 +294,9 @@ def test_compact_flight_fields_without_legs_are_mapped() -> None:
     assert flight["arrival"]["city"] == "上海"
     assert flight["duration"] == "115分钟"
     assert flight["price"] == 400.0
+    agui_flight = card.body["agui"]["data"]["contentJson"]["dataList"][0]["dataJson"]["flightList"][0]
+    assert agui_flight["flightNo"] == "MF8561"
+    assert agui_flight["depCityName"] == "北京"
+    assert agui_flight["arrCityName"] == "上海"
+    assert agui_flight["depTime"] == "07:50"
+    assert agui_flight["arrTime"] == "09:45"
