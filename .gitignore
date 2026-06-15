@@ -73,3 +73,7 @@ Thumbs.db
 outputs/
 logs/
 *.log
+
+# Reference-only (read-only) projects, not part of the build
+/frontend/related_project/
+/relate_project/
