@@ -318,6 +318,15 @@ class SessionRepositoryFactory:
                 min_size=getattr(settings, "postgres_pool_min_size", 5),
                 max_size=getattr(settings, "postgres_pool_max_size", 20),
             )
+        if name == "mysql":
+            from openagent.store.mysql import MySQLStorage
+
+            return MySQLStorage(
+                dsn=getattr(settings, "mysql_dsn", "mysql://root@127.0.0.1:3306/openagent"),
+                min_size=getattr(settings, "mysql_pool_min_size", 5),
+                max_size=getattr(settings, "mysql_pool_max_size", 20),
+                echo=getattr(settings, "mysql_echo", False),
+            )
         # memory backend takes no args
         return backend_class()
 

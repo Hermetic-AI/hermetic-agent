@@ -205,20 +205,41 @@ class Settings(BaseSettings):
     # =========================================================================
 
     storage_backend: str = Field(
-        default="postgres",
-        description="存储后端: postgres / memory",
+        default="mysql",
+        description="存储后端: mysql / postgres / memory",
     )
+    # ---- MySQL (Phase 2 主存储) ----
+    mysql_dsn: str = Field(
+        default="mysql://root:1014@127.0.0.1:13306/openagent",
+        description=(
+            "MySQL DSN 连接字符串. 格式: mysql://user:pass@host:port/db "
+            "(asyncmy 协议). 多套环境切换时改这里即可."
+        ),
+    )
+    mysql_pool_min_size: int = Field(
+        default=5,
+        description="MySQL 连接池最小尺寸",
+    )
+    mysql_pool_max_size: int = Field(
+        default=20,
+        description="MySQL 连接池最大尺寸",
+    )
+    mysql_echo: bool = Field(
+        default=False,
+        description="是否打印 MySQL 执行 SQL(调试用, 生产关)",
+    )
+    # ---- Postgres (兼容老配置, 暂时不接, 留作未来扩展) ----
     postgres_dsn: str = Field(
         default="postgresql://localhost:5432/openagent",
-        description="PostgreSQL DSN 连接字符串",
+        description="PostgreSQL DSN 连接字符串 (兼容字段, 当前未使用)",
     )
     postgres_pool_min_size: int = Field(
         default=5,
-        description="PostgreSQL 连接池最小尺寸",
+        description="PostgreSQL 连接池最小尺寸 (兼容字段)",
     )
     postgres_pool_max_size: int = Field(
         default=20,
-        description="PostgreSQL 连接池最大尺寸",
+        description="PostgreSQL 连接池最大尺寸 (兼容字段)",
     )
 
     # =========================================================================
