@@ -14,7 +14,12 @@
 # 想换回官方 Docker Hub: 去掉 docker.m.daocloud.io/ 前缀即可
 FROM docker.m.daocloud.io/library/node:24-slim
 
-ARG DEBIAN_MIRROR=http://mirrors.aliyun.com/debian
+# Debian apt 源. 默认 USTC (中科大), 实测下载 Packages 文件 3+ MB/s.
+# aliyun 镜像经常对大文件降速到 ~100 KB/s, 导致 apt-get update 反复超时.
+# 用 HTTP 而非 HTTPS: node:24-slim 没装 CA 证书, 走 HTTPS 会触发证书验证失败
+# 死锁 (apt-get update 要证书, 装证书又得先 update).
+# 想覆盖: docker build --build-arg DEBIAN_MIRROR=http://your-mirror/debian .
+ARG DEBIAN_MIRROR=http://mirrors.ustc.edu.cn/debian
 
 RUN set -eux; \
     . /etc/os-release; \
@@ -41,9 +46,10 @@ RUN for i in 1 2 3; do \
     && rm -rf /var/lib/apt/lists/* \
     && python3 --version
 
-# opencode CLI (全局, 这样 entrypoint 能直接调)
-RUN npm install -g opencode-ai@latest \
-    && opencode --version
+# opencode CLI + MCPorter CLI (全局, 这样 entrypoint / MCP local server 能直接调)
+RUN npm install -g opencode-ai@latest mcporter@latest \
+    && opencode --version \
+    && mcporter --version
 
 # sandbox 内部件
 RUN mkdir -p /opt/sandbox
@@ -53,6 +59,7 @@ COPY docker/render_config.py /opt/sandbox/render_config.py
 COPY docker/admin_server.py  /opt/sandbox/admin_server.py
 COPY docker/ask_user.py     /opt/sandbox/ask_user.py
 COPY docker/openapi.json     /opt/sandbox/openapi.json
+COPY work/mcp/mcporter.json  /opt/sandbox/mcporter.json
 # policy.json bake 进镜像 (跟 docker-compose.yml 注释一致).
 # 不再 bind mount: 原因 — Docker Desktop + WSL2 9P 文件系统会看到
 # host 跟 daemon 视图不一致, bind mount 永远把目标当目录.

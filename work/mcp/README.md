@@ -11,6 +11,7 @@
 | 文件 | 用途 | 读取方 |
 |---|---|---|
 | `servers.json` | opencode 格式的 MCP 服务器注册表 | opencode 启动时 |
+| `mcporter.json` | mcporter 格式的 MCP 服务器注册表,用于 bridge 模式按 server/tool 过滤 | mcporter serve |
 | `mcp.json` | **v2 遗留** — OpenAgent `MCPRegistry` 的工具 schema 元数据(空数组,因为 v2 不真接 MCP,LLM 自己 curl) | OpenAgent 后端 (settings.mcp_tools_config) |
 | `README.md` (本文件) | 格式说明 / 怎么加新 server / 怎么改 endpoint | 人读 |
 
@@ -88,6 +89,42 @@
   }
 }
 ```
+
+---
+
+## 1.4 MCPorter bridge 配置
+
+`mcporter.json` 用于把 fh-travel MCP 先交给 MCPorter 管理,再由 OpenCode 加载一个本地 bridge MCP:
+
+```jsonc
+{
+  "mcpServers": {
+    "feihe-travel": {
+      "baseUrl": "https://traveldev.feiheair.com/api/mcp",
+      "headers": { "token": "$env:FLIGHT_API_KEY" },
+      "allowedTools": ["queryFlightBasic", "filterFlightList"]
+    }
+  },
+  "imports": []
+}
+```
+
+启用方式:
+
+```bash
+MCPORTER_ENABLED=true
+MCPORTER_CONFIG_PATH=/opt/sandbox/mcporter.json
+MCPORTER_SERVERS=feihe-travel
+```
+
+启用后 `docker/render_config.py` 会注册本地 MCP server `mcporter`,命令为:
+
+```bash
+mcporter serve --stdio --config /opt/sandbox/mcporter.json --servers feihe-travel
+```
+
+OpenCode 中的工具名采用 MCPorter bridge 命名空间: `feihe-travel__queryFlightBasic`。
+这对应场景 `work/scenarios/fh_domestic_flight_booking_mcporter.scenario.yaml`。
 
 ---
 

@@ -208,6 +208,55 @@ def _flight_mcp_server_from_env() -> dict | None:
     }
 
 
+def _truthy(value: Any) -> bool:
+    """Return whether a policy/env value enables an optional feature."""
+    if isinstance(value, bool):
+        return value
+    if value is None:
+        return False
+    return str(value).strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _mcporter_config(policy: dict) -> dict:
+    """Return normalized MCPorter policy config."""
+    raw = policy.get("mcporter", {})
+    return raw if isinstance(raw, dict) else {}
+
+
+def _mcporter_enabled(policy: dict) -> bool:
+    """Return whether the mcporter bridge should be rendered."""
+    cfg = _mcporter_config(policy)
+    return _truthy(cfg.get("enabled")) or _truthy(os.environ.get("MCPORTER_ENABLED"))
+
+
+def _mcporter_bridge_server(policy: dict) -> dict:
+    """Build the local MCP server entry that proxies through ``mcporter serve``."""
+    cfg = _mcporter_config(policy)
+    config_path = cfg.get("config") or os.environ.get("MCPORTER_CONFIG_PATH") or "/opt/sandbox/mcporter.json"
+    upstream_servers = cfg.get("servers") or os.environ.get("MCPORTER_SERVERS") or "feihe-travel"
+    if isinstance(upstream_servers, list):
+        servers_arg = ",".join(str(server) for server in upstream_servers)
+    else:
+        servers_arg = str(upstream_servers)
+    return {
+        "type": "local",
+        "command": [
+            "mcporter",
+            "serve",
+            "--stdio",
+            "--config",
+            str(config_path),
+            "--servers",
+            servers_arg,
+        ],
+        "env": {
+            "FLIGHT_API_KEY": "{env:FLIGHT_API_KEY}",
+            "MCPORTER_CONFIG": str(config_path),
+        },
+        "enabled": True,
+    }
+
+
 def _normalize_mcp_servers(raw: Any) -> dict:
     """Normalize project MCP config into opencode's flat v1 ``mcp`` map."""
     if not isinstance(raw, dict):
@@ -237,7 +286,9 @@ def _build_mcp_servers(policy: dict) -> dict:
             "enabled": True,
         },
     )
-    flight = _flight_mcp_server_from_env()
+    if _mcporter_enabled(policy):
+        servers.setdefault("mcporter", _mcporter_bridge_server(policy))
+    flight = None if _mcporter_enabled(policy) else _flight_mcp_server_from_env()
     if flight:
         current = servers.get("feihe-travel", {})
         if isinstance(current, dict):

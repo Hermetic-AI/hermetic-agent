@@ -1,0 +1,37 @@
+{
+  "mcpServers": {
+    "feihe-travel": {
+      "description": "Feihe domestic flight search and booking MCP",
+      "baseUrl": "https://traveldev.feiheair.com/api/mcp",
+      "headers": {
+        "Accept": "application/json,text/event-stream",
+        "token": "$env:FLIGHT_API_KEY"
+      },
+      "allowedTools": [
+        "checkProductAccess",
+        "getDateInfo",
+        "listUpcomingHolidays",
+        "getHolidayDate",
+        "queryFlightBasic",
+        "filterFlightList",
+        "chooseFlight",
+        "getFlightPolicyInfo",
+        "chooseCabin",
+        "chooseAlternativeCabin",
+        "listTripApplications",
+        "getTripApplicationDetail",
+        "listCostCenters",
+        "bindCostCenter",
+        "getDefaultContact",
+        "fillPassenger",
+        "validateBookingInfo",
+        "recordPolicyUserDecision",
+        "buildOrderPreview",
+        "getOrderDetail",
+        "resetBookingSession"
+      ],
+      "lifecycle": "keep-alive"
+    }
+  },
+  "imports": []
+}

@@ -206,6 +206,31 @@ def test_render_config_normalizes_policy_mcp_servers(monkeypatch) -> None:
     assert "disabled" not in flight
 
 
+def test_render_config_adds_mcporter_bridge_when_enabled(monkeypatch) -> None:
+    from docker.render_config import render
+
+    monkeypatch.setenv("FLIGHT_API_KEY", "env-token-123")
+    cfg = render({
+        "agent": {"model": "openai/qwen"},
+        "mcporter": {"enabled": True, "config": "/opt/sandbox/mcporter.json"},
+    })
+
+    assert "feihe-travel" not in cfg["mcp"]
+    bridge = cfg["mcp"]["mcporter"]
+    assert bridge["type"] == "local"
+    assert bridge["command"] == [
+        "mcporter",
+        "serve",
+        "--stdio",
+        "--config",
+        "/opt/sandbox/mcporter.json",
+        "--servers",
+        "feihe-travel",
+    ]
+    assert bridge["env"]["FLIGHT_API_KEY"] == "{env:FLIGHT_API_KEY}"
+    assert "env-token-123" not in str(bridge)
+
+
 def test_render_config_preserves_explicit_tool_output(monkeypatch) -> None:
     from docker.render_config import render
 
