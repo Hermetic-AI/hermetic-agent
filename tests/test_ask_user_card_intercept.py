@@ -13,16 +13,13 @@ P6/F2 改造后, ``chat_stream`` 在 single 模式下也会拦截 LLM 调
 from __future__ import annotations
 
 import asyncio
-from typing import AsyncIterator
-
-import pytest
+from collections.abc import AsyncIterator
 
 from openagent.api.http.controllers.chat_controller import (
     _ask_user_to_card,
     _stream_with_ask_user_intercept,
 )
 from openagent.providers.streaming import StreamEvent
-
 
 # ---------------------------------------------------------------------------
 # _ask_user_to_card 直接测试
@@ -287,3 +284,169 @@ def test_intercept_stream_emits_error_for_invalid_card_type() -> None:
     types = [e.type for e in result]
     assert types == ["error", "text"]
     assert result[0].data.get("code") == "CARD_TYPE_INVALID"
+
+
+# ---------------------------------------------------------------------------
+# AGUI v2 渲染描述: 弱模型忘记填 body / 残留旧 ``body.agui`` envelope
+# ---------------------------------------------------------------------------
+
+
+_MCP_SAMPLE = {
+    "serialNumber": "260615164603A00000001",
+    "searchType": "经济舱最低价",
+    "flightCount": 3,
+    "totalCount": 3,
+    "filteredCount": 3,
+    "depCityName": "北京",
+    "arrCityName": "上海",
+    "depDate": "2026-06-06",
+    "flightList": [
+        {
+            "flightId": "F001",
+            "flightNo": "CA1501",
+            "airId": "CA",
+            "airlineName": "国航",
+            "depCityName": "北京",
+            "arrCityName": "上海",
+            "depAirportName": "首都机场",
+            "arrAirportName": "虹桥机场",
+            "depTime": "08:00",
+            "arrTime": "10:20",
+            "totalDuration": "2h20m",
+            "lowestPrice": 850.0,
+            "stopCount": 0,
+        }
+    ],
+}
+
+
+def test_ask_user_flight_result_with_empty_body_enriches_from_last_query_flight() -> None:
+    """FLIGHT_RESULT + body=空 时, 拦截层复用最近 queryFlightBasic 兜底填 body."""
+    events = [
+        StreamEvent.tool_result(
+            tool_name="feihe-travel_queryFlightBasic",
+            output=_MCP_SAMPLE,
+        ),
+        StreamEvent.tool_use(
+            tool_name="ask_user",
+            input_data={
+                "card_type": "FLIGHT_RESULT",
+                "title": "机票已发送",
+                "body": {},
+            },
+        ),
+    ]
+
+    async def main() -> list[StreamEvent]:
+        out: list[StreamEvent] = []
+        async for evt in _stream_with_ask_user_intercept(_aiter(events), allowed_card_types=None):
+            out.append(evt)
+        return out
+
+    result = asyncio.run(main())
+    types = [e.type for e in result]
+    # queryFlightBasic tool_result 透传 + ask_user 转 card, ask_user 的 tool_result 被抑制
+    assert types == ["tool_result", "card"]
+    body = result[1].data["card"]["body"]
+    # 老 AUIP 字段被兜底
+    assert body["summary"]["depCity"] == "北京"
+    assert body["plans"][0]["flights"][0]["flightNo"] == "CA1501"
+    # 新 AGUI v2 字段也被兜底出来
+    assert body["contentJson"]["schemaVersion"] == "2"
+    assert body["contentJson"]["dataList"][0]["basicType"] == "AIR_DOMESTIC_FLIGHT_LIST"
+
+
+def test_ask_user_flight_result_normalizes_legacy_agui_envelope() -> None:
+    """旧 ``body.agui`` envelope 输入会被归一到 ``body.contentJson``."""
+    legacy_body = {
+        "agui": {
+            "tmsErrorCode": "",
+            "errorCode": "0",
+            "data": {
+                "sceneId": "DOMESTIC_BOOKING_FLIGHT_LIST",
+                "contentJson": {
+                    "schemaVersion": "2",
+                    "dataList": [
+                        {
+                            "basicType": "AIR_DOMESTIC_FLIGHT_LIST",
+                            "dataStr": "x",
+                            "dataJson": {"serialNumber": "s", "totalCount": 1, "filteredCount": 1, "flightList": []},
+                            "linkUrl": "",
+                        }
+                    ],
+                },
+            },
+        }
+    }
+    event = StreamEvent.tool_use(
+        tool_name="ask_user",
+        input_data={"card_type": "FLIGHT_RESULT", "title": "T", "body": legacy_body},
+    )
+    out = _ask_user_to_card(event, allowed_card_types=None)
+    assert out.type == "card"
+    body = out.data["card"]["body"]
+    assert "contentJson" in body
+    assert body["contentJson"]["schemaVersion"] == "2"
+
+
+def test_ask_user_flight_result_converts_legacy_auip_body_to_content_json() -> None:
+    """弱模型直发老 AUIP ``body={summary, plans, fields, options}`` 时, 拦截层
+    翻译成 ``body.contentJson`` 让前端走 AGUI v2 渲染."""
+    legacy_body = {
+        "summary": {
+            "totalCount": 178,
+            "filteredCount": 178,
+            "searchType": "全量查询",
+            "depCity": "北京",
+            "arrCity": "上海",
+            "depDate": "2026-06-21",
+        },
+        "plans": [
+            {
+                "id": "cheapest",
+                "title": "最便宜",
+                "subtitle": "¥600.0 起",
+                "flights": [
+                    {
+                        "flightId": "F1",
+                        "flightNo": "CA1501",
+                        "airline": {"code": "CA", "name": "中国国航"},
+                        "departure": {"time": "2026-06-21 22:00:00"},
+                        "arrival": {"time": "2026-06-21 23:45:00"},
+                        "duration": "105",
+                        "stops": 0,
+                        "price": 600.0,
+                    }
+                ],
+            }
+        ],
+        "fields": [
+            {"label": "出发城市", "value": "北京", "type": "text"},
+        ],
+        "options": [
+            {"label": "选第1个", "value": "{\"index\":1}", "description": "..."},
+        ],
+    }
+    event = StreamEvent.tool_use(
+        tool_name="ask_user",
+        input_data={
+            "card_type": "FLIGHT_RESULT",
+            "title": "机票已发送",
+            "body": legacy_body,
+        },
+    )
+    out = _ask_user_to_card(event, allowed_card_types=None)
+    assert out.type == "card"
+    body = out.data["card"]["body"]
+    # 老字段保留 (前端兼容 / dedup)
+    assert body["summary"]["depCity"] == "北京"
+    assert body["plans"][0]["flights"][0]["flightNo"] == "CA1501"
+    # 新 AGUI v2 字段被生成出来
+    assert "contentJson" in body
+    assert body["contentJson"]["schemaVersion"] == "2"
+    block = body["contentJson"]["dataList"][0]
+    assert block["basicType"] == "AIR_DOMESTIC_FLIGHT_LIST"
+    assert block["dataJson"]["flightList"][0]["flightNo"] == "CA1501"
+    assert block["dataJson"]["flightList"][0]["airId"] == "CA"
+    assert block["dataJson"]["flightList"][0]["airlineName"] == "中国国航"
+

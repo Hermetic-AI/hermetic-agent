@@ -40,6 +40,7 @@ logger = structlog.get_logger(__name__)
 QUERY_FLIGHT_BASIC_TOOL_NAMES = {
     "feihe-travel_queryFlightBasic",
     "feihe-travel__queryFlightBasic",
+    "mcporter_feihe-travel__queryFlightBasic",
 }
 
 
@@ -61,12 +62,19 @@ def _aircraft_priority(aircraft: str | None) -> int:
     return 2
 
 
+def _leg_from_flight(raw: dict[str, Any]) -> dict[str, Any]:
+    """从 flightList[] 单项抽 leg, 兼容 legs[] 和 tripInfos[].flightInfoList[] 格式."""
+    from openagent.auip._flight_mapping import _leg
+    return _leg(raw)
+
+
 def _flight_to_auip(raw: dict[str, Any], airway_names: dict[str, str] | None = None) -> dict[str, Any]:
     """兼容 shim — 委托到 ``auip._flight_mapping.flight_dict_to_auip``.
 
     老 ``tests/test_auip_flight_card.py`` 等历史 import path 保留.
     """
-    leg = raw.get("legs", [{}])[0] if raw.get("legs") else {}
+    from openagent.auip._flight_mapping import _leg
+    leg = _leg(raw)
     return flight_dict_to_auip(
         raw,
         airway_names=airway_names,
@@ -131,7 +139,7 @@ def _build_plans(flight_list: list[dict[str, Any]], airway_names: dict[str, str]
     # cheapest: 按 price 升序
     cheapest = sorted(flight_list, key=lambda f: _first_number(f.get("lowestPrice"), f.get("price"), f.get("totalPrice")) or 9e9)
     # fastest: 按 duration 升序 (parse 2h20m)
-    fastest = sorted(flight_list, key=lambda f: f.get("durationMin") or _parse_minutes(_duration_text(f, f.get("legs", [{}])[0] if f.get("legs") else {})))
+    fastest = sorted(flight_list, key=lambda f: f.get("durationMin") or _parse_minutes(_duration_text(f, _leg_from_flight(f))))
     # comfortable: 大机型优先, 同机型起飞早优先
     comfortable = sorted(
         flight_list,
@@ -141,7 +149,7 @@ def _build_plans(flight_list: list[dict[str, Any]], airway_names: dict[str, str]
         {
             "id": "fastest",
             "title": "最快抵达",
-            "subtitle": _duration_text(fastest[0], fastest[0].get("legs", [{}])[0] if fastest[0].get("legs") else {}) or "?",
+            "subtitle": _duration_text(fastest[0], _leg_from_flight(fastest[0])) or "?",
             "criteria": "duration",
             "flights": [_flight_to_auip(fastest[0], airway_names)],
         },
@@ -214,7 +222,7 @@ def maybe_assemble_flight_card(tool_name: str, output: Any) -> Card | None:
         card_id=f"card-{uuid.uuid4().hex[:12]}",
         card_type=CardType.FLIGHT_RESULT,
         title=title,
-        body={"summary": summary, "plans": plans, "agui": agui},
+        body={"summary": summary, "plans": plans, "contentJson": agui},
     )
 
 

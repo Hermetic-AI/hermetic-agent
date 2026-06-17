@@ -37,16 +37,17 @@ def _enrich_empty_flight_result_body(
 
     弱模型常见模式: 调完 queryFlightBasic 后再调 ask_user(card_type=FLIGHT_RESULT)
     但忘记填充 body. 这里在 chat 拦截层兜底, 让前端始终能拿到完整 AGUI / AUIP 数据.
+    兜底会同时填充 ``body.summary`` / ``body.plans`` 和 ``body.contentJson`` (AGUI v2 渲染描述).
     """
     if card_type != "FLIGHT_RESULT" or body:
-        return body
+        return _normalize_agui_body(body)
     if not last_query_flight_output:
         return body
     from openagent.auip.flight_card import maybe_assemble_flight_card
 
     try:
         card = maybe_assemble_flight_card(
-            tool_name="feihe-travel_queryFlightBasic",
+            tool_name="mcporter_feihe-travel__queryFlightBasic",
             output=last_query_flight_output,
         )
     except Exception:
@@ -54,6 +55,87 @@ def _enrich_empty_flight_result_body(
     if card is None:
         return body
     return dict(card.body) if isinstance(card.body, dict) else body
+
+
+def _normalize_agui_body(body: dict[str, Any]) -> dict[str, Any]:
+    """把 LLM 残留的旧 ``body.agui`` envelope 归一到 ``body.contentJson``.
+
+    老协议: ``body = {"agui": {envelope..., "data": {"contentJson": ...}}}``.
+    新协议: ``body = {"contentJson": {schemaVersion, dataList, ...}}``.
+    这里把前者解包并复制 ``data.contentJson`` 到 ``body.contentJson``, 兼容过渡期.
+    """
+    if not isinstance(body, dict):
+        return body
+    if "contentJson" in body and isinstance(body["contentJson"], dict):
+        return body
+    agui = body.get("agui")
+    if not isinstance(agui, dict):
+        return body
+    content = agui.get("data")
+    if isinstance(content, dict) and isinstance(content.get("contentJson"), dict):
+        body = dict(body)
+        body["contentJson"] = content["contentJson"]
+    return body
+
+
+def _convert_old_auip_body_to_content_json(body: dict[str, Any]) -> dict[str, Any]:
+    """把 LLM 直发的旧 AUIP body 转成 AGUI v2 ``body.contentJson``.
+
+    老协议 (LLM 直发): ``body = {summary, plans: [{flights:[…]}], fields, options}``.
+    新协议: ``body = {contentJson: {schemaVersion, dataList:[…]}}``.
+
+    弱模型常在 ``ask_user`` 里直接给老结构. 这里把 ``plans[].flights[]`` 拍平,
+    调用 ``build_domestic_flight_agui`` 生成 AGUI 描述, 复制到 ``body.contentJson``,
+    让前端始终走 AGUI v2 渲染路径, 不再混用旧风格.
+    """
+    if not isinstance(body, dict):
+        return body
+    if isinstance(body.get("contentJson"), dict):
+        return body
+    plans = body.get("plans")
+    if not isinstance(plans, list) or not plans:
+        return body
+    flights: list[dict[str, Any]] = []
+    for plan in plans:
+        if not isinstance(plan, dict):
+            continue
+        for flight in plan.get("flights") or []:
+            if isinstance(flight, dict):
+                flights.append(flight)
+    if not flights:
+        return body
+    summary = body.get("summary") if isinstance(body.get("summary"), dict) else {}
+    airway_names: dict[str, str] = {}
+    for flight in flights:
+        airline = flight.get("airline")
+        if isinstance(airline, dict):
+            code = airline.get("code")
+            name = airline.get("name")
+            if isinstance(code, str) and isinstance(name, str) and code and name:
+                airway_names[code] = name
+    synthesized_data = {
+        "serialNumber": "",
+        "searchType": summary.get("searchType", "全量查询") if isinstance(summary, dict) else "全量查询",
+        "flightCount": summary.get("totalCount", len(flights)) if isinstance(summary, dict) else len(flights),
+        "totalCount": summary.get("totalCount", len(flights)) if isinstance(summary, dict) else len(flights),
+        "filteredCount": summary.get("filteredCount", len(flights)) if isinstance(summary, dict) else len(flights),
+        "depCityName": summary.get("depCity", "") if isinstance(summary, dict) else "",
+        "arrCityName": summary.get("arrCity", "") if isinstance(summary, dict) else "",
+        "depDate": summary.get("depDate", "") if isinstance(summary, dict) else "",
+    }
+    try:
+        from openagent.auip.agui_flight_card import build_domestic_flight_agui
+
+        content_json = build_domestic_flight_agui(
+            synthesized_data, flights, airway_names, summary or {}
+        )
+    except Exception:
+        return body
+    if not isinstance(content_json, dict):
+        return body
+    body = dict(body)
+    body["contentJson"] = content_json
+    return body
 
 
 def _ask_user_to_card(
@@ -111,6 +193,8 @@ def _ask_user_to_card(
     body = _enrich_empty_flight_result_body(
         card_type, body, last_query_flight_output
     )
+    body = _convert_old_auip_body_to_content_json(body)
+    body = _normalize_agui_body(body)
     card_payload: dict = {
         "card_id": card_id,
         "card_type": card_type,
@@ -172,6 +256,8 @@ async def stream_with_ask_user_intercept(
             tool_name = data.get("name") or data.get("tool_name")
             if str(tool_name or "") in {
                 "feihe-travel_queryFlightBasic",
+                "feihe-travel__queryFlightBasic",
+                "mcporter_feihe-travel__queryFlightBasic",
                 "queryFlightBasic",
             }:
                 last_query_flight_output = data.get("output")

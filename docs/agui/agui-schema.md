@@ -1,127 +1,60 @@
 # AGUI JSON Schema 规范
 
-> 本规范基于 `docs/agui/` 目录下的 3 个实际响应样本（`01-airplan-list.json`、`02-airplan-set-list.json`、`03-pay-list.json`）归纳而成，描述国内机票（`sceneId` 以 `DOMESTIC_BOOKING_` 开头）业务场景下，AGUI（Agent GUI）通道的响应数据结构。规范版本：`schemaVersion = "2"`。
+> 国内机票（`sceneId` 以 `DOMESTIC_BOOKING_` 开头）业务场景下，AGUI 通道载荷只保留 `contentJson` 内部的渲染描述。**不**再保留 `tmsErrorCode / errorCode / errorMsg / enErrorMsg / requestSeqNo / delay` 等外层错误码壳，也不保留 `data.recordId / sessionId / role / intent / sceneId / thinkingSteps / reason / chatTime / correlationId` 等会话元数据 —— 这些由 Hub 自行落库或生成，与前端渲染无关。
+>
+> 协议版本：`schemaVersion = "2"`。
 
 ---
 
 ## 1. 文件清单
 
-| 样本文件 | sceneId | 用途 | 出现的 basicType |
-| --- | --- | --- | --- |
-| `01-airplan-list.json` | `DOMESTIC_BOOKING_FLIGHT_LIST` | 航班列表查询 | `AIR_DOMESTIC_FLIGHT_LIST` / `PLAIN_TEXT` / `AIR_DOMESTIC_FLIGHT_SUGGEST` |
-| `02-airplan-set-list.json` | `DOMESTIC_BOOKING_CABIN_LIST` | 选中航班后的舱位列表 | `PLAIN_TEXT` / `AIR_DOMESTIC_CABIN_LIST` |
-| `03-pay-list.json` | `DOMESTIC_BOOKING_ORDER_CONFIRM` | 订单确认（待支付） | `PLAIN_TEXT` / `AIR_DOMESTIC_ORDER_SUMMARY` / `BUTTON` |
-
----
-
-## 2. 顶层响应 Envelope
-
-```json
-{
-  "tmsErrorCode": "",
-  "errorCode": "0",
-  "errorMsg": "",
-  "enErrorMsg": "",
-  "requestSeqNo": "T260615114050B00000001",
-  "delay": 6591,
-  "data": { /* AssistantTurn，见 §3 */ }
-}
-```
-
-| 字段 | 类型 | 必填 | 说明 |
-| --- | --- | --- | --- |
-| `tmsErrorCode` | string | 是 | 底层 TMS 错误码；空串表示无 |
-| `errorCode` | string | 是 | 业务错误码；`"0"` 表示成功 |
-| `errorMsg` | string | 是 | 中文错误信息 |
-| `enErrorMsg` | string | 是 | 英文错误信息 |
-| `requestSeqNo` | string | 是 | 请求序列号（`T` 前缀 + 时间戳 + 序号） |
-| `delay` | integer | 是 | 服务端处理耗时（毫秒） |
-| `data` | object | 是 | 助手返回内容，见 §3 |
-
----
-
-## 3. `data` — AssistantTurn
-
-```json
-{
-  "recordId": "T260615114050B00000001",
-  "sessionId": "S260615114027B00000001",
-  "role": "assistant",
-  "intent": "BOOKING:DOMESTIC_BOOKING/air_domestic_booking",
-  "sceneId": "DOMESTIC_BOOKING_FLIGHT_LIST",
-  "contentJson": { /* 见 §4 */ },
-  "reason": "已按您的行程条件查询航班并整理列表",
-  "chatTime": "2026-06-15T03:40:57.032094018Z",
-  "correlationId": ""
-}
-```
-
-| 字段 | 类型 | 必填 | 说明 |
-| --- | --- | --- | --- |
-| `recordId` | string | 是 | 本条消息记录 ID，与 `requestSeqNo` 一致 |
-| `sessionId` | string | 是 | 所属会话 ID（`S` 前缀） |
-| `role` | string | 是 | 固定 `"assistant"` |
-| `intent` | string | 是 | 意图路由，格式 `<NAMESPACE>:<DOMAIN>/<scenario>`，如 `BOOKING:DOMESTIC_BOOKING/air_domestic_booking` |
-| `sceneId` | string | 是 | 业务场景 ID，决定 `dataList` 中应出现的 `basicType` 组合 |
-| `contentJson` | object | 是 | 渲染内容，结构见 §4 |
-| `reason` | string | 是 | 助手结论摘要（多行以 `\n` 分隔） |
-| `chatTime` | string | 是 | ISO 8601 UTC 时间戳 |
-| `correlationId` | string | 否 | 链路追踪 ID；空串表示无 |
-
-### 3.1 `sceneId` 已观察到的取值
-
-| sceneId | 含义 | 主要 basicType |
+| 样本文件 | 对应 `basicType` | 用途 |
 | --- | --- | --- |
-| `DOMESTIC_BOOKING_FLIGHT_LIST` | 航班列表 | `AIR_DOMESTIC_FLIGHT_LIST` + `AIR_DOMESTIC_FLIGHT_SUGGEST` + `PLAIN_TEXT` |
-| `DOMESTIC_BOOKING_CABIN_LIST` | 舱位列表 | `AIR_DOMESTIC_CABIN_LIST` + `PLAIN_TEXT` |
-| `DOMESTIC_BOOKING_ORDER_CONFIRM` | 订单确认 | `AIR_DOMESTIC_ORDER_SUMMARY` + `BUTTON` + `PLAIN_TEXT` |
+| `01-airplan-list.json` | `AIR_DOMESTIC_FLIGHT_LIST` | 航班列表 |
+| `02-airplan-set-list.json` | `AIR_DOMESTIC_CABIN_LIST` | 舱位列表 |
+| `03-pay-list.json` | `AIR_DOMESTIC_ORDER_SUMMARY` + `BUTTON` | 订单确认（待支付） |
 
 ---
 
-## 4. `contentJson`
+## 2. 顶层结构
+
+`body.contentJson` 直接承载 AGUI v2 渲染描述，结构如下：
 
 ```json
 {
   "schemaVersion": "2",
-  "dataList": [ /* DataItem 数组，按渲染顺序排列 */ ],
-  "thinkingSteps": [
-    "已按您的行程条件查询航班并整理列表",
-    "已根据页面点选确定航班"
-  ]
+  "dataList": [ /* DataItem 数组，按渲染顺序排列 */ ]
 }
 ```
 
 | 字段 | 类型 | 必填 | 说明 |
 | --- | --- | --- | --- |
-| `schemaVersion` | string | 是 | 内容协议版本；当前为 `"2"` |
-| `dataList` | DataItem[] | 是 | 渲染单元列表，**至少 1 项**；不同 `sceneId` 下 `basicType` 组合受限，见 §3.1 |
-| `thinkingSteps` | string[] | 否 | 思考步骤，按时间顺序；用于前端折叠展示 |
+| `schemaVersion` | string | 是 | 固定 `"2"` |
+| `dataList` | DataItem[] | 是 | 渲染单元列表，**至少 1 项**；不同业务场景的 basicType 组合见 §5 |
 
 ---
 
-## 5. `DataItem` — 通用渲染单元
-
-所有 `dataList` 元素的统一外壳：
+## 3. `DataItem` — 通用渲染单元
 
 | 字段 | 类型 | 必填 | 说明 |
 | --- | --- | --- | --- |
-| `basicType` | string | 是 | 渲染类型，决定 `dataJson` 的 schema；枚举见 §6 |
+| `basicType` | string | 是 | 渲染类型，决定 `dataJson` 的 schema；枚举见 §4 |
 | `dataStr` | string | 是 | 展示用主文本（标题 / 提示文案 / 按钮文案） |
 | `dataJson` | object \| null | 是 | 结构化数据；纯文本 / 按钮可置 `null` |
 | `linkUrl` | string | 是 | 跳转标识或 URL；空串表示无跳转；按钮用枚举值，如 `GO_PAY` |
 
 ---
 
-## 6. `basicType` 与 `dataJson` 详表
+## 4. `basicType` 与 `dataJson` 详表
 
-### 6.1 `PLAIN_TEXT`
+### 4.1 `PLAIN_TEXT`
 
 - 纯文本段落。
 - `dataStr`：要展示的文本（支持中文 / 换行 / 全角符号）。
 - `dataJson`：`null`。
 - `linkUrl`：`""`。
 
-### 6.2 `AIR_DOMESTIC_FLIGHT_LIST`
+### 4.2 `AIR_DOMESTIC_FLIGHT_LIST`
 
 航班列表卡片。
 
@@ -133,7 +66,7 @@
     "serialNumber": "260615114056A00000001",
     "totalCount": 133,
     "filteredCount": 133,
-    "flightList": [ /* Flight[]，见 §7.1 */ ]
+    "flightList": [ /* Flight[]，见 §6.1 */ ]
   },
   "linkUrl": ""
 }
@@ -146,15 +79,7 @@
 | `filteredCount` | integer | 过滤后数 |
 | `flightList` | Flight[] | 航班列表 |
 
-### 6.3 `AIR_DOMESTIC_FLIGHT_SUGGEST`
-
-单条推荐航班（早班 / 午间 / 晚间等分时低价），无列表包装。
-
-- `dataStr`：推荐标题，如 `"早班低价推荐"`。
-- `dataJson`：**单个 Flight 对象**（见 §7.1）。
-- `linkUrl`：`""`。
-
-### 6.4 `AIR_DOMESTIC_CABIN_LIST`
+### 4.3 `AIR_DOMESTIC_CABIN_LIST`
 
 舱位列表（含已选航班摘要）。
 
@@ -164,8 +89,8 @@
   "dataStr": "可选舱位",
   "dataJson": {
     "serialNumber": "260615114056A00000001",
-    "cabins": [ /* Cabin[]，见 §7.4 */ ],
-    "selectedFlight": { /* Flight，见 §7.1 */ }
+    "cabins": [ /* Cabin[]，见 §6.4 */ ],
+    "selectedFlight": { /* Flight，见 §6.1 */ }
   },
   "linkUrl": ""
 }
@@ -177,7 +102,7 @@
 | `cabins` | Cabin[] | 可选舱位，按价格升序 |
 | `selectedFlight` | Flight | 用户已选中的航班 |
 
-### 6.5 `AIR_DOMESTIC_ORDER_SUMMARY`
+### 4.4 `AIR_DOMESTIC_ORDER_SUMMARY`
 
 订单确认摘要 + 提交载荷。
 
@@ -198,8 +123,8 @@
     "message": "订单已生成，请您确认信息后前往支付",
     "payUrl": null,
     "payDeadline": null,
-    "submitPayload": { /* SubmitPayload，见 §7.5 */ },
-    "flightSummary": { /* FlightSummary，见 §7.6 */ },
+    "submitPayload": { /* SubmitPayload，见 §6.5 */ },
+    "flightSummary": { /* FlightSummary，见 §6.6 */ },
     "passengerLines": [
       "刘酝泽(身份证:220502200008120216)"
     ],
@@ -228,7 +153,7 @@
 | `passengerLines` | string[] | 是 | 乘机人展示行，格式 `"姓名(证件:证件号)"` |
 | `tripTypeLabel` | string | 是 | 行程类型中文标签，如 `"单程"`、`"往返"` |
 
-### 6.6 `BUTTON`
+### 4.5 `BUTTON`
 
 操作按钮。
 
@@ -238,9 +163,23 @@
 
 ---
 
-## 7. 公共子结构
+## 5. 场景 ↔ basicType 组合
 
-### 7.1 `Flight`
+下表总结同一业务场景下 `dataList` 中**允许出现**的 `basicType` 组合（按 3 个样本观察，已可覆盖当前国内机票订票主流程）：
+
+| 业务场景 | 允许的 basicType 集合（顺序敏感） |
+| --- | --- |
+| 航班列表 | `AIR_DOMESTIC_FLIGHT_LIST` → 可选 `PLAIN_TEXT`（叙述） |
+| 舱位列表 | 可选 `PLAIN_TEXT`（提示）→ `AIR_DOMESTIC_CABIN_LIST` |
+| 订单确认 | 可选 `PLAIN_TEXT`（提示）→ `AIR_DOMESTIC_ORDER_SUMMARY` → 可选 `BUTTON`（动作） |
+
+未列出的 `basicType` 出现在对应场景时，前端应按"未渲染"处理并打 warn 日志。
+
+---
+
+## 6. 公共子结构
+
+### 6.1 `Flight`
 
 | 字段 | 类型 | 必填 | 说明 |
 | --- | --- | --- | --- |
@@ -272,8 +211,11 @@
 | `arrAirportName` | string | 是 | 到达机场中文名 |
 | `arrTerminal` | string | 是 | 到达航站楼；空串表示未指定 |
 | `arrDayOffset` | integer | 是 | 到达相对出发日的天数偏移（0 = 当日，1 = 次日） |
+| `meal` | boolean | 否 | 是否含餐 |
+| `mealInfo` | string | 否 | 含餐描述，如 `"点心或早午餐"`、`"晚餐"` |
+| `aircraftSize` | string | 否 | 机型大小档位；已观察到 `"大"`、`"中"`、`"小"` |
 
-### 7.2 `Leg`
+### 6.2 `Leg`
 
 | 字段 | 类型 | 必填 | 说明 |
 | --- | --- | --- | --- |
@@ -296,14 +238,14 @@
 | `stops` | Stop[] | 是 | 经停列表；无经停时为空数组 |
 | `arrDayOffset` | integer | 是 | 到达相对出发日的天数偏移 |
 
-### 7.3 `Stop`
+### 6.3 `Stop`
 
 | 字段 | 类型 | 必填 | 说明 |
 | --- | --- | --- | --- |
 | `stopCityName` | string \| null | 否 | 经停城市；样本中均以 `null` 出现 |
 | `duration` | integer \| null | 否 | 经停时长（分钟）；样本中均以 `null` 出现 |
 
-### 7.4 `Cabin`
+### 6.4 `Cabin`
 
 | 字段 | 类型 | 必填 | 说明 |
 | --- | --- | --- | --- |
@@ -340,7 +282,7 @@
 | `outboundLuggage` | string \| null | 否 | 去程行李额（往返冗余字段） |
 | `policyCompliance` | object \| null | 否 | 差旅政策合规结果；样本中均为 `null` |
 
-### 7.5 `SubmitPayload`
+### 6.5 `SubmitPayload`
 
 | 字段 | 类型 | 必填 | 说明 |
 | --- | --- | --- | --- |
@@ -352,7 +294,7 @@
 | `contactPhone` | string | 是 | 联系人手机号 |
 | `idempotencyKey` | string | 是 | 幂等键（与 `orderSummary.idempotencyKey` 一致） |
 
-#### 7.5.1 `Passenger`
+#### 6.5.1 `Passenger`
 
 | 字段 | 类型 | 必填 | 说明 |
 | --- | --- | --- | --- |
@@ -366,7 +308,7 @@
 | `mobile` | string | 是 | 手机号 |
 | `phone` | string | 是 | 备用联系电话（常与 `mobile` 相同） |
 
-#### 7.5.2 `RawPassengerResult`
+#### 6.5.2 `RawPassengerResult`
 
 | 字段 | 类型 | 必填 | 说明 |
 | --- | --- | --- | --- |
@@ -392,7 +334,7 @@
 | `ageLevel` | integer | 是 | 年龄段（0 = 成人） |
 | `currentUser` | boolean | 是 | 是否当前登录用户本人 |
 
-#### 7.5.3 `Tel`
+#### 6.5.3 `Tel`
 
 | 字段 | 类型 | 必填 | 说明 |
 | --- | --- | --- | --- |
@@ -401,7 +343,7 @@
 | `tel` | string | 是 | 电话号码 |
 | `ifDefault` | integer | 是 | 是否默认电话（`0` = 否，`1` = 是） |
 
-### 7.6 `FlightSummary`
+### 6.6 `FlightSummary`
 
 | 字段 | 类型 | 必填 | 说明 |
 | --- | --- | --- | --- |
@@ -417,72 +359,37 @@
 
 ---
 
-## 8. 完整 JSON Schema（Draft 2020-12）
+## 7. 完整 JSON Schema（Draft 2020-12）
 
-> 可直接复制到 `agui.schema.json` 后用 Ajv / jsonschema / pydantic 等校验库加载。
+> `body.contentJson` 的契约，可直接复制到 `agui.schema.json` 后用 Ajv / jsonschema / pydantic 等校验库加载。
 
 ```json
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://openagent.local/schemas/agui.schema.json",
-  "title": "AGUIResponse",
+  "$id": "https://openagent.local/schemas/agui.content.v2.schema.json",
+  "title": "AGUIContentJson",
   "type": "object",
   "additionalProperties": false,
-  "required": ["tmsErrorCode", "errorCode", "errorMsg", "enErrorMsg", "requestSeqNo", "delay", "data"],
+  "required": ["schemaVersion", "dataList"],
   "properties": {
-    "tmsErrorCode":  { "type": "string" },
-    "errorCode":     { "type": "string" },
-    "errorMsg":      { "type": "string" },
-    "enErrorMsg":    { "type": "string" },
-    "requestSeqNo":  { "type": "string", "pattern": "^T[0-9]+B[0-9]+$" },
-    "delay":         { "type": "integer", "minimum": 0 },
-    "data":          { "$ref": "#/$defs/AssistantTurn" }
+    "schemaVersion": { "const": "2" },
+    "dataList": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/DataItem" }
+    }
   },
   "$defs": {
-    "AssistantTurn": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "recordId", "sessionId", "role", "intent", "sceneId",
-        "contentJson", "reason", "chatTime"
-      ],
-      "properties": {
-        "recordId":      { "type": "string" },
-        "sessionId":     { "type": "string", "pattern": "^S[0-9]+B[0-9]+$" },
-        "role":          { "const": "assistant" },
-        "intent":        { "type": "string" },
-        "sceneId":       { "type": "string" },
-        "contentJson":   { "$ref": "#/$defs/ContentJson" },
-        "reason":        { "type": "string" },
-        "chatTime":      { "type": "string", "format": "date-time" },
-        "correlationId": { "type": "string" }
-      }
-    },
-
-    "ContentJson": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["schemaVersion", "dataList"],
-      "properties": {
-        "schemaVersion":  { "const": "2" },
-        "dataList":       { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/DataItem" } },
-        "thinkingSteps":  { "type": "array", "items": { "type": "string" } }
-      }
-    },
-
     "DataItem": {
       "type": "object",
       "additionalProperties": false,
       "required": ["basicType", "dataStr", "dataJson", "linkUrl"],
       "properties": {
         "basicType": { "$ref": "#/$defs/BasicType" },
-        "dataStr":   { "type": "string" },
-        "dataJson":  { "type": ["object", "null"] },
-        "linkUrl":   { "type": "string" }
-      },
-      "allOf": [
-        { "$ref": "#/$defs/DataItemTypeGuard" }
-      ]
+        "dataStr": { "type": "string" },
+        "dataJson": { "type": ["object", "null"] },
+        "linkUrl": { "type": "string" }
+      }
     },
 
     "BasicType": {
@@ -490,16 +397,10 @@
       "enum": [
         "PLAIN_TEXT",
         "AIR_DOMESTIC_FLIGHT_LIST",
-        "AIR_DOMESTIC_FLIGHT_SUGGEST",
         "AIR_DOMESTIC_CABIN_LIST",
         "AIR_DOMESTIC_ORDER_SUMMARY",
         "BUTTON"
       ]
-    },
-
-    "DataItemTypeGuard": {
-      "if": { "properties": { "basicType": { "const": "PLAIN_TEXT" } } },
-      "then": { "properties": { "dataJson": { "const": null }, "linkUrl": { "type": "string", "maxLength": 0 } } }
     },
 
     "Flight": {
@@ -542,9 +443,12 @@
         "shareId":         { "type": "string" },
         "arrDate":         { "type": "string", "format": "date" },
         "arrTime":         { "type": "string", "pattern": "^[0-2][0-9]:[0-5][0-9]$" },
-        "arrAirportName":  { "type": "string" },
+        "arrAirportName": { "type": "string" },
         "arrTerminal":     { "type": "string" },
-        "arrDayOffset":    { "type": "integer", "minimum": 0 }
+        "arrDayOffset":    { "type": "integer", "minimum": 0 },
+        "meal":            { "type": "boolean" },
+        "mealInfo":        { "type": "string" },
+        "aircraftSize":    { "type": "string", "enum": ["大", "中", "小"] }
       }
     },
 
@@ -633,29 +537,6 @@
         "returnLuggage":    { "type": ["string", "null"] },
         "outboundLuggage":  { "type": ["string", "null"] },
         "policyCompliance": { "type": ["object", "null"] }
-      }
-    },
-
-    "CabinListDataJson": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["serialNumber", "cabins", "selectedFlight"],
-      "properties": {
-        "serialNumber":  { "type": "string" },
-        "cabins":        { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/Cabin" } },
-        "selectedFlight":{ "$ref": "#/$defs/Flight" }
-      }
-    },
-
-    "FlightListDataJson": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["serialNumber", "totalCount", "filteredCount", "flightList"],
-      "properties": {
-        "serialNumber":  { "type": "string" },
-        "totalCount":    { "type": "integer", "minimum": 0 },
-        "filteredCount": { "type": "integer", "minimum": 0 },
-        "flightList":    { "type": "array", "items": { "$ref": "#/$defs/Flight" } }
       }
     },
 
@@ -797,27 +678,11 @@
 }
 ```
 
-> 备注：上方 `DataItem` 仅对 `PLAIN_TEXT` 加了 `dataJson == null` 的硬约束；其他 `basicType` 的 `dataJson` 形状按 §6 各小节说明 + 上面 `$defs` 对应类型自行校验。建议在业务层用 `if basicType == ...: validate(dataJson, ...)` 的方式二次校验。
-
 ---
 
-## 9. sceneId ↔ basicType 组合
-
-下表总结同一 `sceneId` 下 `dataList` 中**允许出现**的 `basicType` 组合（按 3 个样本观察，已可覆盖当前国内机票订票主流程）：
-
-| sceneId | 允许的 basicType 集合（顺序敏感） |
-| --- | --- |
-| `DOMESTIC_BOOKING_FLIGHT_LIST` | `AIR_DOMESTIC_FLIGHT_LIST` → `PLAIN_TEXT`（叙述）→ `AIR_DOMESTIC_FLIGHT_SUGGEST` × N |
-| `DOMESTIC_BOOKING_CABIN_LIST` | `PLAIN_TEXT`（提示）→ `AIR_DOMESTIC_CABIN_LIST` |
-| `DOMESTIC_BOOKING_ORDER_CONFIRM` | `PLAIN_TEXT`（提示）→ `AIR_DOMESTIC_ORDER_SUMMARY` → `BUTTON`（动作） |
-
-未列出的 `basicType` 出现在对应 `sceneId` 时，前端应按"未渲染"处理并打 warn 日志。
-
----
-
-## 10. 版本与演进
+## 8. 版本与演进
 
 - 当前协议版本：`schemaVersion = "2"`。
-- 新增 `basicType` 时：必须**同步**在 §6 增加小节、§8 JSON Schema `$defs` 增加类型、§9 维护 sceneId↔basicType 矩阵。
 - 字段废弃：先在 `additionalProperties: false` 的对象里保留字段并标注 deprecated，下一主版本再移除；不要在样本里直接删除，否则校验将失败。
 - 字段新增：在对应 `$defs` 子结构里 `required` 不加、只放 `properties`，保证向后兼容。
+- 外层 envelope（错误码壳 / 会话元数据）由 Hub 内部维护，**不**通过本协议传递；前端只关心 `body.contentJson`。

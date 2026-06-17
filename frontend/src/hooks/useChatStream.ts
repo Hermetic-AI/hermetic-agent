@@ -131,6 +131,7 @@ function newId(prefix: string): string {
 
 function hasRenderableFlightPlans(card: CardDescriptor): boolean {
   if (card.card_type !== 'FLIGHT_RESULT') return true;
+  if (hasAguiPayload(card)) return true;
   const plans = card.body?.plans;
   return Array.isArray(plans) && plans.some((plan) => {
     if (Array.isArray(plan.flights) && plan.flights.length > 0) return true;
@@ -138,8 +139,40 @@ function hasRenderableFlightPlans(card: CardDescriptor): boolean {
   });
 }
 
+function isRenderableCard(card: CardDescriptor): boolean {
+  if (!hasRenderableFlightPlans(card)) return false;
+  // 过滤明显没内容的占位卡片: LLM 直发 ask_user 偶尔会带空 body, 渲染成
+  // "请选择" + "暂无可选项" 反而干扰用户, 直接丢弃让 AI 重新生成.
+  const body = (card.body ?? {}) as Record<string, unknown>;
+  const cardType = String(card.card_type);
+  if (cardType === 'FLIGHT_RESULT') {
+    if (hasAguiPayload(card)) return true;
+    const plans = body.plans;
+    if (Array.isArray(plans) && plans.length > 0) return true;
+    return false;
+  }
+  if (cardType === 'FLIGHT_LIST' || cardType === 'CABIN_LIST') {
+    const flights = body.flights;
+    const cabins = body.cabins;
+    const aguiList = Array.isArray(body.contentJson)
+      ? (body.contentJson as unknown[])
+      : Array.isArray((body.contentJson as Record<string, unknown> | undefined)?.dataList)
+        ? ((body.contentJson as Record<string, unknown>).dataList as unknown[])
+        : [];
+    if (Array.isArray(flights) && flights.length > 0) return true;
+    if (Array.isArray(cabins) && cabins.length > 0) return true;
+    if (aguiList.length > 0) return true;
+    return false;
+  }
+  return true;
+}
+
 function flightResultSignature(card: CardDescriptor): string | null {
   if (card.card_type !== 'FLIGHT_RESULT') return null;
+  if (hasAguiPayload(card)) {
+    const agui = asAguiBody(card.body);
+    if (agui) return agui.dataListSignature;
+  }
   const plans = card.body?.plans;
   if (!Array.isArray(plans)) return null;
   const flights = plans.flatMap((plan) =>
@@ -165,6 +198,32 @@ function messageHasCard(message: ChatMessage, card: CardDescriptor): boolean {
 function hasAguiPayload(card: CardDescriptor): boolean {
   const body = card.body ?? {};
   return Boolean(body.agui ?? body.contentJson ?? card.agui ?? card.contentJson);
+}
+
+function asAguiBody(body: CardDescriptor['body']): { dataListSignature: string } | null {
+  if (!body) return null;
+  const candidates = [body.contentJson, body.agui];
+  for (const candidate of candidates) {
+    const record = candidate as { dataList?: unknown } | null;
+    if (record && Array.isArray(record.dataList)) {
+      const dataList = record.dataList as Array<{
+        basicType: string;
+        dataJson?: { flightList?: Array<{ flightId?: string; flightNo?: string }> };
+      }>;
+      const signature = dataList
+        .map((item) => {
+          if (item.basicType === 'AIR_DOMESTIC_FLIGHT_LIST') {
+            return (item.dataJson?.flightList ?? [])
+              .map((flight) => [flight.flightId, flight.flightNo].filter(Boolean).join(':'))
+              .join('|');
+          }
+          return item.basicType;
+        })
+        .join('/');
+      return { dataListSignature: signature || 'agui' };
+    }
+  }
+  return null;
 }
 
 function replaceOldFlightResultWithAgui(cards: CardView[], next: CardView): CardView[] {
@@ -649,7 +708,7 @@ export function useChatStream(options: UseChatStreamOptions = {}): UseChatStream
           correlation_id: data.correlation_id,
           at: new Date().toISOString(),
         };
-        if (!hasRenderableFlightPlans(cardView.card)) return;
+        if (!isRenderableCard(cardView.card)) return;
         patchAssistant(assistantId, (m) => {
           if (messageHasCard(m, cardView.card)) return m;
           return {

@@ -118,9 +118,9 @@ def test_str_json_input_yields_card() -> None:
     assert len(plans) == 3
     ids = {p["id"] for p in plans}
     assert ids == {"cheapest", "fastest", "comfortable"}
-    agui = card.body["agui"]
-    assert agui["data"]["sceneId"] == "DOMESTIC_BOOKING_FLIGHT_LIST"
-    block = agui["data"]["contentJson"]["dataList"][0]
+    agui = card.body["contentJson"]
+    assert agui["schemaVersion"] == "2"
+    block = agui["dataList"][0]
     assert block["basicType"] == "AIR_DOMESTIC_FLIGHT_LIST"
     assert block["dataJson"]["flightList"][0]["flightNo"] == "CA1501"
 
@@ -294,7 +294,7 @@ def test_compact_flight_fields_without_legs_are_mapped() -> None:
     assert flight["arrival"]["city"] == "上海"
     assert flight["duration"] == "115分钟"
     assert flight["price"] == 400.0
-    agui_flight = card.body["agui"]["data"]["contentJson"]["dataList"][0]["dataJson"]["flightList"][0]
+    agui_flight = card.body["contentJson"]["dataList"][0]["dataJson"]["flightList"][0]
     assert agui_flight["flightNo"] == "MF8561"
     assert agui_flight["depCityName"] == "北京"
     assert agui_flight["arrCityName"] == "上海"

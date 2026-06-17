@@ -1,8 +1,12 @@
-"""AGUI v2 国内机票卡片组装。"""
+"""AGUI v2 国内机票卡片组装。
 
+只输出 ``body.contentJson`` 内的渲染描述 (schemaVersion + dataList)；外层错误码壳
+(tmsErrorCode / errorCode / errorMsg / requestSeqNo / ...) 以及会话元数据
+(recordId / sessionId / role / intent / sceneId / chatTime / correlationId) 由 Hub
+内部维护，不通过本协议传递。详见 ``docs/agui/agui-schema.md`` §2。
+"""
 from __future__ import annotations
 
-from datetime import datetime, timezone
 from typing import Any
 
 from openagent.auip._duration import parse_minutes
@@ -15,44 +19,24 @@ def build_domestic_flight_agui(
     airway_names: dict[str, str] | None,
     summary: dict[str, Any],
 ) -> dict[str, Any]:
-    """把 queryFlightBasic 输出转换为 docs/agui 的 AGUI v2 envelope。"""
-    request_seq_no = _first_text(data.get("requestSeqNo"), data.get("recordId")) or _seq("T")
-    session_id = _first_text(data.get("sessionId")) or _seq("S")
+    """把 queryFlightBasic 输出转换为 ``body.contentJson`` (AGUI v2 渲染描述)。"""
     reason = f"共查询到{summary.get('totalCount', 0)}个航班最后筛选出{summary.get('filteredCount', 0)}个"
     return {
-        "tmsErrorCode": _first_text(data.get("tmsErrorCode")),
-        "errorCode": _first_text(data.get("errorCode")) or "0",
-        "errorMsg": _first_text(data.get("errorMsg")),
-        "enErrorMsg": _first_text(data.get("enErrorMsg")),
-        "requestSeqNo": request_seq_no,
-        "delay": int(_first_number(data.get("delay"))),
-        "data": {
-            "recordId": request_seq_no,
-            "sessionId": session_id,
-            "role": "assistant",
-            "intent": "BOOKING:DOMESTIC_BOOKING/air_domestic_booking",
-            "sceneId": "DOMESTIC_BOOKING_FLIGHT_LIST",
-            "contentJson": {
-                "schemaVersion": "2",
-                "dataList": [
-                    {
-                        "basicType": "AIR_DOMESTIC_FLIGHT_LIST",
-                        "dataStr": reason,
-                        "dataJson": {
-                            "serialNumber": _first_text(data.get("serialNumber")),
-                            "totalCount": int(summary.get("totalCount") or 0),
-                            "filteredCount": int(summary.get("filteredCount") or len(flight_list)),
-                            "flightList": [_flight_to_agui(f, airway_names or {}) for f in flight_list],
-                        },
-                        "linkUrl": "",
-                    }
-                ],
-                "thinkingSteps": ["已按您的行程条件查询航班并整理列表"],
-            },
-            "reason": "已按您的行程条件查询航班并整理列表",
-            "chatTime": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
-            "correlationId": _first_text(data.get("correlationId")),
-        },
+        "schemaVersion": "2",
+        "dataList": [
+            {
+                "basicType": "AIR_DOMESTIC_FLIGHT_LIST",
+                "dataStr": reason,
+                "dataJson": {
+                    "serialNumber": _first_text(data.get("serialNumber")),
+                    "totalCount": int(summary.get("totalCount") or 0),
+                    "filteredCount": int(summary.get("filteredCount") or len(flight_list)),
+                    "flightList": [_flight_to_agui(f, airway_names or {}) for f in flight_list],
+                },
+                "linkUrl": "",
+            }
+        ],
+        "thinkingSteps": ["已按您的行程条件查询航班并整理列表"],
     }
 
 
@@ -126,6 +110,11 @@ def _first_leg(raw: dict[str, Any]) -> dict[str, Any]:
     legs = raw.get("legs")
     if isinstance(legs, list) and legs and isinstance(legs[0], dict):
         return legs[0]
+    trip_infos = raw.get("tripInfos")
+    if isinstance(trip_infos, list) and trip_infos and isinstance(trip_infos[0], dict):
+        info_list = trip_infos[0].get("flightInfoList")
+        if isinstance(info_list, list) and info_list and isinstance(info_list[0], dict):
+            return info_list[0]
     return {}
 
 
@@ -150,8 +139,7 @@ def _bool(value: Any) -> bool:
     return str(value).strip().lower() in {"1", "true", "yes", "y", "有", "含餐"}
 
 
-def _seq(prefix: str) -> str:
-    return f"{prefix}{datetime.now(timezone.utc).strftime('%y%m%d%H%M%S')}B00000001"
+
 
 
 __all__ = ["build_domestic_flight_agui"]

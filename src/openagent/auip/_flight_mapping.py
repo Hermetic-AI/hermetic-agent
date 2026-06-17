@@ -55,10 +55,20 @@ def _normalize_aircraft(name: str | None) -> str:
 
 
 def _leg(raw: dict[str, Any]) -> dict[str, Any]:
-    """安全取 leg[0]; 没有 legs 返空 dict."""
+    """安全取 leg[0]; 没有 legs 返空 dict.
+    
+    支持两种嵌套格式:
+    - raw.legs[0] (标准 AGUI 格式)
+    - raw.tripInfos[0].flightInfoList[0] (飞鹤 MCP 原始格式)
+    """
     legs = raw.get("legs")
     if isinstance(legs, list) and legs and isinstance(legs[0], dict):
         return legs[0]
+    trip_infos = raw.get("tripInfos")
+    if isinstance(trip_infos, list) and trip_infos and isinstance(trip_infos[0], dict):
+        info_list = trip_infos[0].get("flightInfoList")
+        if isinstance(info_list, list) and info_list and isinstance(info_list[0], dict):
+            return info_list[0]
     return {}
 
 
