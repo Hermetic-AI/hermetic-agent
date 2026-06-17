@@ -3,11 +3,11 @@
 # Source skill: ${WORK_SHARED}/skills/fh-domestic-flight-booking-mcporter
 # ============================================================
 name: fh_domestic_flight_booking_mcporter
-version: "1.0.0"
+version: "2.1.0"
 description: |
   FH domestic flight search and booking scenario backed by the mcporter bridge
-  over fh-travel MCP tools. Keeps the original booking flow while exposing only
-  the mcporter namespaced bridge tools to the model.
+  over fh-travel MCP tools. Tools are exposed as mcporter_feihe-travel__*
+  via opencode's local MCP server. Model calls them directly — no Bash needed.
 enabled: true
 tags: [travel, domestic-flight, booking, auip, fh-travel, mcporter]
 owner: team-travel-ai
@@ -33,14 +33,23 @@ execution:
     同一个 sessionId；调用 MCP 前把相对日期规范化为 yyyy-MM-dd；先展示紧凑结果，
     用户需要时再展开细节。
 
-    鉴权由容器环境变量 FLIGHT_API_KEY 和 work/mcp/mcporter.json 处理；不要向用户
-    索要、解释、拒绝使用或回显 token。查询航班必须直接调用 mcporter bridge 工具
-    feihe-travel__queryFlightBasic / feihe-travel__filterFlightList，
-    不要调用原生 feihe-travel_* 工具，不要手写 curl，不要用 Bash 拼 HTTP 请求，
-    不要用 npx mcporter call，不要用 task 子代理代查航班。
+    鉴权由容器环境变量 FLIGHT_API_KEY 和 mcporter 配置自动处理；不要向用户
+    索要、解释、拒绝使用或回显 token。
+
+    **工具调用方式：直接调用 mcporter_feihe-travel__* 命名空间的 MCP 工具。**
+    opencode 已通过 mcporter bridge 加载了飞鹤差旅 MCP 工具，工具名格式为
+    `mcporter_feihe-travel__<原生工具名>`。
+
+    核心工具调用示例：
+    - 查询航班：调用 mcporter_feihe-travel__queryFlightBasic
+    - 筛选航班：调用 mcporter_feihe-travel__filterFlightList
+    - 选择航班：调用 mcporter_feihe-travel__chooseFlight
+    - 选择舱位：调用 mcporter_feihe-travel__chooseCabin
+
+    不要用 Bash、curl、webfetch 调用 MCP 端点，不要用 task 子代理代查航班。
 
     首轮航班查询的速度优先级最高。用户已经给出出发地、目的地、出发日期/相对日期时，必须先把日期规范化成
-    yyyy-MM-dd 并立即调用 feihe-travel__queryFlightBasic；不要先问舱位，不要先调用
+    yyyy-MM-dd 并立即调用 mcporter_feihe-travel__queryFlightBasic；不要先问舱位，不要先调用
     question/ask_user/getDateInfo/checkProductAccess/read/glob/grep/skill，也不要加载旧 flight-query skill。
 
     必须遵守的业务阶段顺序：
@@ -48,11 +57,15 @@ execution:
     -> PASSENGER_FILLED -> INFO_VALIDATED -> ORDER_PREVIEWED -> FINISHED.
 
     禁止编造航班号、价格、舱位、政策结果、乘机人、出差单、成本中心、订单状态。
-    MCP 输出是事实来源。上下文损坏或用户要求重来时，使用 feihe-travel__resetBookingSession。
+    MCP 输出是事实来源。上下文损坏或用户要求重来时，使用 mcporter_feihe-travel__resetBookingSession。
+
+    **强制规则：查到航班后必须立即通过 ask_user 发送 FLIGHT_RESULT 卡片，body.contentJson 必须包含完整的航班列表数据。**
+    禁止发空卡片（body: {}），禁止只用纯文本展示航班，禁止跳过卡片直接进入下一步。
+    必须把 MCP 返回的 flightList[] 映射到 body.contentJson.dataList[0].dataJson.flightList[] 中。
 
     AUIP 卡片约定：
     - 需要用户输入/选择/确认时调用 ask_user；不需要用户动作的说明直接中文回复。
-    - 用户原话信息足够时，不要发 OD_INPUT，直接 feihe-travel__queryFlightBasic。
+    - 用户原话信息足够时，不要发 OD_INPUT，直接调用 mcporter_feihe-travel__queryFlightBasic。
     - 缺少查询必填项：OD_INPUT，使用顶层 fields[]，只包含缺失字段。
     - 搜索结果：FLIGHT_RESULT，使用 body.summary 和 body.plans。
     - 单列表选航班：FLIGHT_LIST，使用顶层 flights[]。
@@ -68,27 +81,27 @@ execution:
     - fh-domestic-flight-booking-mcporter
   tools:
     - ask_user
-    - feihe-travel__checkProductAccess
-    - feihe-travel__getDateInfo
-    - feihe-travel__listUpcomingHolidays
-    - feihe-travel__getHolidayDate
-    - feihe-travel__queryFlightBasic
-    - feihe-travel__filterFlightList
-    - feihe-travel__chooseFlight
-    - feihe-travel__getFlightPolicyInfo
-    - feihe-travel__chooseCabin
-    - feihe-travel__chooseAlternativeCabin
-    - feihe-travel__listTripApplications
-    - feihe-travel__getTripApplicationDetail
-    - feihe-travel__listCostCenters
-    - feihe-travel__bindCostCenter
-    - feihe-travel__getDefaultContact
-    - feihe-travel__fillPassenger
-    - feihe-travel__validateBookingInfo
-    - feihe-travel__recordPolicyUserDecision
-    - feihe-travel__buildOrderPreview
-    - feihe-travel__getOrderDetail
-    - feihe-travel__resetBookingSession
+    - mcporter_feihe-travel__checkProductAccess
+    - mcporter_feihe-travel__getDateInfo
+    - mcporter_feihe-travel__listUpcomingHolidays
+    - mcporter_feihe-travel__getHolidayDate
+    - mcporter_feihe-travel__queryFlightBasic
+    - mcporter_feihe-travel__filterFlightList
+    - mcporter_feihe-travel__chooseFlight
+    - mcporter_feihe-travel__getFlightPolicyInfo
+    - mcporter_feihe-travel__chooseCabin
+    - mcporter_feihe-travel__chooseAlternativeCabin
+    - mcporter_feihe-travel__listTripApplications
+    - mcporter_feihe-travel__getTripApplicationDetail
+    - mcporter_feihe-travel__listCostCenters
+    - mcporter_feihe-travel__bindCostCenter
+    - mcporter_feihe-travel__getDefaultContact
+    - mcporter_feihe-travel__fillPassenger
+    - mcporter_feihe-travel__validateBookingInfo
+    - mcporter_feihe-travel__recordPolicyUserDecision
+    - mcporter_feihe-travel__buildOrderPreview
+    - mcporter_feihe-travel__getOrderDetail
+    - mcporter_feihe-travel__resetBookingSession
   orchestration: single
   hitl:
     card_schemas:
@@ -109,11 +122,11 @@ execution:
 
 security:
   tool_level: safe
-  allowed_tools: [Read, Grep, Glob, Bash]
-  denied_tools: [Write, Edit, WebFetch, WebSearch]
+  allowed_tools: [Read, Grep, Glob]
+  denied_tools: [Write, Edit, WebFetch, WebSearch, Bash]
   allowed_commands: [python]
   denied_commands: [rm -rf, sudo, dd, mkfs, "chmod 777", ":(){:|:&};:"]
-  network: local
+  network: any
   max_turns: 40
   max_budget_usd: 2.0
   require_approval_for_writes: true
@@ -203,7 +216,7 @@ metadata:
     config: ${WORK_ROOT}/mcp/mcporter.json
     bridge_server: mcporter
     upstream_server: feihe-travel
-    command: mcporter serve --stdio --config /opt/sandbox/mcporter.json --servers feihe-travel
+    tool_prefix: mcporter_feihe-travel__
   state_machine_source: AirDomesticBookingStage
   tool_contracts: ${WORK_SHARED}/skills/fh-domestic-flight-booking/schemas/tool-contracts.json
   workflows:

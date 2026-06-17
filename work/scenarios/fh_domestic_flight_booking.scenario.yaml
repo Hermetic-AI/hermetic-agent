@@ -3,15 +3,17 @@
 # Source skill: ${WORK_SHARED}/skills/fh-domestic-flight-booking
 # ============================================================
 name: fh_domestic_flight_booking
-version: "1.0.0"
+version: "2.0.0"
 description: |
   FH domestic flight search and booking scenario backed by the
-  fh-domestic-flight-booking skill and fh-travel MCP tools. Covers date and
-  city normalization, flight search, local filtering, flight/cabin selection,
-  passengers, trip applications, cost centers, policy decisions, validation,
-  order preview, and recovery.
+  fh-domestic-flight-booking skill and fh-travel MCP tools via the mcporter bridge.
+  Uses mcporter_feihe-travel__* tool names to avoid loading all 21 fh-travel
+  tools directly into opencode context. Covers date and city normalization,
+  flight search, local filtering, flight/cabin selection, passengers, trip
+  applications, cost centers, policy decisions, validation, order preview,
+  and recovery. Emits AGUI v2 AUIP cards.
 enabled: true
-tags: [travel, domestic-flight, booking, auip, fh-travel]
+tags: [travel, domestic-flight, booking, auip, fh-travel, mcporter]
 owner: team-travel-ai
 contact: travel-ai@feihe.com
 tier: gold
@@ -39,10 +41,11 @@ execution:
     以 fh-domestic-flight-booking skill 作为操作准则。每个订票会话保持同一个
     sessionId；调用 MCP 前把相对日期规范化为 yyyy-MM-dd；先展示紧凑结果，
     用户需要时再展开细节。
-    鉴权由容器环境变量 FLIGHT_API_KEY 和 opencode 原生 MCP 配置处理；不要向用户
-    索要、解释、拒绝使用或回显 token。查询航班必须直接调用原生 MCP 工具
-    feihe-travel_queryFlightBasic / feihe-travel_filterFlightList（或等价的
-    queryFlightBasic / filterFlightList），不要手写 curl，不要用 Bash 拼 HTTP 请求，
+
+    鉴权由容器环境变量 FLIGHT_API_KEY 和 mcporter 配置自动处理；不要向用户
+    索要、解释、拒绝使用或回显 token。查询航班必须直接调用 mcporter bridge 工具
+    mcporter_feihe-travel__queryFlightBasic / mcporter_feihe-travel__filterFlightList，
+    不要手写 curl，不要用 Bash 拼 HTTP 请求，不要用 webfetch 调用 MCP 端点，
     不要用 task 子代理代查航班。
 
     先从用户原话中提取信息，不要机械询问。只要用户已经提供出发地、目的地、
@@ -52,78 +55,59 @@ execution:
     ask_user 询问用户。提问时只问缺失项，一次合并提问，避免多轮打扰。
 
     首轮航班查询的速度优先级最高。用户已经给出出发地、目的地、出发日期/相对日期时，必须先把日期规范化成
-    yyyy-MM-dd 并立即调用 queryFlightBasic / feihe-travel_queryFlightBasic；不要先问舱位，不要先调用
+    yyyy-MM-dd 并立即调用 mcporter_feihe-travel__queryFlightBasic；不要先问舱位，不要先调用
     question/ask_user/getDateInfo/checkProductAccess/read/glob/grep/skill，也不要加载旧 flight-query skill。
-    例如：用户说“帮我查一下北京到上海明天的单程机票”，在 2026-06-09 应直接调用
-    queryFlightBasic({departureCity:"北京", arrivalCity:"上海", departureDate:"2026-06-10"})。
+
+    **强制规则：查到航班后必须立即通过 ask_user 发送 FLIGHT_RESULT 卡片，body.contentJson 必须包含完整的航班列表数据。**
+    禁止发空卡片（body: {}），禁止只用纯文本展示航班，禁止跳过卡片直接进入下一步。
+    必须把 MCP 返回的 flightList[] 映射到 body.contentJson.dataList[0].dataJson.flightList[] 中。
 
     必须遵守的业务阶段顺序：
     INIT -> FLIGHT_LISTED -> FLIGHT_SELECTED -> CABIN_SELECTED
     -> PASSENGER_FILLED -> INFO_VALIDATED -> ORDER_PREVIEWED -> FINISHED.
 
     禁止编造航班号、价格、舱位、政策结果、乘机人、出差单、成本中心、订单状态。
-    MCP 输出是事实来源。上下文损坏或用户要求重来时，使用 resetBookingSession。
+    MCP 输出是事实来源。上下文损坏或用户要求重来时，使用 mcporter_feihe-travel__resetBookingSession。
 
-    AUIP 卡片约定：
+    AUIP 卡片约定（AGUI v2）：
     - 需要用户输入/选择/确认时调用 ask_user；不需要用户动作的说明直接中文回复。
-    - 用户原话信息足够时，不要发 OD_INPUT，直接 queryFlightBasic。
+    - 用户原话信息足够时，不要发 OD_INPUT，直接 mcporter_feihe-travel__queryFlightBasic。
     - 缺少查询必填项：OD_INPUT，使用顶层 fields[]，只包含缺失字段。
-    - 搜索结果：FLIGHT_RESULT，使用 body.summary 和 body.plans。
-    - 单列表选航班：FLIGHT_LIST，使用顶层 flights[]。
-    - 选舱：CABIN_LIST，使用顶层 cabins[]。
+    - 搜索结果：FLIGHT_RESULT，使用 body.contentJson（AGUI v2），dataList 含 AIR_DOMESTIC_FLIGHT_LIST。
+    - 单列表选航班：FLIGHT_LIST，使用 body.contentJson。
+    - 选舱：CABIN_LIST，使用 body.contentJson 含 AIR_DOMESTIC_CABIN_LIST。
     - 补乘机人：PASSENGER_FORM，使用顶层 fields[]，只包含缺失字段。
     - 绑定出差单/成本中心/联系人：OAT_BINDING，使用 fields[] 或 options[]。
     - 价格变动：PRICE_VERIFY，使用 current_price、original_price、price_diff。
     - 差标超规：POLICY_DECISION，使用 decision_buttons[]。
-    - 最终预览：ORDER_CONFIRM，使用 order_summary 和 total_price。
+    - 最终预览：ORDER_CONFIRM，使用 body.contentJson 含 AIR_DOMESTIC_ORDER_SUMMARY + BUTTON。
     - 下单完成：ORDER_SUCCESS，使用 order_no 或 order_summary。
     - 无法继续：CANNOT_ORDER，使用 reason 和 fallback。
   skills:
     - fh-domestic-flight-booking
   tools:
     - ask_user
-    - checkProductAccess
-    - getDateInfo
-    - listUpcomingHolidays
-    - getHolidayDate
-    - queryFlightBasic
-    - filterFlightList
-    - chooseFlight
-    - getFlightPolicyInfo
-    - chooseCabin
-    - chooseAlternativeCabin
-    - listTripApplications
-    - getTripApplicationDetail
-    - listCostCenters
-    - bindCostCenter
-    - getDefaultContact
-    - fillPassenger
-    - validateBookingInfo
-    - recordPolicyUserDecision
-    - buildOrderPreview
-    - getOrderDetail
-    - resetBookingSession
-    - feihe-travel_checkProductAccess
-    - feihe-travel_getDateInfo
-    - feihe-travel_listUpcomingHolidays
-    - feihe-travel_getHolidayDate
-    - feihe-travel_queryFlightBasic
-    - feihe-travel_filterFlightList
-    - feihe-travel_chooseFlight
-    - feihe-travel_getFlightPolicyInfo
-    - feihe-travel_chooseCabin
-    - feihe-travel_chooseAlternativeCabin
-    - feihe-travel_listTripApplications
-    - feihe-travel_getTripApplicationDetail
-    - feihe-travel_listCostCenters
-    - feihe-travel_bindCostCenter
-    - feihe-travel_getDefaultContact
-    - feihe-travel_fillPassenger
-    - feihe-travel_validateBookingInfo
-    - feihe-travel_recordPolicyUserDecision
-    - feihe-travel_buildOrderPreview
-    - feihe-travel_getOrderDetail
-    - feihe-travel_resetBookingSession
+    - mcporter_feihe-travel__checkProductAccess
+    - mcporter_feihe-travel__getDateInfo
+    - mcporter_feihe-travel__listUpcomingHolidays
+    - mcporter_feihe-travel__getHolidayDate
+    - mcporter_feihe-travel__queryFlightBasic
+    - mcporter_feihe-travel__filterFlightList
+    - mcporter_feihe-travel__chooseFlight
+    - mcporter_feihe-travel__getFlightPolicyInfo
+    - mcporter_feihe-travel__chooseCabin
+    - mcporter_feihe-travel__chooseAlternativeCabin
+    - mcporter_feihe-travel__listTripApplications
+    - mcporter_feihe-travel__getTripApplicationDetail
+    - mcporter_feihe-travel__listCostCenters
+    - mcporter_feihe-travel__bindCostCenter
+    - mcporter_feihe-travel__getDefaultContact
+    - mcporter_feihe-travel__fillPassenger
+    - mcporter_feihe-travel__validateBookingInfo
+    - mcporter_feihe-travel__recordPolicyUserDecision
+    - mcporter_feihe-travel__buildOrderPreview
+    - mcporter_feihe-travel__getOrderDetail
+    - mcporter_feihe-travel__resetBookingSession
   orchestration: single
   hitl:
     card_schemas:
@@ -144,11 +128,11 @@ execution:
 
 security:
   tool_level: safe
-  allowed_tools: [Read, Grep, Glob, Bash]
-  denied_tools: [Write, Edit, WebFetch, WebSearch]
+  allowed_tools: [Read, Grep, Glob]
+  denied_tools: [Write, Edit, WebFetch, WebSearch, Bash]
   allowed_commands: [python]
   denied_commands: [rm -rf, sudo, dd, mkfs, "chmod 777", ":(){:|:&};:"]
-  network: local
+  network: any
   max_turns: 40
   max_budget_usd: 2.0
   require_approval_for_writes: true
@@ -231,6 +215,12 @@ resources:
 metadata:
   source_skill: fh-domestic-flight-booking
   skill_root: ${WORK_SHARED}/skills/fh-domestic-flight-booking
+  mcporter:
+    enabled: true
+    config: ${WORK_ROOT}/mcp/mcporter.json
+    bridge_server: mcporter
+    upstream_server: feihe-travel
+    tool_prefix: mcporter_feihe-travel__
   state_machine_source: AirDomesticBookingStage
   tool_contracts: ${WORK_SHARED}/skills/fh-domestic-flight-booking/schemas/tool-contracts.json
   workflows:

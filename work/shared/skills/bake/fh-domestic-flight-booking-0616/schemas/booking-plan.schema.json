@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "FH Domestic Flight Booking Plan",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["departureCity", "arrivalCity", "departureDate"],
+  "properties": {
+    "sessionId": {"type": "string", "minLength": 1},
+    "departureCity": {"type": "string", "minLength": 1},
+    "arrivalCity": {"type": "string", "minLength": 1},
+    "departureDate": {"type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$"},
+    "returnDate": {"type": ["string", "null"], "pattern": "^\\d{4}-\\d{2}-\\d{2}$"},
+    "roundTripListMode": {"type": ["string", "null"], "enum": ["RECOMMENDED", "FREE", null]},
+    "cabinClass": {"type": ["string", "null"], "enum": ["ECONOMY", "FULL_ECONOMY", "BUSINESS", "FIRST", null]},
+    "departureDayPart": {"type": ["string", "null"], "enum": ["MORNING", "AFTERNOON", "EVENING", null]},
+    "depTimeStart": {"type": ["string", "null"], "pattern": "^\\d{2}:\\d{2}$"},
+    "depTimeEnd": {"type": ["string", "null"], "pattern": "^\\d{2}:\\d{2}$"},
+    "cheapest": {"type": ["boolean", "null"]},
+    "nonStop": {"type": ["boolean", "null"]},
+    "maxPrice": {"type": ["integer", "null"], "minimum": 0},
+    "baggage": {"type": ["boolean", "null"]},
+    "requireMeal": {"type": ["boolean", "null"]},
+    "freeRefund": {"type": ["boolean", "null"]},
+    "refundable": {"type": ["boolean", "null"]},
+    "policyCompliant": {"type": ["boolean", "null"]},
+    "sortBy": {"type": ["string", "null"], "enum": ["PRICE", "ARRIVAL_TIME", "DURATION", "REFUND_FLEXIBILITY", null]},
+    "passengerNames": {"type": ["string", "null"]},
+    "tripApplicationId": {"type": ["string", "null"]},
+    "costCenterId": {"type": ["string", "null"]}
+  }
+}

@@ -1,13 +1,13 @@
 ---
 name: fh-domestic-flight-booking-mcporter
-description: Use when an OpenCode/Codex agent must complete China domestic flight search and booking through the mcporter bridge for fh-travel MCP tools. This is the mcporter-backed variant of fh-domestic-flight-booking and keeps MCP server discovery/tool filtering in work/mcp/mcporter.json.
+description: Use when an OpenCode/Codex agent must complete China domestic flight search and booking through the mcporter bridge for fh-travel MCP tools. Tools are exposed as mcporter_feihe-travel__* via opencode's local MCP server.
 ---
 
-# FH Domestic Flight Booking via MCPorter
+# FH Domestic Flight Booking via MCPorter Bridge
 
 ## Purpose
 
-Operate the same Feihe domestic flight booking flow as `fh-domestic-flight-booking`, but call the fh-travel MCP tools through the `mcporter-feihe-travel` bridge registered by OpenCode. Keep business behavior aligned with the original skill; only the MCP transport and tool names differ.
+Operate the same Feihe domestic flight booking flow as `fh-domestic-flight-booking`, but call the fh-travel MCP tools through the mcporter bridge registered by OpenCode. The bridge exposes tools with the `mcporter_feihe-travel__` prefix. Keep business behavior aligned with the original skill; only the MCP transport and tool names differ.
 
 ## Load Strategy
 
@@ -23,29 +23,40 @@ Start with this file only. Load original resources from `fh-domestic-flight-book
 - Policy/OAT/recovery: `../fh-domestic-flight-booking/workflows/policy-oat-recovery.md`
 - Stable schemas: `../fh-domestic-flight-booking/schemas/*.json`
 
-## MCPorter Tool Names
+## MCPorter Bridge Tool Names
 
-The mcporter bridge exposes tools with the `<server>__<tool>` namespace. For this scenario use these names:
+The mcporter bridge is a local MCP server named `mcporter` in opencode config. opencode prefixes tools with the server name using `_`. Combined with mcporter's own `upstream__tool` namespace, the final tool names are:
 
-| Native fh-travel tool | MCPorter bridge tool |
+| Native fh-travel tool | MCPorter bridge tool (opencode) |
 | --- | --- |
-| `queryFlightBasic` | `feihe-travel__queryFlightBasic` |
-| `filterFlightList` | `feihe-travel__filterFlightList` |
-| `chooseFlight` | `feihe-travel__chooseFlight` |
-| `chooseCabin` | `feihe-travel__chooseCabin` |
-| `fillPassenger` | `feihe-travel__fillPassenger` |
-| `validateBookingInfo` | `feihe-travel__validateBookingInfo` |
-| `buildOrderPreview` | `feihe-travel__buildOrderPreview` |
-| `resetBookingSession` | `feihe-travel__resetBookingSession` |
+| `queryFlightBasic` | `mcporter_feihe-travel__queryFlightBasic` |
+| `filterFlightList` | `mcporter_feihe-travel__filterFlightList` |
+| `chooseFlight` | `mcporter_feihe-travel__chooseFlight` |
+| `chooseCabin` | `mcporter_feihe-travel__chooseCabin` |
+| `fillPassenger` | `mcporter_feihe-travel__fillPassenger` |
+| `validateBookingInfo` | `mcporter_feihe-travel__validateBookingInfo` |
+| `buildOrderPreview` | `mcporter_feihe-travel__buildOrderPreview` |
+| `resetBookingSession` | `mcporter_feihe-travel__resetBookingSession` |
+| `checkProductAccess` | `mcporter_feihe-travel__checkProductAccess` |
+| `getDateInfo` | `mcporter_feihe-travel__getDateInfo` |
+| `getFlightPolicyInfo` | `mcporter_feihe-travel__getFlightPolicyInfo` |
+| `chooseAlternativeCabin` | `mcporter_feihe-travel__chooseAlternativeCabin` |
+| `listTripApplications` | `mcporter_feihe-travel__listTripApplications` |
+| `getTripApplicationDetail` | `mcporter_feihe-travel__getTripApplicationDetail` |
+| `listCostCenters` | `mcporter_feihe-travel__listCostCenters` |
+| `bindCostCenter` | `mcporter_feihe-travel__bindCostCenter` |
+| `getDefaultContact` | `mcporter_feihe-travel__getDefaultContact` |
+| `recordPolicyUserDecision` | `mcporter_feihe-travel__recordPolicyUserDecision` |
+| `getOrderDetail` | `mcporter_feihe-travel__getOrderDetail` |
 
-For any other fh-travel MCP tool, apply the same rule: prefix it with `feihe-travel__`.
+For any other fh-travel MCP tool, apply the same rule: prefix with `mcporter_feihe-travel__`.
 
 ## Fast Path For Clear Search
 
 When the user already gives departure city, arrival city, and departure date:
 
 1. Normalize the date locally from the conversation date.
-2. Immediately call `feihe-travel__queryFlightBasic` with only supported arguments.
+2. Immediately call `mcporter_feihe-travel__queryFlightBasic` with only supported arguments.
 3. Do not call `ask_user`, `question`, `glob`, `read`, `grep`, `skill`, `flight-query`, `getDateInfo`, `checkProductAccess`, or helper scripts before that first search.
 4. Ignore cabin-class wording during first search unless the tool schema exposes a supported `cabinClass` argument.
 
@@ -59,12 +70,12 @@ Example: "帮我查一下北京到上海明天的单程机票" means directly ca
 
 ```text
 INIT
-  -> FLIGHT_LISTED        feihe-travel__queryFlightBasic / feihe-travel__filterFlightList
-  -> FLIGHT_SELECTED      feihe-travel__chooseFlight
-  -> CABIN_SELECTED       feihe-travel__chooseCabin
-  -> PASSENGER_FILLED     feihe-travel__fillPassenger plus OAT data
-  -> INFO_VALIDATED       feihe-travel__validateBookingInfo
-  -> ORDER_PREVIEWED      feihe-travel__buildOrderPreview
+  -> FLIGHT_LISTED        mcporter_feihe-travel__queryFlightBasic / filterFlightList
+  -> FLIGHT_SELECTED      mcporter_feihe-travel__chooseFlight
+  -> CABIN_SELECTED       mcporter_feihe-travel__chooseCabin
+  -> PASSENGER_FILLED     mcporter_feihe-travel__fillPassenger plus OAT data
+  -> INFO_VALIDATED       mcporter_feihe-travel__validateBookingInfo
+  -> ORDER_PREVIEWED      mcporter_feihe-travel__buildOrderPreview
   -> FINISHED             frontend/user final action
 ```
 
@@ -81,19 +92,48 @@ INIT
 9. MCP output is authoritative. If behavior conflicts with the original skill, inspect the original references and Java source alignment docs.
 10. Do not load or delegate to the legacy `flight-query` skill inside this scenario.
 
+## MANDATORY: Flight Data Must Be Rendered in AUIP Card
+
+**When `mcporter_feihe-travel__queryFlightBasic` or `mcporter_feihe-travel__filterFlightList` returns flight data, you MUST immediately emit an `ask_user` call with `card_type: "FLIGHT_RESULT"` and populate `body.contentJson` with the full flight list.**
+
+DO NOT:
+- Emit a `FLIGHT_RESULT` or `FLIGHT_LIST` card with empty `body: {}`
+- Only show flights as plain Markdown text
+- Skip the card and move to the next step without showing results
+
+The MCP response contains `flightList[]` — map each entry into the AGUI v2 `AIR_DOMESTIC_FLIGHT_LIST` format and put it inside `ask_user`'s `body.contentJson.dataList[0].dataJson.flightList[]`.
+
+Mapping from MCP response to card fields:
+
+| MCP response field | Card field |
+|---|---|
+| `serialNumber` | `dataJson.serialNumber` |
+| `flightCount` or `filteredCount` | `dataJson.totalCount` / `dataJson.filteredCount` |
+| `flightList[].airId` | `flightList[].airId` |
+| `flightList[].airName` | `flightList[].airlineName` |
+| `flightList[].tripInfos[0].flightInfoList[0].flightId` | `flightList[].flightNo` |
+| `flightList[].tripInfos[0].flightInfoList[0].depAirPortName` | `flightList[].depAirportName` |
+| `flightList[].tripInfos[0].flightInfoList[0].arrAirPortName` | `flightList[].arrAirportName` |
+| `flightList[].tripInfos[0].flightInfoList[0].depDate` + `depTime` | `flightList[].depDate` / `depTime` |
+| `flightList[].tripInfos[0].flightInfoList[0].arrDate` + `arrTime` | `flightList[].arrDate` / `arrTime` |
+| `flightList[].showPrice` or `totalPrice` | `flightList[].lowestPrice` / `totalPrice` |
+| `flightList[].tripInfos[0].duration` | `flightList[].durationMin` / `totalDuration` |
+
+After the card, also send a short Chinese text summary (1-2 sentences) confirming the search result count and cheapest option.
+
 ## AUIP / ask_user Contract
 
 This mcporter variant uses the **AGUI v2 domestic booking contract** for flight-facing cards. The frontend renderer is aligned with `docs/agui/agui-schema.md` and the sample payloads in `docs/agui/`.
 
-Keep the outer `ask_user.card_type` compatible with the existing AUIP schema, but put the AGUI payload under `body.agui`:
+Keep the outer `ask_user.card_type` compatible with the existing AUIP schema, but put the **AGUI v2 渲染描述直接放在 `body.contentJson`** (schemaVersion + dataList)。**不要**包外层错误码壳 / 会话元数据 envelope — 这些由 Hub 内部维护, 不通过本协议传递:
 
-| Business scene | `ask_user.card_type` | `body.agui.data.sceneId` | Required `contentJson.dataList` order |
-| --- | --- | --- | --- |
-| Flight list | `FLIGHT_RESULT` | `DOMESTIC_BOOKING_FLIGHT_LIST` | `AIR_DOMESTIC_FLIGHT_LIST` → optional `PLAIN_TEXT` → optional `AIR_DOMESTIC_FLIGHT_SUGGEST` × N |
-| Cabin list | `CABIN_LIST` | `DOMESTIC_BOOKING_CABIN_LIST` | optional `PLAIN_TEXT` → `AIR_DOMESTIC_CABIN_LIST` |
-| Order confirmation | `ORDER_CONFIRM` | `DOMESTIC_BOOKING_ORDER_CONFIRM` | optional `PLAIN_TEXT` → `AIR_DOMESTIC_ORDER_SUMMARY` → optional `BUTTON` |
+| Business scene | `ask_user.card_type` | Required `body.contentJson.dataList` order |
+| --- | --- | --- |
+| Flight list | `FLIGHT_RESULT` | `AIR_DOMESTIC_FLIGHT_LIST` → optional `PLAIN_TEXT` → optional `AIR_DOMESTIC_FLIGHT_SUGGEST` × N |
+| Cabin list | `CABIN_LIST` | optional `PLAIN_TEXT` → `AIR_DOMESTIC_CABIN_LIST` |
+| Order confirmation | `ORDER_CONFIRM` | optional `PLAIN_TEXT` → `AIR_DOMESTIC_ORDER_SUMMARY` → optional `BUTTON` |
 
-`body.agui` must be either the full envelope from `docs/agui/*.json` or its `data` object. Prefer the full envelope when a `requestSeqNo` is available.
+`body.contentJson` 是 AGUI 渲染描述本身, 不要包 envelope (`tmsErrorCode` / `errorCode` / `errorMsg` / `enErrorMsg` / `requestSeqNo` / `delay` / `recordId` / `sessionId` / `role` / `intent` / `sceneId` / `reason` / `chatTime` / `correlationId`) — Hub 拦截层会识别 `card_type=FLIGHT_RESULT` 缺 body 的情况, 用最近一次 `mcporter_feihe-travel__queryFlightBasic` 输出兜底; 也会自动归一 `body.agui` 旧 envelope 到 `body.contentJson`, 兼容过渡期残留。
 
 Minimum shape:
 
@@ -102,40 +142,22 @@ Minimum shape:
   "card_type": "FLIGHT_RESULT",
   "title": "机票已发送",
   "body": {
-    "agui": {
-      "tmsErrorCode": "",
-      "errorCode": "0",
-      "errorMsg": "",
-      "enErrorMsg": "",
-      "requestSeqNo": "T260615114050B00000001",
-      "delay": 0,
-      "data": {
-        "recordId": "T260615114050B00000001",
-        "sessionId": "S260615114027B00000001",
-        "role": "assistant",
-        "intent": "BOOKING:DOMESTIC_BOOKING/air_domestic_booking",
-        "sceneId": "DOMESTIC_BOOKING_FLIGHT_LIST",
-        "contentJson": {
-          "schemaVersion": "2",
-          "dataList": [
-            {
-              "basicType": "AIR_DOMESTIC_FLIGHT_LIST",
-              "dataStr": "共查询到133个航班最后筛选出133个",
-              "dataJson": {
-                "serialNumber": "260615114056A00000001",
-                "totalCount": 133,
-                "filteredCount": 133,
-                "flightList": []
-              },
-              "linkUrl": ""
-            }
-          ],
-          "thinkingSteps": ["已按您的行程条件查询航班并整理列表"]
-        },
-        "reason": "已按您的行程条件查询航班并整理列表",
-        "chatTime": "2026-06-15T03:40:57.032094018Z",
-        "correlationId": ""
-      }
+    "contentJson": {
+      "schemaVersion": "2",
+      "dataList": [
+        {
+          "basicType": "AIR_DOMESTIC_FLIGHT_LIST",
+          "dataStr": "共查询到133个航班最后筛选出133个",
+          "dataJson": {
+            "serialNumber": "260615114056A00000001",
+            "totalCount": 133,
+            "filteredCount": 133,
+            "flightList": []
+          },
+          "linkUrl": ""
+        }
+      ],
+      "thinkingSteps": ["已按您的行程条件查询航班并整理列表"]
     }
   }
 }
