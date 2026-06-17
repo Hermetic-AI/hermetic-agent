@@ -25,21 +25,32 @@ class MemoryRepository(Repository[M], Generic[M]):
         self._store: dict[str, M] = {}
 
     async def get_by_id(self, entity_id: str) -> M | None:
-        m = self._store.get(entity_id)
-        if m is None or getattr(m, "is_deleted", False):
-            return None
-        return m
+        # ID 兼容: Tortoise ``UUIDField`` 返回 ``uuid.UUID`` 对象, 但
+        # ``mark_started`` / ``delete_session`` 之类业务方法传进来的是 ``str``.
+        # 把两边都规范成 ``str`` 比较, 跟生产 MySQL 路径 (``CHAR(36)`` 存 str)
+        # 行为一致.
+        target = str(entity_id) if entity_id is not None else entity_id
+        for k, m in self._store.items():
+            if str(k) == target and not getattr(m, "is_deleted", False):
+                return m
+        return None
 
     async def get_by_id_including_deleted(self, entity_id: str) -> M | None:
-        return self._store.get(entity_id)
+        target = str(entity_id) if entity_id is not None else entity_id
+        for k, m in self._store.items():
+            if str(k) == target:
+                return m
+        return None
 
     async def create(self, model: M) -> M:
         # 应用层生成 id; 这里不强校验
         eid = getattr(model, "id", None)
         if not eid:
             raise ValueError("Model must have id")
-        # 用 model.id (str) 当 key, 不用 model (dataclass 不可哈希)
-        self._store[eid] = model
+        # 用 ``str(model.id)`` 当 key, 不用 model 本身 (Tortoise Model 不可哈希).
+        # str() 把 UUID / Session ID (``ses_xxx``) / str-id 全部规范成同一种 key,
+        # 后续 ``get_by_id`` 也能用同一种 key 查回来.
+        self._store[str(eid)] = model
         return model
 
     async def update(self, entity_id: str, **fields: Any) -> M | None:

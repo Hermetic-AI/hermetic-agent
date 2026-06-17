@@ -102,12 +102,21 @@ class MessageService:
                 for p in req.parts
             ]
             await self._part_repo.batch_create(parts)
-        # 累加 session.message_count
+        # 累加 session.message_count (best-effort: session 找不到就跳过,
+        # 不让这个 counter 故障让 message / parts 写入整条挂掉)
         if self._session_service is not None:
-            current = await self._session_service.get_by_id(m.session_id)
-            await self._session_service.set_message_count(
-                m.session_id, current.message_count + 1
-            )
+            try:
+                current = await self._session_service.get_by_id(m.session_id)
+                await self._session_service.set_message_count(
+                    m.session_id, current.message_count + 1
+                )
+            except Exception as e:
+                logger.warning(
+                    "message_count_increment_failed",
+                    session_id=m.session_id,
+                    message_id=str(m.id),
+                    error=str(e),
+                )
         await self._audit.record(
             actor_type="system",
             actor_id=actor_id,

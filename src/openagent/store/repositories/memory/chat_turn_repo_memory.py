@@ -20,12 +20,14 @@ class MemoryChatTurnRepository(MemoryRepository[ChatTurn], ChatTurnRepository):
         include_deleted: bool = False,
         **filters: Any,
     ) -> list[ChatTurn]:
+        # ID 兼容: ``session_id`` 是 FK column, Tortoise 存 UUID 对象; 业务方传 str.
         items = list(self._store.values())
         if not include_deleted:
             items = [s for s in items if not s.is_deleted]
         for k in ("session_id", "status", "agent_name", "model"):
             if k in filters and filters[k] is not None:
-                items = [s for s in items if getattr(s, k) == filters[k]]
+                target = str(filters[k]) if k == "session_id" else filters[k]
+                items = [s for s in items if str(getattr(s, k)) == target]
         items.sort(key=lambda s: (s.created_at, s.id), reverse=True)
         return items[offset : offset + limit]
 
@@ -37,7 +39,8 @@ class MemoryChatTurnRepository(MemoryRepository[ChatTurn], ChatTurnRepository):
             items = [s for s in items if not s.is_deleted]
         for k in ("session_id", "status"):
             if k in filters and filters[k] is not None:
-                items = [s for s in items if getattr(s, k) == filters[k]]
+                target = str(filters[k]) if k == "session_id" else filters[k]
+                items = [s for s in items if str(getattr(s, k)) == target]
         return len(items)
 
     async def list_by_session(

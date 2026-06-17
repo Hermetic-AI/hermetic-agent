@@ -24,7 +24,6 @@ from openagent.providers.llm_payload import (
     log_claude_request,
 )
 from openagent.providers.streaming import StreamEvent
-from openagent.store.base import Message as StorageMessage
 
 try:
     from claude_agent_sdk import (
@@ -255,13 +254,10 @@ async def blocking_chat(
             elif isinstance(event, SDKStreamEvent):
                 pass  # handle sub-events if needed
 
-        await adapter._storage.create_message(StorageMessage(
-            session_id=session_id, role="user", content=last_user_msg,
-        ))
-        if assistant_content:
-            await adapter._storage.create_message(StorageMessage(
-                session_id=session_id, role="assistant", content=assistant_content,
-            ))
+        # P-Feb-2026: user + assistant message 持久化已迁到
+        # ``api.http.controllers.chat_controller`` (走新 ``ServiceContainer``,
+        # 6 实体 + audit_log 完整链路). adapter 这里不再写, 避免双行 + 旧 shim
+        # 不会把 parts 拆表.
 
         logger.info(
             "claude_code_chat_completed",

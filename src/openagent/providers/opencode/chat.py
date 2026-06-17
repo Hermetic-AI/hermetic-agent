@@ -41,7 +41,6 @@ from openagent.providers.streaming import (
     StreamEvent,
     map_opencode_event,
 )
-from openagent.store.base import Message as StorageMessage
 
 try:
     from opencode_ai import AsyncOpencode
@@ -599,6 +598,8 @@ def _resolve_tool_names(adapter: OpenCodeAdapter, tools: Any) -> dict[str, bool]
             names.append(t)
             if t in _FEIHE_TRAVEL_TOOLS:
                 names.append(f"feihe-travel_{t}")
+                names.append(f"feihe-travel__{t}")
+                names.append(f"mcporter_feihe-travel__{t}")
         else:
             name = getattr(t, "name", None)
             if name:
@@ -606,6 +607,8 @@ def _resolve_tool_names(adapter: OpenCodeAdapter, tools: Any) -> dict[str, bool]
                 names.append(name_str)
                 if name_str in _FEIHE_TRAVEL_TOOLS:
                     names.append(f"feihe-travel_{name_str}")
+                    names.append(f"feihe-travel__{name_str}")
+                    names.append(f"mcporter_feihe-travel__{name_str}")
     if not names:
         return None
     # 框架级工具: ask_user (AUIP 卡片). Hub 注册的 synthetic tool,
@@ -929,11 +932,9 @@ async def blocking_chat(
             ))
 
     chat_msg = ChatMessage(role="assistant", content=reply)
-    await adapter._storage.create_message(StorageMessage(
-        session_id=session_id,
-        role="assistant",
-        content=reply,
-    ))
+    # P-Feb-2026: assistant message 持久化已迁到 ``api.http.controllers.chat_controller``
+    # (走新的 ``ServiceContainer``), adapter 这里不再写, 避免双行 + 旧 shim 的 parts
+    # 拆表不丢失字段.
 
     logger.info(
         "opencode_chat_completed",
@@ -1270,18 +1271,6 @@ async def stream_chat(
         yield StreamEvent.error(message=str(e), retry=2000)
         return
 
-    # Persist the final assistant text for history retrieval.
-    if accumulated_text:
-        try:
-            await adapter._storage.create_message(StorageMessage(
-                session_id=session_id,
-                role="assistant",
-                content=accumulated_text,
-            ))
-        except Exception as e:
-            logger.warning(
-                "opencode_stream_persist_failed",
-                session_id=session_id,
-                error=str(e),
-            )
+    # P-Feb-2026: assistant message + parts 持久化已迁到 ``api.http.controllers.chat_controller``
+    # (走新 ``ServiceContainer``: message.create + part.batch_create), adapter 这里不再写.
     logger.info("opencode_stream_completed", session_id=session_id, agent_name=agent_name)

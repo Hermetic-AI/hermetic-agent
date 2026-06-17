@@ -18,12 +18,15 @@ class MemoryMessageRepository(MemoryRepository[Message], MessageRepository):
         include_deleted: bool = False,
         **filters: Any,
     ) -> list[Message]:
+        # ID 兼容: ``session_id`` / ``turn_id`` 是 FK column, Tortoise 存 UUID
+        # 对象; 业务方传 str. 两边 ``str()`` 化对比.
         items = list(self._store.values())
         if not include_deleted:
             items = [s for s in items if not s.is_deleted]
         for k in ("session_id", "turn_id", "role"):
             if k in filters and filters[k] is not None:
-                items = [s for s in items if getattr(s, k) == filters[k]]
+                target = str(filters[k]) if k in ("session_id", "turn_id") else filters[k]
+                items = [s for s in items if str(getattr(s, k)) == target]
         items.sort(key=lambda s: (s.created_at, s.id))
         return items[offset : offset + limit]
 
@@ -35,7 +38,8 @@ class MemoryMessageRepository(MemoryRepository[Message], MessageRepository):
             items = [s for s in items if not s.is_deleted]
         for k in ("session_id", "turn_id", "role"):
             if k in filters and filters[k] is not None:
-                items = [s for s in items if getattr(s, k) == filters[k]]
+                target = str(filters[k]) if k in ("session_id", "turn_id") else filters[k]
+                items = [s for s in items if str(getattr(s, k)) == target]
         return len(items)
 
     async def list_by_session(
