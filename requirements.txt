@@ -12,3 +12,4 @@ asyncmy>=0.2.10
 pymysql>=1.1.0
 tortoise-orm[asyncmy]>=0.21.0
 sanic-ext>=24.0.0
+redis>=5.0.0

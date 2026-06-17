@@ -109,12 +109,16 @@ services:
       - /root/.local:size=100m,mode=0755
       - /root/.npm:size=200m,mode=0755
       - /root/.cache:size=200m,mode=0755
+      - /root/.mcporter:size=50m,mode=0755
     environment:
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
       - OPENAI_BASE_URL=${OPENAI_BASE_URL:-}
       - FLIGHT_API_KEY=${FLIGHT_API_KEY:-}
       - ENABLE_FLIGHT_MCP=${ENABLE_FLIGHT_MCP:-1}
+      - MCPORTER_ENABLED=${MCPORTER_ENABLED:-false}
+      - MCPORTER_CONFIG_PATH=${MCPORTER_CONFIG_PATH:-/opt/sandbox/mcporter.json}
+      - MCPORTER_SERVERS=${MCPORTER_SERVERS:-feihe-travel}
       - WORKSPACE_CWD=${WORKSPACE_PATH:-/work/tenant-A/project-1}
       - OPENCODE_PORT=14096
       - OPENCODE_HOST=0.0.0.0
@@ -122,6 +126,7 @@ services:
     volumes:
       - ${WORKSPACE_PATH:-/work/tenant-A/project-1}:${WORKSPACE_PATH:-/work/tenant-A/project-1}
       - ${SKILLS_SHARED_DIR:-./work/shared/skills}:/work/shared/skills:ro
+      - ./work/mcp/mcporter.json:/opt/sandbox/mcporter.json:ro
       - opencode-1-runtime:/tmp/opencode-sandbox
     networks: [sandbox-net]
     ports:

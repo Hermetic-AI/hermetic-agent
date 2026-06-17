@@ -120,7 +120,26 @@ if [ -s "${CONFIG_PATH}" ] && [ -z "${OPENAI_API_KEY:-}" ] && [ -z "${ANTHROPIC_
     echo "[entrypoint]   opencode will start but every LLM call will return 401"
 fi
 
-# 3.5. 确保 cwd 存在 (bind mount 一定存在, 但防止空目录导致 opencode 启动失败)
+# 3.5. mcporter 初始化: 注册 feihe-travel MCP 服务器 (mcporter call 模式)
+# --transport http: feihe MCP 端点使用 Streamable HTTP (非 SSE)
+# --scope home: 写入 ~/.mcporter/mcporter.json (容器 tmpfs, restart 清空后会重新注册)
+# FLIGHT_API_KEY 由 docker-compose env 注入
+if command -v mcporter &> /dev/null; then
+    echo "[entrypoint] initializing mcporter for feihe-travel (Streamable HTTP transport)"
+    mcporter config add feihe-travel "https://traveldev.feiheair.com/api/mcp" \
+        --header "token=${FLIGHT_API_KEY:-}" \
+        --transport http \
+        --scope home 2>/dev/null || {
+        echo "[entrypoint] WARN: mcporter config add failed; 'mcporter call feihe-travel ...' will not work"
+        echo "[entrypoint]   check FLIGHT_API_KEY and network connectivity to traveldev.feiheair.com"
+    }
+    echo "[entrypoint] mcporter servers registered:"
+    mcporter list 2>&1 | head -5 || true
+else
+    echo "[entrypoint] WARN: mcporter not found in PATH; 'mcporter call' commands will fail"
+fi
+
+# 3.6. 确保 cwd 存在 (bind mount 一定存在, 但防止空目录导致 opencode 启动失败)
 if [ ! -d "${WORKSPACE_CWD}" ]; then
     echo "[entrypoint] ERROR: workspace cwd ${WORKSPACE_CWD} does not exist"
     echo "[entrypoint] check that workspace volume mount is correct"
