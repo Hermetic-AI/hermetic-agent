@@ -20,10 +20,19 @@ P0 重构: 把 SSE 拦截器/翻译/状态机/启发式全部下沉到
 ``openagent.api.http.streaming`` 子包, controller 自身只保留 endpoint
 定义和业务流编排. 同时把模块内部 helper 以同名方式 re-export,
 保留旧 import path 兼容 (tests/test_ask_user_card_intercept.py 等).
+
+P-Feb-2026 改造: chat_controller 在 ``bridge.chat()`` 前后包一层
+ServiceContainer 调用 — 持久化 user message + chat_turn + parts +
+assistant message, 取代之前只在 adapter shim 里写一行 assistant message
+的"半残"持久化. 详见 ``_persist_turn_and_user_msg`` / ``_StreamCollector``
+等私有 helper. SDK adapter 里的 ``adapter._storage.create_message()``
+调用 (opencode/chat.py + claude_code/chat.py 共 4 处) 已被移除, 避免
+双写.
 """
 from __future__ import annotations
 
 import contextlib
+import json
 import os
 import traceback as _tb
 from typing import Any
@@ -55,6 +64,10 @@ from openagent.api.http.streaming import (
 from openagent.api.http.streaming.ask_user import _ask_user_to_card  # noqa: F401 (兼容 re-export)
 from openagent.providers.base import ChatMessage
 from openagent.providers.streaming import StreamEvent
+from openagent.store.dto.chat_turn import CreateChatTurnRequest
+from openagent.store.dto.message import CreateMessageRequest
+from openagent.store.dto.part import BatchCreatePartRequest, CreatePartRequest
+from openagent.store.services import ServiceContainer
 
 logger = structlog.get_logger(__name__)
 
@@ -246,6 +259,388 @@ async def _resolve_or_create_session(
     return session_info.session_id, agent_name, None
 
 
+# ---------------------------------------------------------------------------
+# P-Feb-2026: Persistence helpers (turn + user/assistant messages + parts)
+# ---------------------------------------------------------------------------
+# 设计目标: 把 ``bridge.chat()`` 之前/之后的 user message / chat_turn /
+# assistant message / parts 持久化, 走新 ``ServiceContainer`` 路径 (6 实体
+# + audit_log). 旧 ``MySQLStorage`` shim 里的 ``create_message(assistant)``
+# 已经被从 opencode/chat.py + claude_code/chat.py 移除, controller 是
+# assistant message 的唯一写入点.
+#
+# 失败处理: 全部 best-effort, 失败只 log warning 不影响 chat 响应本身
+# (用户已经发了请求, 让他们拿到 chat 结果比存进 DB 更重要). 失败时
+# turn 标 failed, audit 记录.
+# ---------------------------------------------------------------------------
+
+
+def _get_services(request: Request) -> ServiceContainer | None:
+    """从 ``app.ctx.services`` 取 ServiceContainer. 没初始化 (例如 memory
+    backend 的 unit test) 时返回 None, controller 跳过持久化但不影响 chat."""
+    services = getattr(request.app.ctx, "services", None)
+    _diag(
+        "_get_services",
+        has_services=services is not None,
+        app_ctx_attrs=[k for k in dir(request.app.ctx) if not k.startswith("_")][:10],
+    )
+    return services
+
+
+# P-Feb-2026 诊断: 这俩函数把每一步持久化调用的状态 / 入参 / 异常 trace 全部
+# 打到日志. 上线后保留 — 在排查"为什么 chat_turn / parts 没存"的工单时是救命日志.
+# 命中频率 = 1 次/对话, 不打 info 走 debug 避免污染生产日志.
+def _diag(msg: str, **fields: Any) -> None:
+    logger.debug("persist_diag", step=msg, **fields)
+
+
+def _safe_json_dumps(obj: Any) -> str:
+    """JSON serialize 任意对象, 兜底 ``default=str`` 处理 datetime / UUID /
+    Decimal 等非原生类型. 用于 part.content 字段."""
+    try:
+        return json.dumps(obj, ensure_ascii=False, default=str)
+    except Exception:
+        return str(obj)
+
+
+class _StreamCollector:
+    """把 ``StreamEvent`` 流缓冲成 ``(text_content, parts)`` 双元组.
+
+    业务流: chat 跑出来的 ``StreamEvent`` 在 ``chat_stream()`` 里被 ``resp.write``
+    转发给前端, 同时被 ``consume()`` 吃进 collector. 流结束后
+    ``to_part_requests()`` 一次性 dump 给 ``MessageService.create`` + 
+    ``PartService.batch_create``.
+
+    关键不变量:
+    - ``text`` = 所有 ``text`` 事件的 content 串接 (顺序保持)
+    - ``reasoning`` = 所有 ``reasoning`` 事件的 content 串接
+    - ``tool_calls`` = ``[tool_use → tool_result]`` 配对列表, LIFO 匹配
+      (opencode 是先 emit tool_use 再 emit tool_result)
+    """
+
+    def __init__(self) -> None:
+        self.text_chunks: list[str] = []
+        self.reasoning_chunks: list[str] = []
+        self.tool_calls: list[dict[str, Any]] = []
+        self._pending_tool_use: dict[str, Any] | None = None
+
+    def consume(self, event: StreamEvent) -> None:
+        et = event.type
+        data = event.data or {}
+        if et == "text":
+            self.text_chunks.append(str(data.get("content", "") or ""))
+        elif et == "reasoning":
+            self.reasoning_chunks.append(str(data.get("content", "") or ""))
+        elif et == "tool_use":
+            # 新一轮 tool_use, 暂存等 tool_result
+            self._pending_tool_use = {
+                "name": str(data.get("tool_name", "") or ""),
+                "input": data.get("input"),
+                "output": None,
+            }
+        elif et == "tool_result":
+            payload = {
+                "name": str(data.get("tool_name", "") or ""),
+                "input": None,
+                "output": data.get("output"),
+            }
+            if self._pending_tool_use is not None:
+                # 配对到上一个 tool_use
+                self._pending_tool_use["output"] = data.get("output")
+                self.tool_calls.append(self._pending_tool_use)
+                self._pending_tool_use = None
+            else:
+                # 没有前置 tool_use (少见, 但 opencode 偶尔会单独 emit)
+                self.tool_calls.append(payload)
+
+    @property
+    def text(self) -> str:
+        return "".join(self.text_chunks)
+
+    @property
+    def reasoning(self) -> str:
+        return "".join(self.reasoning_chunks)
+
+    def has_parts(self) -> bool:
+        return bool(self.tool_calls) or bool(self.reasoning_chunks) or bool(self.text_chunks)
+
+    def to_part_requests(
+        self, message_id: str, session_id: str,
+    ) -> list[CreatePartRequest]:
+        """把收集到的事件转成 ``CreatePartRequest`` 列表 (按 position 排序).
+        
+        输出顺序: reasoning → text → tool_call → tool_result (每对配对).
+        ``message_id`` 由 controller 在 message.create 之后回填.
+        """
+        parts: list[CreatePartRequest] = []
+        position = 0
+        if self.reasoning_chunks:
+            parts.append(
+                CreatePartRequest(
+                    message_id=message_id,
+                    session_id=session_id,
+                    part_type="text",
+                    content=self.reasoning,
+                    position=position,
+                    metadata={"role": "reasoning"},
+                )
+            )
+            position += 1
+        if self.text_chunks:
+            parts.append(
+                CreatePartRequest(
+                    message_id=message_id,
+                    session_id=session_id,
+                    part_type="text",
+                    content=self.text,
+                    position=position,
+                )
+            )
+            position += 1
+        for tc in self.tool_calls:
+            name = tc.get("name", "") or ""
+            parts.append(
+                CreatePartRequest(
+                    message_id=message_id,
+                    session_id=session_id,
+                    part_type="tool_call",
+                    content=_safe_json_dumps(tc.get("input") or {}),
+                    position=position,
+                    metadata={"tool_name": name},
+                )
+            )
+            position += 1
+            if tc.get("output") is not None:
+                parts.append(
+                    CreatePartRequest(
+                        message_id=message_id,
+                        session_id=session_id,
+                        part_type="tool_result",
+                        content=_safe_json_dumps(tc["output"]),
+                        position=position,
+                        metadata={"tool_name": name},
+                    )
+                )
+                position += 1
+        return parts
+
+
+async def _persist_turn_and_user_msg(
+    services: ServiceContainer,
+    session_id: str,
+    user_text: str,
+    *,
+    agent_name: str | None = None,
+    model: str | None = None,
+    actor_id: str | None = None,
+) -> tuple[str, str] | None:
+    """创建 chat_turn (pending→running) + user message. 返回 (turn_id, user_msg_id).
+
+    失败返回 None 并 log warning, controller 会让 chat 继续 (best-effort).
+    """
+    _diag("enter_turn_user_msg", session_id=session_id, user_text_len=len(user_text or ""))
+    try:
+        turn = await services.chat_turn.create(
+            CreateChatTurnRequest(
+                session_id=session_id,
+                agent_name=agent_name,
+                model=model,
+            ),
+            actor_id=actor_id,
+        )
+        _diag("turn_created", turn_id=str(turn.id), status=getattr(turn, "status", None))
+        await services.chat_turn.start(str(turn.id))
+        _diag("turn_started", turn_id=str(turn.id))
+        user_msg = await services.message.create(
+            CreateMessageRequest(
+                session_id=session_id,
+                turn_id=str(turn.id),
+                role="user",
+                content=user_text,
+            ),
+            actor_id=actor_id,
+        )
+        _diag(
+            "user_msg_created",
+            user_msg_id=str(user_msg.id),
+            session_msg_count=getattr(user_msg, "session_id", None),
+        )
+        return (str(turn.id), str(user_msg.id))
+    except Exception as e:
+        logger.warning(
+            "persist_turn_user_msg_failed",
+            session_id=session_id,
+            user_text_len=len(user_text or ""),
+            agent_name=agent_name,
+            model=model,
+            error_type=type(e).__name__,
+            error=str(e),
+            exc_info=_tb.format_exc(),
+        )
+        return None
+
+
+async def _persist_assistant_message_sync(
+    services: ServiceContainer,
+    session_id: str,
+    turn_id: str | None,
+    reply_text: str,
+    tool_calls: list,
+    *,
+    actor_id: str | None = None,
+) -> str | None:
+    """同步 ``/chat`` 端点: 持久化 assistant message + tool_calls 转 parts.
+    
+    ``tool_calls`` 来自 ``ChatResult.tool_calls`` (list[ToolCall]). 同步路径下
+    opencode 不会走完整 tool_use/tool_result 流, 只把 tool_call 列表塞
+    进 ChatResult. 这里把每个 ToolCall 展开成一个 ``tool_call`` part.
+    """
+    try:
+        asst = await services.message.create(
+            CreateMessageRequest(
+                session_id=session_id,
+                turn_id=turn_id,
+                role="assistant",
+                content=reply_text or "",
+            ),
+            actor_id=actor_id,
+        )
+        if tool_calls:
+            parts: list[CreatePartRequest] = []
+            for i, tc in enumerate(tool_calls):
+                tc_name = getattr(tc, "name", "") or ""
+                tc_input = getattr(tc, "input", None) or {}
+                tc_id = getattr(tc, "id", "") or ""
+                parts.append(
+                    CreatePartRequest(
+                        message_id=str(asst.id),
+                        session_id=session_id,
+                        part_type="tool_call",
+                        content=_safe_json_dumps(tc_input),
+                        position=i,
+                        metadata={"tool_name": tc_name, "tool_id": tc_id},
+                    )
+                )
+            if parts:
+                await services.part.batch_create(
+                    BatchCreatePartRequest(
+                        message_id=str(asst.id),
+                        session_id=session_id,
+                        parts=parts,
+                    ),
+                    actor_id=actor_id,
+                )
+        return str(asst.id)
+    except Exception as e:
+        logger.warning(
+            "persist_assistant_msg_sync_failed",
+            session_id=session_id,
+            error=str(e),
+            exc_info=_tb.format_exc(),
+        )
+        return None
+
+
+async def _persist_stream_assistant_message(
+    services: ServiceContainer,
+    session_id: str,
+    turn_id: str | None,
+    collector: _StreamCollector,
+    *,
+    actor_id: str | None = None,
+) -> str | None:
+    """流式 ``/chat/stream`` 端点: 把 ``_StreamCollector`` dump 给 service.
+
+    顺序: 先 ``message.create`` 拿到 message_id, 再 ``part.batch_create`` 把
+    collector 里的 part 一次性插进去. ``message_count`` 由 message_service
+    自动 +1.
+    """
+    _diag(
+        "enter_stream_assistant",
+        turn_id=turn_id,
+        text_len=len(collector.text or ""),
+        text_chunks=len(collector.text_chunks),
+        reasoning_chunks=len(collector.reasoning_chunks),
+        tool_calls=len(collector.tool_calls),
+        has_parts=collector.has_parts(),
+    )
+    try:
+        asst = await services.message.create(
+            CreateMessageRequest(
+                session_id=session_id,
+                turn_id=turn_id,
+                role="assistant",
+                content=collector.text,
+            ),
+            actor_id=actor_id,
+        )
+        _diag("asst_msg_created", asst_msg_id=str(asst.id))
+        if collector.has_parts():
+            part_reqs = collector.to_part_requests(str(asst.id), session_id)
+            _diag("creating_parts", part_count=len(part_reqs))
+            await services.part.batch_create(
+                BatchCreatePartRequest(
+                    message_id=str(asst.id),
+                    session_id=session_id,
+                    parts=part_reqs,
+                ),
+                actor_id=actor_id,
+            )
+            _diag("parts_created", part_count=len(part_reqs))
+        return str(asst.id)
+    except Exception as e:
+        logger.warning(
+            "persist_stream_assistant_msg_failed",
+            session_id=session_id,
+            turn_id=turn_id,
+            error_type=type(e).__name__,
+            error=str(e),
+            exc_info=_tb.format_exc(),
+        )
+        return None
+
+
+async def _complete_turn(
+    services: ServiceContainer,
+    turn_id: str,
+    *,
+    cost: float = 0,
+    tokens_input: int = 0,
+    tokens_output: int = 0,
+    tokens_reasoning: int = 0,
+    tokens_cache_read: int = 0,
+    tokens_cache_write: int = 0,
+) -> None:
+    """标 turn 完成, 累加 session 聚合. cost / tokens 暂时传 0 —
+    opencode SDK 当前未把 usage 回给上层, 等以后 opencode 加 ``usage`` 事件
+    再 wiring."""
+    try:
+        await services.chat_turn.complete(
+            turn_id,
+            cost=cost,
+            tokens_input=tokens_input,
+            tokens_output=tokens_output,
+            tokens_reasoning=tokens_reasoning,
+            tokens_cache_read=tokens_cache_read,
+            tokens_cache_write=tokens_cache_write,
+        )
+    except Exception as e:
+        logger.warning("complete_turn_failed", turn_id=turn_id, error=str(e))
+
+
+async def _fail_turn(
+    services: ServiceContainer,
+    turn_id: str,
+    error_code: str,
+    error_message: str,
+) -> None:
+    try:
+        await services.chat_turn.fail(
+            turn_id, error_code=error_code, error_message=error_message,
+        )
+    except Exception as e:
+        logger.warning("fail_turn_failed", turn_id=turn_id, error=str(e))
+
+
 def _build_chat_response(
     result,
     agent_name: str,
@@ -352,6 +747,25 @@ async def chat(request: Request) -> JSONResponse:
         if err is not None:
             return JSONResponse(ErrorResponse(error=err).model_dump(), status=400)
 
+        # P-Feb-2026: 持久化 turn + user message, 拿到 turn_id 后面 complete/fail 用
+        services = _get_services(request)
+        if services is None:
+            logger.warning(
+                "services_missing",
+                session_id=session_id,
+                note="app.ctx.services not set; chat_turn/parts persistence skipped",
+            )
+        turn_info = None
+        if services is not None:
+            turn_info = await _persist_turn_and_user_msg(
+                services,
+                session_id=session_id,
+                user_text=json_body.message,
+                agent_name=agent_name,
+                model=json_body.model or model_hint,
+                actor_id=None,
+            )
+
         result = await bridge.chat(
             session_id=session_id,
             messages=[ChatMessage(role="user", content=json_body.message)],
@@ -362,6 +776,31 @@ async def chat(request: Request) -> JSONResponse:
             timeout=json_body.timeout,
             mcp_token=_extract_effective_mcp_token(request),
         )
+
+        # P-Feb-2026: 持久化 assistant message + tool_calls, 然后 complete turn
+        if services is not None and turn_info is not None:
+            turn_id, _user_msg_id = turn_info
+            asst_msg_id = await _persist_assistant_message_sync(
+                services,
+                session_id=session_id,
+                turn_id=turn_id,
+                reply_text=result.message.content if result.message else "",
+                tool_calls=result.tool_calls or [],
+                actor_id=None,
+            )
+            if asst_msg_id is not None and result.success:
+                await _complete_turn(services, turn_id)
+            elif asst_msg_id is None:
+                await _fail_turn(
+                    services, turn_id, "PERSIST_FAILED", "assistant message persist failed",
+                )
+            else:
+                await _fail_turn(
+                    services, turn_id,
+                    error_code=result.error or "CHAT_FAILED",
+                    error_message=(result.error or "chat returned success=False")[:500],
+                )
+
         logger.info(
             "chat_completed",
             scenario=scenario.name if scenario else None,
@@ -379,6 +818,15 @@ async def chat(request: Request) -> JSONResponse:
             ).model_dump()
         )
     except Exception as e:
+        # P-Feb-2026: 异常路径标 turn failed
+        services = _get_services(request)
+        if services is not None and turn_info is not None:
+            turn_id, _ = turn_info
+            await _fail_turn(
+                services, turn_id,
+                error_code=type(e).__name__,
+                error_message=str(e)[:500],
+            )
         return _format_500(e, "chat_failed")
 
 
@@ -493,6 +941,11 @@ async def chat_stream(request: Request) -> ResponseStream:
         # P0-#3: 单一 done 哨兵 — 全程只写一次 done, 避免前端 EventSource
         # 收到多个 done 触发 reconnect 风暴.
         gate = DoneGate()
+        # P-Feb-2026: turn 持久化追踪. None 表示没初始化 (memory backend
+        # 或 services 没挂上), 控制器仍然正常流 chat, 只是不写 DB.
+        services = _get_services(request)
+        turn_info: tuple[str, str] | None = None
+        collector: _StreamCollector | None = None
         try:
             session_id, agent_name, err = await _resolve_or_create_session(
                 bridge,
@@ -506,6 +959,25 @@ async def chat_stream(request: Request) -> ResponseStream:
                 )
                 await gate.write_done_if_pending(resp)
                 return
+
+            # P-Feb-2026: 持久化 turn + user message (流开始前)
+            if services is not None:
+                turn_info = await _persist_turn_and_user_msg(
+                    services,
+                    session_id=session_id,
+                    user_text=json_body.message,
+                    agent_name=agent_name,
+                    model=json_body.model or model_hint,
+                    actor_id=None,
+                )
+                if turn_info is not None:
+                    collector = _StreamCollector()
+            else:
+                logger.warning(
+                    "services_missing",
+                    session_id=session_id,
+                    note="app.ctx.services not set; chat_turn/parts persistence skipped",
+                )
 
             # 1. Emit scenario event at the start
             await resp.write(
@@ -598,6 +1070,9 @@ async def chat_stream(request: Request) -> ResponseStream:
                     else:
                         if _should_skip_bridge_event(chunk, session_id):
                             continue
+                        # P-Feb-2026: 同步收集事件用于流后持久化
+                        if collector is not None:
+                            collector.consume(chunk)
                         if chunk.type == "done":
                             await gate.write_done(resp, chunk)
                         else:
@@ -615,6 +1090,20 @@ async def chat_stream(request: Request) -> ResponseStream:
                 with contextlib.suppress(Exception):
                     await iterator.aclose()
                 raise
+
+            # P-Feb-2026: 流结束 → 持久化 assistant message + parts, 然后 complete turn
+            if services is not None and turn_info is not None and collector is not None:
+                turn_id, _ = turn_info
+                asst_msg_id = await _persist_stream_assistant_message(
+                    services, session_id, turn_id, collector, actor_id=None,
+                )
+                if asst_msg_id is not None:
+                    await _complete_turn(services, turn_id)
+                else:
+                    await _fail_turn(
+                        services, turn_id, "PERSIST_FAILED", "assistant stream persist failed",
+                    )
+
             # 兜底: 流自然结束但还没写过 done, 写一次
             await gate.write_done_if_pending(resp)
             logger.info(
@@ -625,6 +1114,14 @@ async def chat_stream(request: Request) -> ResponseStream:
             )
         except Exception as e:
             logger.error("chat_stream_failed", error=str(e), exc_info=_tb.format_exc())
+            # P-Feb-2026: 异常路径标 turn failed
+            if services is not None and turn_info is not None:
+                turn_id, _ = turn_info
+                await _fail_turn(
+                    services, turn_id,
+                    error_code=type(e).__name__,
+                    error_message=str(e)[:500],
+                )
             # 错误透传: 把异常以 SSE error 事件发前端, 让前端能展示
             # 可读错误并触发 EventSource 重连 (带 retry 提示).
             with contextlib.suppress(Exception):
