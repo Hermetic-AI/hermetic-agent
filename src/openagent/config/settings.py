@@ -59,7 +59,7 @@ class Settings(BaseSettings):
     """
 
     model_config = SettingsConfigDict(
-        env_prefix="AGENT_SCHEDULER_",
+        # env_prefix="AGENT_SCHEDULER_",
         env_file=".env",
         env_file_encoding="utf-8",
         case_sensitive=False,
@@ -198,6 +198,74 @@ class Settings(BaseSettings):
             "是否把每次发往下层 LLM SDK 的完整请求体 (session/model/parts/system/tools) "
             "以 llm_request 事件写入日志. 关闭时 hot path 不会构造任何字符串."
         ),
+    )
+
+    # ---- 3a. 外部日志采集平台 (仿照 fh-ai app/commons/log) ----
+    # DTO 字段 + 接入指南见 ``docs/design/外部日志采集平台接入指南.md``.
+    # 默认全关 (use_redis_log=false), 生产打开走 Redis 列表通道.
+    log_use_redis_log: bool = Field(
+        default=False,
+        description=(
+            "是否启用 Redis 列表通道 (模式 A, 推荐). 关闭时走 Python 文件 "
+            "(模式 B, Filebeat/Logkit 采集). 详见接入指南 §5."
+        ),
+    )
+    log_queue_name: str = Field(
+        default="openagent",
+        description=(
+            "Redis List 名 (不含 log: 前缀), 平台订阅 ``log:{queueName}``."
+        ),
+    )
+    log_max_queue_size: int = Field(
+        default=100_000,
+        description="Redis List 满后丢弃本批 (沿用 fh-ai 行为, 不阻塞主流程).",
+    )
+    log_file_path: str | None = Field(
+        default=None,
+        description=(
+            "use_redis_log=false 时的文件路径. 留空 = 关闭 (facade 仍写内存队列, "
+            "但不落盘). 建议配 /var/log/openagent/platform.log (容器 ro 模式下 "
+            "需要 bind mount / 改 read_only=false)."
+        ),
+    )
+    log_tee_to_stdout: bool = Field(
+        default=False,
+        description=(
+            "把平台日志 (BusiLog/RequestLog) 也打到 stdout (跟 structlog 输出并存), "
+            "加 ``[platform-log]`` 前缀方便 grep. 默认关 — 生产打开会双发日志, "
+            "只在本地 dev / 调试时开. 跟 ``log_use_redis_log`` / ``log_file_path`` 独立."
+        ),
+    )
+    log_system_type: str = Field(
+        default="openagent",
+        description=(
+            "拼接 ``type`` 字段后缀, 例 openagent → ``BUSI_LOG_OPENAGENT``. "
+            "生产可改 ``openagent_prod`` 跟测试分流."
+        ),
+    )
+    log_redis_poll_interval: float = Field(
+        default=0.5,
+        description="RedisWriteTask 轮询间隔 (秒). 跟 fh-ai 一致 0.5s.",
+    )
+    log_redis_host: str = Field(
+        default="127.0.0.1",
+        description="外部日志采集平台 Redis host.",
+    )
+    log_redis_port: int = Field(
+        default=6379,
+        description="外部日志采集平台 Redis port.",
+    )
+    log_redis_password: str | None = Field(
+        default=None,
+        description="外部日志采集平台 Redis 密码 (None=无密码).",
+    )
+    log_redis_database: int = Field(
+        default=15,
+        description="外部日志采集平台 Redis DB index (0-15).",
+    )
+    log_redis_timeout: float = Field(
+        default=5.0,
+        description="外部日志采集平台 Redis socket 超时 (秒).",
     )
 
     # =========================================================================

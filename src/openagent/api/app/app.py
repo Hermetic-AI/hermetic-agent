@@ -178,6 +178,21 @@ def create_app(settings: Settings | None = None) -> Sanic:
 
     app.register_middleware(ScenarioMiddleware(app), "request")
 
+    # 平台日志 LogMiddleware (仿照 fh-ai logMiddleware). 跟 ScenarioMiddleware
+    # 一样必须在 finalize_middleware 之前注册. RequestLogger 单例早期
+    # init (startup 之前) — ObjectLogWriter 由 lifecycle.startup 里的
+    # setup_log_platform 创建, middleware 调 write_start 时 writer 还没
+    # 初始化也没事, facade 自动 no-op.
+    from openagent.audit.log.log_middleware import LogMiddleware
+    from openagent.audit.log.request_logger import init_request_logger
+
+    init_request_logger(settings.log_system_type)
+    from openagent.audit.log.request_logger import get_request_logger
+
+    log_mw = LogMiddleware(get_request_logger())
+    app.register_middleware(log_mw, "request")
+    app.register_middleware(log_mw, "response")
+
     @app.get("/health")
     @doc_summary("健康检查")
     @doc_description("用于负载均衡 / 探针，返回 200 表示进程存活。")

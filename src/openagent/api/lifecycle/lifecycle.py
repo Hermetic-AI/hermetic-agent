@@ -355,12 +355,48 @@ async def startup(app: Sanic, settings: Any) -> None:
     app.ctx.settings = settings  # P6: 让 controller 能取到 settings
     app.ctx.prompt_builder = prompt_builder  # P0-1: 渐进式 SKILL 加载
 
+    # P-Feb-2026: 挂上新的 ServiceContainer, 让 controller 用它持久化
+    # user message / chat_turn / parts / assistant message. 旧 ``storage`` shim
+    # 只写 sessions + assistant message, 新 container 写完整 6 实体 + audit_log.
+    from openagent.store.services.container import build_container_from_settings
+    try:
+        services = await build_container_from_settings(settings)
+        app.ctx.services = services
+        logger.info(
+            "service_container_ready",
+            backend=settings.storage_backend,
+            backends={
+                "session": type(services.session._repo).__name__,
+                "message": type(services.message._repo).__name__,
+                "part": type(services.part._repo).__name__,
+                "chat_turn": type(services.chat_turn._repo).__name__,
+                "audit_log": type(services.audit_log._repo).__name__,
+            },
+        )
+    except Exception as e:
+        logger.error(
+            "service_container_init_failed",
+            backend=settings.storage_backend,
+            error_type=type(e).__name__,
+            error=str(e),
+            exc_info=_tb.format_exc(),
+        )
+        # 不 raise — 旧 ``MySQLStorage`` shim 仍可用, controller 优雅降级
+        # (chat 仍可走, 只是 user message / chat_turn / parts 不存)
+        app.ctx.services = None
+
     # P6: 初始化 Scenario 子系统 (registry / router / injector / middleware)
     from openagent.api.lifecycle.scenario_lifecycle import init_scenarios
     await init_scenarios(app, settings)
 
     # F4: 初始化 Turn 子系统 (HITL 挂起 / 恢复 / 事件持久化)
     _init_turn_subsystem(app, settings)
+
+    # 平台日志 (仿照 fh-ai app/commons/log) — 在最后调, 失败快速失败
+    from openagent.audit.log.setup import setup_log_platform
+
+    await setup_log_platform(settings)
+    logger.info("log_platform_ready")
 
     logger.info(
         "application_ready",
@@ -377,6 +413,12 @@ async def shutdown(app: Sanic) -> None:
         app: 当前 Sanic 应用。
     """
     logger.info("application_shutdown")
+    from openagent.audit.log.setup import shutdown_log_platform
+
+    try:
+        await shutdown_log_platform()
+    except Exception as e:
+        logger.error("log_platform_shutdown_failed", error=str(e))
     storage = getattr(app.ctx, "storage", None)
     if storage is not None:
         try:

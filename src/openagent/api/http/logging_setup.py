@@ -159,8 +159,18 @@ def configure_logging(settings: Settings) -> None:
     else:
         renderer = build_console_renderer()
 
+    # 平台日志: 把 structlog event 自动转 BusiLog 推到 ObjectLogWriter.
+    # 必须在 renderer 之前 (renderer 把 event_dict 序列化成 str, 后面就拿不到字段了).
+    # IS_LOG=False 时 (中间件没开) 是 no-op, 不影响主流程.
+    # 懒加载避免循环 import (structlog_processor 又依赖 busi_logger).
+    from openagent.audit.log.structlog_processor import platform_log_processor
+
     structlog.configure(
-        processors=[*shared_processors, renderer],
+        processors=[
+            *shared_processors,
+            platform_log_processor,
+            renderer,
+        ],
         wrapper_class=structlog.stdlib.BoundLogger,
         context_class=dict,
         logger_factory=structlog.stdlib.LoggerFactory(),
