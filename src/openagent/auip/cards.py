@@ -43,6 +43,9 @@ class CardType(str, Enum):
     ORDER_CONFIRM = "ORDER_CONFIRM"
     ORDER_SUCCESS = "ORDER_SUCCESS"
     CANNOT_ORDER = "CANNOT_ORDER"
+    PRICE_LIST = "PRICE_LIST"
+    RULE_DETAIL = "RULE_DETAIL"
+    PRICING_VERIFY = "PRICING_VERIFY"
     # P7: opencode 原生 question / todo 卡片 (透传用)
     QUESTION = "QUESTION"
     TODO_LIST = "TODO_LIST"
