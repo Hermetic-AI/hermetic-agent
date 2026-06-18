@@ -58,7 +58,11 @@ async def test_health_path_skipped():
     _, response = await app.asgi_client.get("/health")
     assert response.status_code == 200
     items = ObjectLogWriter.get_instance().drain()
-    assert items == [], f"健康检查不该发 RequestLog, 实际: {items}"
+    request_logs = [
+        x for x in items
+        if '"type": "REQUEST_LOG_' in x or '"type":"REQUEST_LOG_' in x
+    ]
+    assert request_logs == [], f"健康检查不该发 RequestLog, 实际: {request_logs}"
 
 
 @pytest.mark.asyncio
@@ -75,8 +79,12 @@ async def test_normal_path_emits_start_and_end():
     _, response = await app.asgi_client.get("/_test_normal")
     assert response.status_code == 200
     items = ObjectLogWriter.get_instance().drain()
-    assert len(items) == 2
-    start, end = (json.loads(x) for x in items)
+    request_logs = [
+        x for x in items
+        if '"type": "REQUEST_LOG_' in x or '"type":"REQUEST_LOG_' in x
+    ]
+    assert len(request_logs) == 2
+    start, end = (json.loads(x) for x in request_logs)
     assert start["type"] == "REQUEST_LOG_OPENAGENT_TEST"
     assert start["delay"] == -1
     assert end["delay"] >= 0
@@ -100,8 +108,12 @@ async def test_x_request_id_header_passthrough():
     )
     assert response.status_code == 200
     items = ObjectLogWriter.get_instance().drain()
-    assert items, "应有 RequestLog"
-    start = json.loads(items[0])
+    request_logs = [
+        x for x in items
+        if '"type": "REQUEST_LOG_' in x or '"type":"REQUEST_LOG_' in x
+    ]
+    assert request_logs, "应有 RequestLog"
+    start = json.loads(request_logs[0])
     assert start["reqSeqNo"] == custom_id
 
 
@@ -120,6 +132,10 @@ async def test_4xx_response_result_error():
     _, response = await app.asgi_client.get("/_test_4xx")
     assert response.status_code == 404
     items = ObjectLogWriter.get_instance().drain()
-    end = json.loads(items[-1])
+    request_logs = [
+        x for x in items
+        if '"type": "REQUEST_LOG_' in x or '"type":"REQUEST_LOG_' in x
+    ]
+    end = json.loads(request_logs[-1])
     assert end["result"] == "ERROR"
     assert "404" in end["errorMessage"]

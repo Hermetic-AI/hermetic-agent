@@ -40,14 +40,14 @@ def test_init_instance_id_explicit():
 
 
 def test_init_instance_id_env(monkeypatch):
-    monkeypatch.setenv("AGENT_SCHEDULER_LOG_INSTANCE_ID", "env-B")
+    monkeypatch.setenv("LOG_INSTANCE_ID", "env-B")
     assert init_instance_id() == "env-B"
     assert get_instance_id() == "env-B"
 
 
 def test_init_instance_id_auto():
-    if os.environ.get("AGENT_SCHEDULER_LOG_INSTANCE_ID"):
-        del os.environ["AGENT_SCHEDULER_LOG_INSTANCE_ID"]
+    if os.environ.get("LOG_INSTANCE_ID"):
+        del os.environ["LOG_INSTANCE_ID"]
     reset_for_test()
     iid = init_instance_id()
     assert iid

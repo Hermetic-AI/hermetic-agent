@@ -16,9 +16,9 @@ from openagent.auip.errors import CardSchemaInvalid
 
 
 def test_card_type_enum_values_unique() -> None:
-    """CardType 14 个值互不重复 (P7 新增 QUESTION + TODO_LIST)."""
-    assert len(CardType) == 14
-    assert len(CARD_TYPES_SET) == 14
+    """CardType 17 个值互不重复 (国际机票新增 PRICE_LIST / RULE_DETAIL / PRICING_VERIFY)."""
+    assert len(CardType) == 17
+    assert len(CARD_TYPES_SET) == 17
 
 
 def test_card_type_includes_required_business_cards() -> None:
@@ -27,6 +27,7 @@ def test_card_type_includes_required_business_cards() -> None:
         "CHAT_FALLBACK", "OD_INPUT", "FLIGHT_RESULT", "FLIGHT_LIST", "CABIN_LIST",
         "PASSENGER_FORM", "OAT_BINDING", "PRICE_VERIFY", "POLICY_DECISION",
         "ORDER_CONFIRM", "ORDER_SUCCESS", "CANNOT_ORDER",
+        "PRICE_LIST", "RULE_DETAIL", "PRICING_VERIFY",
         # P7
         "QUESTION", "TODO_LIST",
     ):

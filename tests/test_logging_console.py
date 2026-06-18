@@ -83,7 +83,7 @@ def test_console_mode_renders_with_rich_theme() -> None:
 
 
 def test_console_mode_filters_redundant_keys() -> None:
-    """``logger`` / ``timestamp`` (ISO 字符串) 不应出现在输出里, 避免重复."""
+    """``logger`` 不应出现在输出里, 避免重复. timestamp 保留用于完整时间戳."""
     configure_logging(Settings(log_format="console", log_level="INFO"))
     buf = _capture_stdlib_root()
     log = structlog.get_logger("openagent.something.deep")
@@ -94,8 +94,10 @@ def test_console_mode_filters_redundant_keys() -> None:
     assert "openagent.something.deep" not in out, (
         f"logger 字段应被 _drop_redundant_keys 过滤: {out!r}"
     )
-    # ISO 时间戳带 'T' 分隔符, 我们改用 HH:MM:SS, 不该再出现
-    assert "T" not in out.split("ready")[0] if "ready" in out else True
+    # 现在输出完整时间戳 (YYYY-MM-DD HH:MM:SS.mmm), 验证格式正确
+    assert "2026-" in out or "2025-" in out or "2027-" in out, (
+        f"应包含完整日期时间: {out!r}"
+    )
 
 
 def test_json_mode_emits_valid_json() -> None:
@@ -113,8 +115,8 @@ def test_json_mode_emits_valid_json() -> None:
     assert obj["level"] == "info"
 
 
-def test_drop_redundant_keys_removes_logger_and_timestamp() -> None:
-    """单测过滤器: 直接给 event_dict, 验证剔除。"""
+def test_drop_redundant_keys_removes_logger() -> None:
+    """单测过滤器: 直接给 event_dict, 验证剔除 logger (timestamp 保留用于完整时间戳)."""
     out = _drop_redundant_keys(None, "info", {
         "event": "x",
         "level": "info",
@@ -123,7 +125,7 @@ def test_drop_redundant_keys_removes_logger_and_timestamp() -> None:
         "keep": 1,
     })
     assert "logger" not in out
-    assert "timestamp" not in out
+    assert "timestamp" in out  # 保留用于完整时间戳输出
     assert out["event"] == "x"
     assert out["keep"] == 1
 
