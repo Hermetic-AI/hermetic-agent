@@ -31,6 +31,7 @@ from openagent.audit.log.log_context import (
     get_request_id,
     get_request_time,
 )
+from openagent.audit.log.log_markers import LM
 from openagent.audit.log.log_middleware import LogMiddleware
 from openagent.audit.log.object_log_writer import (
     ObjectLogWriter,
@@ -43,6 +44,7 @@ from openagent.audit.log.sys_logger import SysLogger, get_sys_logger
 __all__ = [
     "BusiLog",
     "BusiLogger",
+    "LM",
     "LogContext",
     "LogMiddleware",
     "LogType",

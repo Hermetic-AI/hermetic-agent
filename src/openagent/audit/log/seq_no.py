@@ -27,7 +27,7 @@ def init_instance_id(env_override: str | None = None) -> str:
     """初始化 ``INSTANCE_ID``. 优先级:
 
     1. ``env_override`` 显式传
-    2. ``AGENT_SCHEDULER_LOG_INSTANCE_ID`` 环境变量
+    2. ``LOG_INSTANCE_ID`` 环境变量
     3. ``socket.gethostname()`` 截断 + md5 截断 + 启动时间戳
     """
     global _INSTANCE_ID
@@ -37,7 +37,7 @@ def init_instance_id(env_override: str | None = None) -> str:
         if env_override:
             _INSTANCE_ID = env_override
             return _INSTANCE_ID
-        env_id = os.environ.get("AGENT_SCHEDULER_LOG_INSTANCE_ID", "").strip()
+        env_id = os.environ.get("LOG_INSTANCE_ID", "").strip()
         if env_id:
             _INSTANCE_ID = env_id
             return _INSTANCE_ID
