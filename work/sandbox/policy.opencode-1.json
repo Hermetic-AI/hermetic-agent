@@ -4,8 +4,8 @@
   "scenario": "_default",
   "agent": {
     "name": "opencode",
-    "model": "MiniMax-M2.7-highspeed",
-    "small_model": "MiniMax-M2.7-highspeed"
+    "model": "qwen3.7-max",
+    "small_model": "qwen3.6-flash"
   },
   "skills": [],
   "workspace_mode": "direct",

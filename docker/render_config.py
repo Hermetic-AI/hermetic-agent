@@ -61,16 +61,19 @@ _TOOL_PERMISSIONS = {
         "task": "deny",
         "todowrite": "deny",
         "webfetch": "deny",
+        "external_directory": {"*": "ask", "/work/shared/skills/**": "allow"},
     },
     "standard": {
         "edit": "allow",
-        "bash": "ask",
+        "bash": {"*": "ask", "curl *": "deny", "wget *": "deny"},
         "webfetch": "ask",
+        "external_directory": {"*": "ask", "/work/shared/skills/**": "allow"},
     },
     "full": {
         "edit": "allow",
-        "bash": "allow",
+        "bash": {"*": "allow", "curl *": "deny", "wget *": "deny"},
         "webfetch": "allow",
+        "external_directory": {"*": "ask", "/work/shared/skills/**": "allow"},
     },
 }
 
@@ -337,10 +340,12 @@ def render(policy: dict) -> dict:
 
     if model_string:
         provider, model_id = _resolve_provider(model_string)
-        # opencode 1.16+ 解析 model 字段为 ``provider/modelID`` 格式 (slash 分隔).
-        # 拆出来: provider = "openai", modelID = "MiniMax-M2.7-highspeed".
-        # opencode 自己负责去 prefix, 把 modelID 单独发给 OPENAI_BASE_URL 上游.
-        cfg["model"] = model_string
+        # opencode 1.16+ 要求 model 字段为 provider/modelID 格式.
+        # 不带 / 时 opencode 把整个字符串当 providerID 解析,
+        # 导致 ProviderModelNotFoundError (providerID=MiniMax-M2.7-highspeed, modelID="").
+        # 修复: 始终输出 f"{provider}/{model_id}" 格式.
+        full_model = f"{provider}/{model_id}"
+        cfg["model"] = full_model
         # opencode 1.16.2 在没列出 model 时会硬抛 ProviderModelNotFoundError
         # (suggestions: []), 即便 OPENAI_BASE_URL 上游其实认 model. 因此我们
         # 把 policy.agent.models (或 MINIMAX_KNOWN_MODELS 兜底列表) 写进
@@ -358,7 +363,8 @@ def render(policy: dict) -> dict:
     # 跟 cfg["model"] 一样: 写 ``provider/modelID`` 格式, opencode 自己拆.
     small_model_string = agent.get("small_model") or model_string
     if small_model_string:
-        cfg["small_model"] = small_model_string
+        small_provider, small_model_id = _resolve_provider(small_model_string)
+        cfg["small_model"] = f"{small_provider}/{small_model_id}"
 
     # env-based provider 配置 (key, baseURL) — 浅更新会盖掉上面设的 models 块,
     # 这里 deep merge: 把 options 合并进已有 provider, models 保留.

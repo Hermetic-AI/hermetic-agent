@@ -66,13 +66,13 @@ services:
       - OPENAI_BASE_URL=${OPENAI_BASE_URL:-}
       - FLIGHT_API_KEY=${FLIGHT_API_KEY:-}
       - PYTHONUNBUFFERED=1
-      - AGENT_SCHEDULER_LOG_LEVEL=${AGENT_SCHEDULER_LOG_LEVEL:-INFO}
-      - AGENT_SCHEDULER_LOG_FORMAT=${AGENT_SCHEDULER_LOG_FORMAT:-json}
-      - AGENT_SCHEDULER_LOG_LLM_PAYLOAD=${AGENT_SCHEDULER_LOG_LLM_PAYLOAD:-true}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - LOG_FORMAT=${LOG_FORMAT:-json}
+      - LOG_LLM_PAYLOAD=${LOG_LLM_PAYLOAD:-true}
       - FORCE_COLOR=1
       - TERM=xterm-256color
-      - AGENT_SCHEDULER_WORK_ROOT=/app/work
-      - AGENT_SCHEDULER_SCENARIO_PATHS=["/app/work/scenarios"]
+      - WORK_ROOT=/app/work
+      - SCENARIO_PATHS=["/app/work/scenarios"]
       - WORKSPACE_PATH=${WORKSPACE_PATH:-/work/tenant-A/project-1}
     depends_on:
       opencode-1:

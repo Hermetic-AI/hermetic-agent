@@ -13,6 +13,7 @@
 # 镜像源: Daocloud (免认证, 国内通用)
 # 想换回官方 Docker Hub: 去掉 docker.m.daocloud.io/ 前缀即可
 FROM docker.m.daocloud.io/library/node:24-slim
+# FROM node:24-slim
 
 # Debian apt 源. 默认 USTC (中科大), 实测下载 Packages 文件 3+ MB/s.
 # aliyun 镜像经常对大文件降速到 ~100 KB/s, 导致 apt-get update 反复超时.
