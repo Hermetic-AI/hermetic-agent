@@ -46,34 +46,42 @@ def _drop_redundant_keys(_: Any, __: str, event_dict: EventDict) -> EventDict:
     """把始终不变 / 噪音大的字段从渲染里剔掉。
 
     * ``logger``: module 名, 重复出现在每行; 调试时按需开
-    * ``timestamp`` 由 ConsoleRenderer 自己用更可读的格式重画, 原本的 ISO
-      字符串如果留着会和下面的 ``[HH:MM:SS]`` 重复
     """
     event_dict.pop("logger", None)
-    event_dict.pop("timestamp", None)
+    return event_dict
+
+
+def _add_thread_name(_: Any, __: str, event_dict: EventDict) -> EventDict:
+    """注入当前线程名, 对齐 Java logback 的 [thread-name] 段."""
+    import threading
+
+    event_dict["thread_name"] = threading.current_thread().name
     return event_dict
 
 
 def _compact_event_renderer(_: Any, __: str, event_dict: EventDict) -> str:
-    """Rich 友好的最终格式化: ``[HH:MM:SS] LEVEL  event  k=v k=v``。
+    """Rich 友好的最终格式化: ``YYYY-MM-DD HH:MM:SS.mmm [thread] LEVEL  logger - event k=v``。
 
-    输出是单行 markup 字符串, 由 Rich 的 ``Console.print(markup=True)``
-    或 ``RichHandler`` 解释。颜色全部用 ``LOG_THEME`` 里定义的 style。
+    对齐 Java logback 标准格式, 便于日志平台解析。
     """
     ts = event_dict.get("timestamp", "")
-    level = str(event_dict.get("level", "info"))
+    level = str(event_dict.get("level", "info")).upper()
+    logger_name = event_dict.get("logger", "")
+    thread_name = event_dict.get("thread_name", "MainThread")
 
-    # 关键字段先 pop, 剩下都是 kv
     kv_pairs: list[tuple[str, Any]] = []
     for k, v in event_dict.items():
-        if k in ("timestamp", "level", "event"):
+        if k in ("timestamp", "level", "event", "logger", "thread_name"):
             continue
         kv_pairs.append((k, v))
 
     parts: list[str] = []
     if ts:
         parts.append(f"[log.dim]{ts}[/log.dim]")
-    parts.append(f"[log.{level}]{level.upper():<8}[/log.{level}]")
+    parts.append(f"[log.dim]{thread_name}[/log.dim]")
+    parts.append(f"[log.{level.lower()}]{level:<8}[/log.{level.lower()}]")
+    if logger_name:
+        parts.append(f"[log.key]{logger_name}[/log.key] -")
     parts.append(f"[log.event]{event_dict.get('event', '')}[/log.event]")
 
     for k, v in kv_pairs:
@@ -148,7 +156,8 @@ def configure_logging(settings: Settings) -> None:
         structlog.stdlib.add_logger_name,
         structlog.stdlib.add_log_level,
         structlog.stdlib.PositionalArgumentsFormatter(),
-        structlog.processors.TimeStamper(fmt="%H:%M:%S", utc=False),
+        structlog.processors.TimeStamper(fmt="%Y-%m-%d %H:%M:%S.%f", utc=False),
+        _add_thread_name,
         structlog.processors.StackInfoRenderer(),
         structlog.processors.format_exc_info,
         structlog.processors.UnicodeDecoder(),

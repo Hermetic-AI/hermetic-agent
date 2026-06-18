@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import traceback as _tb
 from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
@@ -9,6 +10,8 @@ from typing import Any
 import structlog
 from sanic import Sanic
 
+from openagent.audit.log.log_markers import LM
+from openagent.audit.log.sys_logger import get_sys_logger
 from openagent.mcp.registry import MCPRegistry
 from openagent.providers.agent_bridge import AgentBridge
 from openagent.providers.base import AgentConfig
@@ -60,7 +63,7 @@ def _default_agent_configs(settings: Any) -> list[AgentConfig]:
     """根据 settings 构建一组启动时自动注册的默认 Agent 列表。
 
     默认行为：注册一个 ``opencode-core`` 实例，指向 ``opencode_base_url``；
-    后续可在 ``.env`` 的 ``AGENT_SCHEDULER_DEFAULT_AGENTS_JSON`` 里覆盖。
+    后续可在 ``.env`` 的 ``DEFAULT_AGENTS_JSON`` 里覆盖。
     """
     overrides: Iterable[dict] = getattr(settings, "default_agents_json", []) or []
     if overrides:
@@ -138,7 +141,7 @@ async def startup(app: Sanic, settings: Any) -> None:
         app: 当前 Sanic 应用。
         settings: 应用配置。
     """
-    logger.debug("application_startup", host=settings.host, port=settings.port)
+    logger.debug(LM.APP_STARTUP, host=settings.host, port=settings.port)
 
     try:
         storage = SessionRepositoryFactory.create(settings.storage_backend, settings=settings)
@@ -146,10 +149,13 @@ async def startup(app: Sanic, settings: Any) -> None:
         await storage.init_schema()
     except Exception as e:
         logger.error(
-            "storage_init_failed",
+            LM.STORAGE_ERROR,
             backend=settings.storage_backend,
             error=str(e),
         )
+        sys_log = get_sys_logger()
+        if sys_log:
+            sys_log.error("startup", LM.STORAGE_ERROR, backend=settings.storage_backend, error=str(e))
         raise
 
     skill_registry = SkillRegistry()
@@ -157,7 +163,7 @@ async def startup(app: Sanic, settings: Any) -> None:
     if skill_paths:
         skill_registry.load_from_paths(*skill_paths)
     logger.debug(
-        "skills_loaded",
+        LM.SKILL_LOAD,
         skills_count=len(skill_registry.list_all()),
         skill_paths=skill_paths,
     )
@@ -183,9 +189,9 @@ async def startup(app: Sanic, settings: Any) -> None:
     try:
         mcp_registry = MCPRegistry.from_config(settings.mcp_tools_config)
     except Exception as e:
-        logger.error("mcp_registry_init_failed", error=str(e))
+        logger.error(LM.MCP_REGISTRY, error=str(e))
         raise
-    logger.debug("mcp_registry_ready", tools_count=len(mcp_registry.list_all()))
+    logger.debug(LM.MCP_REGISTRY, tools_count=len(mcp_registry.list_all()))
 
     # AUIP: 注册合成工具 ask_user (LLM 用它推 UI 卡片, 框架在 stream 中拦截)
     # 必须放在 mcp_registry 初始化之后, 所有 scenario 共享
@@ -396,14 +402,22 @@ async def startup(app: Sanic, settings: Any) -> None:
     from openagent.audit.log.setup import setup_log_platform
 
     await setup_log_platform(settings)
-    logger.info("log_platform_ready")
+    logger.info(LM.APP_READY)
 
     logger.info(
-        "application_ready",
+        LM.APP_READY,
         skills=len(skill_registry.list_all()),
         tools=len(mcp_registry.list_all()),
         agents=len(bridge.list_agents()),
     )
+    sys_log = get_sys_logger()
+    if sys_log:
+        sys_log.info(
+            "startup", LM.APP_READY,
+            skills=len(skill_registry.list_all()),
+            tools=len(mcp_registry.list_all()),
+            agents=len(bridge.list_agents()),
+        )
 
 
 async def shutdown(app: Sanic) -> None:
@@ -412,26 +426,31 @@ async def shutdown(app: Sanic) -> None:
     Args:
         app: 当前 Sanic 应用。
     """
-    logger.info("application_shutdown")
+    logger.info(LM.APP_SHUTDOWN)
+    sys_log = get_sys_logger()
+    if sys_log:
+        sys_log.info("shutdown", LM.APP_SHUTDOWN)
     from openagent.audit.log.setup import shutdown_log_platform
 
     try:
         await shutdown_log_platform()
     except Exception as e:
-        logger.error("log_platform_shutdown_failed", error=str(e))
+        logger.error(LM.ERROR_UNHANDLED, component="log_platform", error=str(e))
     storage = getattr(app.ctx, "storage", None)
     if storage is not None:
         try:
             await storage.close()
         except Exception as e:
-            logger.error("storage_close_failed", error=str(e))
+            logger.error(LM.STORAGE_ERROR, component="close", error=str(e))
     mcp_registry = getattr(app.ctx, "mcp_registry", None)
     if mcp_registry is not None and hasattr(mcp_registry, "close"):
         try:
             await mcp_registry.close()
         except Exception as e:
-            logger.error("mcp_registry_close_failed", error=str(e))
-    logger.info("application_shutdown_completed")
+            logger.error(LM.MCP_REGISTRY, component="close", error=str(e))
+    logger.info(LM.APP_SHUTDOWN)
+    if sys_log:
+        sys_log.info("shutdown", LM.APP_SHUTDOWN, status="completed")
 
 
 # ---------------------------------------------------------------------------

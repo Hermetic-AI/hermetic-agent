@@ -100,7 +100,7 @@ def _feihe_base() -> str:
 
         return get_settings().feihe_base_url.rstrip("/")
     except Exception:  # pragma: no cover
-        return os.environ.get("AGENT_SCHEDULER_FEIHE_BASE_URL", "https://traveldev.feiheair.com").rstrip("/")
+        return os.environ.get("FEIHE_BASE_URL", "https://traveldev.feiheair.com").rstrip("/")
 
 
 def _feihe_timeout() -> float:
@@ -109,7 +109,7 @@ def _feihe_timeout() -> float:
 
         return get_settings().feihe_request_timeout
     except Exception:  # pragma: no cover
-        return float(os.environ.get("AGENT_SCHEDULER_FEIHE_REQUEST_TIMEOUT", "10"))
+        return float(os.environ.get("FEIHE_REQUEST_TIMEOUT", "10"))
 
 
 def _feihe_origin_header() -> dict[str, str]:

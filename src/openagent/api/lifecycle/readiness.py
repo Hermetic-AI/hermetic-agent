@@ -70,7 +70,7 @@ def collect_readiness(request: Request) -> dict:
         else:
             checks.append(_check_component(
                 "bridge", False,
-                "no agents registered (set AGENT_SCHEDULER_AUTO_REGISTER_DEFAULTS=true or POST /agent/pool/register)",
+                "no agents registered (set AUTO_REGISTER_DEFAULTS=true or POST /agent/pool/register)",
             ))
 
     # 3. skill_registry
@@ -83,7 +83,7 @@ def collect_readiness(request: Request) -> dict:
         else:
             checks.append(_check_component(
                 "skill_registry", False,
-                "0 skills loaded (check AGENT_SCHEDULER_SKILL_PATHS)",
+                "0 skills loaded (check SKILL_PATHS)",
             ))
 
     # 4. mcp_registry
@@ -96,7 +96,7 @@ def collect_readiness(request: Request) -> dict:
         else:
             checks.append(_check_component(
                 "mcp_registry", False,
-                "0 tools registered (check AGENT_SCHEDULER_MCP_TOOLS_CONFIG)",
+                "0 tools registered (check MCP_TOOLS_CONFIG)",
             ))
 
     # 5. scenarios (P0: 显式检查 init 状态 + 错误)
@@ -108,7 +108,7 @@ def collect_readiness(request: Request) -> dict:
         else:
             checks.append(_check_component(
                 "scenarios", False,
-                "0 scenarios loaded (check AGENT_SCHEDULER_SCENARIO_PATHS)",
+                "0 scenarios loaded (check SCENARIO_PATHS)",
             ))
     else:
         err = getattr(request.app.ctx, "scenarios_error", "unknown")

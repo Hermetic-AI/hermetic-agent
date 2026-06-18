@@ -31,6 +31,7 @@ from openagent.api.http.streaming.route_hints import (
     should_bypass_hitl_placeholder,
 )
 from openagent.api.http.streaming.turn_bridge import turn_event_to_sse
+from openagent.api.http.streaming.card_message_rewriter import rewrite_card_message
 
 __all__ = [
     # ask_user
@@ -48,4 +49,6 @@ __all__ = [
     "should_bypass_hitl_placeholder",
     # turn bridge
     "turn_event_to_sse",
+    # card message rewriter
+    "rewrite_card_message",
 ]

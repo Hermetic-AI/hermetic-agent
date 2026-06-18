@@ -44,6 +44,8 @@ from sanic.response import JSONResponse
 from sanic.response.types import ResponseStream
 from sanic_ext import openapi as sanic_openapi
 
+from openagent.audit.log.log_markers import LM
+
 # 内部 helper 全部下沉到 api.streaming 子包, controller 只负责"业务编排"
 from openagent.api.http.extractors import extract_mcp_token, resolve_session_directory
 from openagent.api.http.schemas import (
@@ -61,6 +63,7 @@ from openagent.api.http.streaming import (
     stream_with_keepalive,
     turn_event_to_sse,
 )
+from openagent.api.http.streaming.card_message_rewriter import rewrite_card_message
 from openagent.api.http.streaming.ask_user import _ask_user_to_card  # noqa: F401 (兼容 re-export)
 from openagent.providers.base import ChatMessage
 from openagent.providers.streaming import StreamEvent
@@ -724,7 +727,7 @@ async def chat(request: Request) -> JSONResponse:
     model_hint = _scenario_model(scenario)
 
     logger.info(
-        "chat_request",
+        LM.CHAT_REQUEST,
         scenario=scenario.name if scenario else None,
         matched_by=(
             getattr(request.ctx, "routing_context", None).matched_by
@@ -766,9 +769,11 @@ async def chat(request: Request) -> JSONResponse:
                 actor_id=None,
             )
 
+        rewrite_result = rewrite_card_message(json_body.message)
+        effective_message = rewrite_result.message
         result = await bridge.chat(
             session_id=session_id,
-            messages=[ChatMessage(role="user", content=json_body.message)],
+            messages=[ChatMessage(role="user", content=effective_message)],
             model=json_body.model or model_hint,
             system_prompt=params["system_prompt"],
             skills=params["skills"],
@@ -926,7 +931,7 @@ async def chat_stream(request: Request) -> ResponseStream:
     hitl_factory = getattr(request.app.ctx, "hitl_factory", None)
 
     logger.info(
-        "chat_stream_request",
+        LM.CHAT_STREAM,
         scenario=scenario.name if scenario else None,
         matched_by=matched_by,
         is_hitl=is_hitl,
@@ -1041,9 +1046,11 @@ async def chat_stream(request: Request) -> ResponseStream:
             # P0-1: 把 prompt_builder + scenario 透传给 bridge, 让
             # scenario.progressive_skill (on_demand / explicit) 真正生效.
             prompt_builder = getattr(request.app.ctx, "prompt_builder", None)
+            rewrite_result = rewrite_card_message(json_body.message)
+            effective_message = rewrite_result.message
             iterator = await bridge.chat(
                 session_id=session_id,
-                messages=[ChatMessage(role="user", content=json_body.message)],
+                messages=[ChatMessage(role="user", content=effective_message)],
                 model=json_body.model or model_hint,
                 system_prompt=params["system_prompt"],
                 skills=params["skills"],
@@ -1055,6 +1062,14 @@ async def chat_stream(request: Request) -> ResponseStream:
                 scenario=scenario,
                 current_state=None,  # single-mode streaming: 走 initial state
             )
+            # 自动发送卡片（如舱位选择），在 LLM 响应前发送
+            for auto_card in rewrite_result.auto_cards:
+                card_event = StreamEvent.card(
+                    card_id=auto_card["card_id"],
+                    card_type=auto_card["card_type"],
+                    card=auto_card,
+                )
+                await resp.write(card_event.to_sse())
             # 拦截链: ask_user 转 card → 加 SSE keepalive 心跳
             # keepalive 在业务事件空闲时 yield SSE 注释行, 防止 Vite/Nginx
             # 代理在长 LLM 思考时关连接
