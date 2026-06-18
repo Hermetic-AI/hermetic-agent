@@ -16,6 +16,7 @@ import structlog
 from sanic import Sanic
 from sanic.request import Request
 
+from openagent.audit.log.log_markers import LM
 from openagent.scenarios.errors import ScenarioError
 
 logger = structlog.get_logger(__name__)
@@ -112,7 +113,7 @@ class ScenarioMiddleware:
         request.ctx.routing_context = ctx
         request.ctx.injection = injection
         logger.info(
-            "scenario_middleware_ok",
+            LM.SCENARIO_ROUTE,
             scenario=ctx.scenario.name,
             matched_by=ctx.matched_by,
         )

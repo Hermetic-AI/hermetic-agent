@@ -11,7 +11,7 @@
     timeout = settings.feihe_request_timeout
 
 环境变量:
-    - 前缀: ``AGENT_SCHEDULER_`` (pydantic-settings 配的)
+    - 前缀: 无 (pydantic-settings 配的)
     - 文件: CWD 下的 ``.env`` (pydantic-settings 自动 load)
     - 复杂字段 (list[dict]): 既支持 inline JSON, 也支持指向 JSON 文件路径,
       见 ``env_sources.PathAwareEnvSource``.
@@ -55,11 +55,11 @@ class Settings(BaseSettings):
     """应用配置.
 
     可通过环境变量或 .env 文件配置.
-    环境变量前缀: ``AGENT_SCHEDULER_``.
+    环境变量: 无前缀, 直接读 .env 或进程 env.
     """
 
     model_config = SettingsConfigDict(
-        # env_prefix="AGENT_SCHEDULER_",
+        env_prefix="",
         env_file=".env",
         env_file_encoding="utf-8",
         case_sensitive=False,
