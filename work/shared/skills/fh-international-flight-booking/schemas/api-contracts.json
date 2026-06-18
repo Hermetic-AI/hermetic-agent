@@ -1,0 +1,176 @@
+{
+  "api_contracts": {
+    "getClientBasicData": {
+      "path": "/air/customer/getClientBasicData",
+      "method": "POST",
+      "required_params": ["productType"],
+      "required_env": ["FH_TRAVEL_TOKEN"],
+      "allowed_stages": ["INIT"],
+      "produces": ["clientId", "showInternational", "oaLogin", "applicationType", "costCenter", "depId", "allowSpecifyClient"],
+      "timeout_seconds": 30
+    },
+    "getMineBasicData": {
+      "path": "/customer/mine/getMineBasicData",
+      "method": "POST",
+      "required_params": [],
+      "required_env": ["FH_TRAVEL_TOKEN"],
+      "allowed_stages": ["INIT"],
+      "produces": ["userCode", "depId", "depName", "userName", "certList", "companyId"],
+      "timeout_seconds": 30
+    },
+    "intShopping": {
+      "path": "/air/international/intShopping",
+      "method": "POST",
+      "required_params": ["stopQuantity", "onlyBigCustomerPrice", "language", "passengerType", "tripList"],
+      "required_env": ["FH_TRAVEL_TOKEN"],
+      "required_context": ["clientId"],
+      "allowed_stages": ["SEARCH_PARAMS_READY", "FLIGHT_LISTED"],
+      "produces": ["serialNumber", "groupList", "baggageList", "cityList", "airwayList", "typeList", "flightAttributeMap"],
+      "timeout_seconds": 60
+    },
+    "visa": {
+      "path": "/air/international/visa",
+      "method": "POST",
+      "required_params": [],
+      "required_env": ["FH_TRAVEL_TOKEN"],
+      "allowed_stages": ["FLIGHT_LISTED"],
+      "produces": ["visaDetails"],
+      "timeout_seconds": 30
+    },
+    "intRule": {
+      "path": "/air/international/intRule",
+      "method": "POST",
+      "required_params": ["serialNumber", "priceId", "pricingId"],
+      "required_env": ["FH_TRAVEL_TOKEN"],
+      "required_context": ["serialNumber", "selectedPriceId"],
+      "allowed_stages": ["PRICE_SELECTED", "GROUP_SELECTED"],
+      "produces": ["refund", "change", "refundRule", "changeRule", "cabList"],
+      "timeout_seconds": 30
+    },
+    "intPricing": {
+      "path": "/air/international/intPricing",
+      "method": "POST",
+      "required_params": ["language", "clientId", "flightList"],
+      "required_env": ["FH_TRAVEL_TOKEN"],
+      "required_context": ["serialNumber", "selectedPriceId", "clientId"],
+      "allowed_stages": ["PRICE_SELECTED", "RULE_CHECKED"],
+      "produces": ["serialKey", "priceId_as_pricingId", "pricingSerialNumber", "priceList"],
+      "timeout_seconds": 45
+    },
+    "intPolicy": {
+      "path": "/air/international/intPolicy",
+      "method": "POST",
+      "required_params": ["oaLogin", "flightList"],
+      "required_env": ["FH_TRAVEL_TOKEN"],
+      "required_context": ["serialNumber", "selectedPriceId", "oaLogin"],
+      "allowed_stages": ["PRICING_VERIFIED"],
+      "produces": [],
+      "timeout_seconds": 30
+    },
+    "intCheckApplication": {
+      "path": "/air/international/intCheckApplication",
+      "method": "POST",
+      "required_params": ["flag", "applicationId", "flightList"],
+      "required_env": ["FH_TRAVEL_TOKEN"],
+      "required_context": ["serialNumber", "selectedPriceId", "applicationId"],
+      "allowed_stages": ["PRICING_VERIFIED", "POLICY_CHECKED"],
+      "produces": [],
+      "timeout_seconds": 30
+    },
+    "waitSave": {
+      "path": "/air/international/waitSave",
+      "method": "POST",
+      "required_params": ["applicationId", "clientId", "language", "flightList"],
+      "required_env": ["FH_TRAVEL_TOKEN"],
+      "required_context": ["serialNumber", "selectedPriceId", "pricingId", "clientId"],
+      "allowed_stages": ["POLICY_CHECKED"],
+      "produces": ["travelPolicyList", "applicationList", "mileageCardList", "insuranceList", "airLineList", "applicationIdOa"],
+      "timeout_seconds": 45
+    },
+    "findPassenger": {
+      "path": "/air/customer/findPassenger",
+      "method": "POST",
+      "required_params": ["productType"],
+      "required_env": ["FH_TRAVEL_TOKEN"],
+      "allowed_stages": ["WAIT_SAVE_LOADED"],
+      "produces": ["dataList"],
+      "timeout_seconds": 30
+    },
+    "listClientBelongCompany": {
+      "path": "/air/customer/listClientBelongCompany",
+      "method": "POST",
+      "required_params": ["clientIdSpecify"],
+      "required_env": ["FH_TRAVEL_TOKEN"],
+      "allowed_stages": ["WAIT_SAVE_LOADED"],
+      "produces": ["dataList"],
+      "timeout_seconds": 30
+    },
+    "getClientProject": {
+      "path": "/air/customer/getClientProject",
+      "method": "POST",
+      "required_params": ["clientIdSpecify", "showAll"],
+      "required_env": ["FH_TRAVEL_TOKEN"],
+      "allowed_stages": ["WAIT_SAVE_LOADED"],
+      "produces": ["dataList"],
+      "timeout_seconds": 30
+    },
+    "listApplications": {
+      "path": "/application/listOneUserApplicationsByUserCodeCertNoDateRange",
+      "method": "POST",
+      "required_params": ["productType", "applicationSearchType", "startDate", "endDate"],
+      "required_env": ["FH_TRAVEL_TOKEN"],
+      "required_context": ["userCode"],
+      "allowed_stages": ["WAIT_SAVE_LOADED"],
+      "produces": ["application"],
+      "timeout_seconds": 30
+    },
+    "nationality": {
+      "path": "/params/system/nationality",
+      "method": "POST",
+      "required_params": [],
+      "required_env": ["FH_TRAVEL_TOKEN"],
+      "allowed_stages": ["WAIT_SAVE_LOADED"],
+      "produces": ["data"],
+      "timeout_seconds": 30
+    },
+    "getPassengerAllAddress": {
+      "path": "/air/customer/getPassengerAllAddress",
+      "method": "POST",
+      "required_params": [],
+      "required_env": ["FH_TRAVEL_TOKEN"],
+      "allowed_stages": ["WAIT_SAVE_LOADED"],
+      "produces": ["dataList"],
+      "timeout_seconds": 30
+    },
+    "saveOrder": {
+      "path": "/air/international/saveOrder",
+      "method": "POST",
+      "required_params": ["flightList", "passengerList", "outlayType", "payType"],
+      "required_env": ["FH_TRAVEL_TOKEN"],
+      "required_context": ["serialNumber", "selectedPriceId", "pricingId", "passengerList", "costCenterId"],
+      "allowed_stages": ["PASSENGER_FILLED"],
+      "produces": ["orderGroupId", "pnr", "orderList"],
+      "timeout_seconds": 45
+    },
+    "getPlaneSendpki": {
+      "path": "/air/domestic/getPlaneSendpki",
+      "method": "POST",
+      "required_params": ["datatype", "orderGroup"],
+      "required_env": ["FH_TRAVEL_TOKEN"],
+      "required_context": ["orderGroupId"],
+      "allowed_stages": ["ORDER_SUBMITTED"],
+      "produces": ["payType", "orderList", "approveUserList", "orderBasicDataJson"],
+      "timeout_seconds": 30
+    },
+    "submitPlaneSendpki": {
+      "path": "/air/domestic/submitPlaneSendpki",
+      "method": "POST",
+      "required_params": ["orderBasicDataJson", "payType", "orderPriceList"],
+      "required_env": ["FH_TRAVEL_TOKEN"],
+      "required_context": ["orderBasicDataJson", "orderList"],
+      "allowed_stages": ["ORDER_SUBMITTED"],
+      "produces": ["payType", "alipayRequestData", "wxpayRequestData"],
+      "timeout_seconds": 30
+    }
+  }
+}
