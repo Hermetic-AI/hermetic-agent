@@ -373,11 +373,29 @@ function OrderSummaryBlock({ item, onSubmit }: { item: AguiDataItem; onSubmit: (
 
 
 function buildFlightInput(flight: Record<string, unknown>, index: number): Record<string, unknown> {
+  const legs = arrayOfRecords(flight.legs);
+  const firstLeg = legs[0] ?? flight;
   return {
     flightId: String(flight.flightId ?? flight.flightNo ?? ''),
     flightNo: String(flight.flightNo ?? ''),
     serialNo: flight.serialNo ?? index + 1,
-    selectedFlight: flight,
+    selectedFlight: {
+      depCityName: String(flight.depCityName ?? firstLeg.depCityName ?? ''),
+      arrCityName: String(flight.arrCityName ?? firstLeg.arrCityName ?? ''),
+      depDate: String(flight.depDate ?? firstLeg.depDate ?? ''),
+      depTime: String(flight.depTime ?? firstLeg.depTime ?? ''),
+      arrTime: String(flight.arrTime ?? firstLeg.arrTime ?? ''),
+      airlineName: String(flight.airlineName ?? firstLeg.airlineName ?? ''),
+      flightNo: String(flight.flightNo ?? firstLeg.flightNo ?? ''),
+      airId: String(flight.airId ?? ''),
+      lowestPrice: Number(flight.lowestPrice ?? flight.totalPrice ?? 0),
+      lowestCabinName: String(flight.lowestCabinName ?? '经济舱'),
+      durationMin: Number(flight.durationMin ?? flight.totalDuration ?? 0),
+      stopCount: Number(flight.stopCount ?? 0),
+      groupId: String(flight.groupId ?? ''),
+      priceId: String(flight.priceId ?? ''),
+      priceOptions: Array.isArray(flight.priceOptions) ? flight.priceOptions : [],
+    },
   };
 }
 

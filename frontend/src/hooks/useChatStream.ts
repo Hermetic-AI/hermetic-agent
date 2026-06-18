@@ -988,6 +988,9 @@ function formatCardReply(
   userInput: Record<string, unknown>,
   actionId?: string,
 ): string {
+  if (card.card_type === 'FLIGHT_RESULT' && actionId === 'select_flight' && userInput.selectedFlight) {
+    return formatFlightSelectionMessage(userInput.selectedFlight as Record<string, unknown>);
+  }
   const payload = {
     card_type: card.card_type,
     card_id: card.card_id,
@@ -1001,12 +1004,78 @@ function formatCardReplyDisplay(
   card: CardDescriptor,
   userInput: Record<string, unknown>,
 ): string {
+  if (card.card_type === 'FLIGHT_RESULT' && userInput.selectedFlight) {
+    return formatFlightSelectionDisplay(userInput.selectedFlight as Record<string, unknown>);
+  }
   const labels = new Map(
     (card.fields ?? []).map((field) => [field.id ?? field.key ?? field.name ?? field.label, field.label]),
   );
   return Object.entries(userInput)
     .map(([key, value]) => `${labels.get(key) ?? key}：${formatUserInputValue(value)}`)
     .join('，');
+}
+
+function formatFlightSelectionMessage(flight: Record<string, unknown>): string {
+  const dep = String(flight.depCityName ?? '');
+  const arr = String(flight.arrCityName ?? '');
+  const date = String(flight.depDate ?? '').replace(/^(\d{4})-(\d{2})-(\d{2}).*$/, '$2月$3日');
+  const depTime = String(flight.depTime ?? '');
+  const airline = String(flight.airlineName ?? '');
+  const flightNo = String(flight.flightNo ?? '');
+  const price = Number(flight.lowestPrice ?? flight.totalPrice ?? 0);
+  const groupId = String(flight.groupId ?? '');
+  const priceId = String(flight.priceId ?? '');
+  const priceOptions = Array.isArray(flight.priceOptions) ? flight.priceOptions : [];
+
+  const parts: string[] = ['帮我订'];
+  if (date) parts.push(date);
+  if (dep && arr) parts.push(`从${dep}到${arr}的`);
+  if (airline) parts.push(airline);
+  if (flightNo) parts.push(flightNo);
+  if (depTime) parts.push(`起飞时间 ${depTime}`);
+  let result = parts.join(' ');
+
+  if (groupId || priceId) {
+    const meta: string[] = [];
+    if (groupId) meta.push(`groupId=${groupId}`);
+    if (priceId) meta.push(`priceId=${priceId}`);
+    result += `\n[选择参数: ${meta.join(', ')}]`;
+  }
+
+  if (priceOptions.length > 0) {
+    const lines: string[] = ['\n可选舱位/价格方案：'];
+    for (let i = 0; i < Math.min(priceOptions.length, 5); i++) {
+      const opt = priceOptions[i] as Record<string, unknown>;
+      if (!opt) continue;
+      const cab = String(opt.cabClass ?? '经济舱');
+      const total = Number(opt.totalPrice ?? 0);
+      const refund = opt.refund ? '可退' : '不可退';
+      const change = opt.change ? '可改' : '不可改';
+      const pid = String(opt.priceId ?? '');
+      lines.push(`  ${i + 1}. ${cab} ¥${total} (${refund}/${change}) priceId=${pid}`);
+    }
+    result += lines.join('\n');
+    result += '\n请帮我选择方案并继续下一步。';
+  }
+
+  return result;
+}
+
+function formatFlightSelectionDisplay(flight: Record<string, unknown>): string {
+  const dep = String(flight.depCityName ?? '');
+  const arr = String(flight.arrCityName ?? '');
+  const date = String(flight.depDate ?? '').replace(/^(\d{4})-(\d{2})-(\d{2}).*$/, '$2月$3日');
+  const depTime = String(flight.depTime ?? '');
+  const airline = String(flight.airlineName ?? '');
+  const flightNo = String(flight.flightNo ?? '');
+  const price = Number(flight.lowestPrice ?? flight.totalPrice ?? 0);
+  const parts: string[] = [];
+  if (date && dep && arr) parts.push(`${date}从${dep}到${arr}`);
+  if (airline) parts.push(airline);
+  if (flightNo) parts.push(flightNo);
+  if (depTime) parts.push(`${depTime}出发`);
+  if (price > 0) parts.push(`¥${price}`);
+  return parts.length > 0 ? `选择航班：${parts.join(' ')}` : '选择航班';
 }
 
 function formatUserInputValue(value: unknown): string {
