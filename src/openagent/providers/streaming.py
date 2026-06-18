@@ -171,14 +171,18 @@ class StreamEvent:
         return cls(type="reasoning", data={"content": content, **kwargs})
 
     @classmethod
-    def tool_use(cls, tool_name: str, input_data: dict, **kwargs) -> "StreamEvent":
+    def tool_use(cls, tool_name: str, input_data: dict, part_id: str = "", **kwargs) -> "StreamEvent":
         """构造一个工具调用发起事件。
 
         Args:
             tool_name: 工具名。
             input_data: 工具入参。
+            part_id: opencode part ID，用于去重。
         """
-        return cls(type="tool_use", data={"tool_name": tool_name, "input": input_data, **kwargs})
+        data = {"tool_name": tool_name, "input": input_data, **kwargs}
+        if part_id:
+            data["part_id"] = part_id
+        return cls(type="tool_use", data=data)
 
     @classmethod
     def tool_result(cls, tool_name: str, output: Any, **kwargs) -> "StreamEvent":
@@ -433,6 +437,7 @@ def map_opencode_event(
             return StreamEvent.text(content=_get(part, "text", "") or "")
         if ptype == "tool":
             tool_name = _get(part, "tool", "unknown")
+            part_id = _get(part, "id", "")
             state = _get(part, "state")
             status = _get(state, "status") if state is not None else None
             if status == "running":
@@ -440,6 +445,7 @@ def map_opencode_event(
                 return StreamEvent.tool_use(
                     tool_name=tool_name,
                     input_data=inp if isinstance(inp, dict) else {},
+                    part_id=part_id,
                 )
             if status == "completed":
                 out = _get(state, "output", "") if state is not None else ""

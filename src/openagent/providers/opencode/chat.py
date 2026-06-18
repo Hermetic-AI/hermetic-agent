@@ -25,6 +25,7 @@ from typing import TYPE_CHECKING, Any
 import httpx
 import structlog
 
+from openagent.audit.log.log_markers import LM
 from openagent.auip.flight_card import QUERY_FLIGHT_BASIC_TOOL_NAMES
 from openagent.providers.base import (
     ChatMessage,
@@ -142,6 +143,30 @@ def _is_pseudo_ask_user_text(text: str) -> bool:
         return False
     payload = match.group(1)
     return "ask_user" in payload and "card_type" in payload
+
+
+_META_COMMENTARY_RE = re.compile(
+    r"(?:"
+    r"now\s+let\s+me\s+(?:render|query|search|check|call|fetch)"
+    r"|let\s+me\s+(?:render|query|search|check|call|fetch)"
+    r"|now\s+i'?ll\s+(?:render|query|search|display|show)"
+    r"|i(?:'m|\s+am)\s+(?:now\s+)?(?:rendering|querying|searching|displaying)"
+    r"|正在(?:查询|渲染|搜索|获取|调用|展示)"
+    r"|现在(?:渲染|查询|展示|获取|调用)"
+    r"|让我(?:查询|渲染|搜索|获取|调用)"
+    r"|已(?:查询|渲染|搜索|获取)完成"
+    r"|两段航班都已查询完成"
+    r")",
+    re.IGNORECASE,
+)
+
+
+def _is_meta_commentary(text: str) -> bool:
+    """Detect process narration that should not be shown to users."""
+    stripped = (text or "").strip()
+    if not stripped or len(stripped) > 200:
+        return False
+    return bool(_META_COMMENTARY_RE.search(stripped))
 
 # 缓存: 同一 opencode 节点 (按 base_url 标识) 上一次写入的 FLIGHT_API_KEY.
 # 同一个用户连发 N 条消息, 只在 token 变化时调一次 admin API 写 env +
@@ -492,6 +517,54 @@ _OPENCODE_BUILTIN_TOOLS = {
     "Read",
     "Task",
     "Write",
+    "webfetch",
+}
+
+_MCP_TOOL_NAMES = {
+    "mcp",
+    "mcp.read",
+    "mcp.write",
+    "mcp.edit",
+    "mcp.glob",
+    "mcp.grep",
+    "mcp.feihe-travel_read_skill",
+    "mcp.feihe-travel_queryFlightBasic",
+    "mcp.feihe-travel_filterFlightList",
+    "mcp.feihe-travel_chooseFlight",
+    "mcp.feihe-travel_chooseCabin",
+    "mcp.feihe-travel_getFlightPolicyInfo",
+    "mcp.feihe-travel_checkProductAccess",
+    "mcp.feihe-travel_getDateInfo",
+    "mcp.feihe-travel_listUpcomingHolidays",
+    "mcp.feihe-travel_getHolidayDate",
+    "mcp.feihe-travel_chooseAlternativeCabin",
+    "mcp.feihe-travel_listTripApplications",
+    "mcp.feihe-travel_getTripApplicationDetail",
+    "mcp.feihe-travel_listCostCenters",
+    "mcp.feihe-travel_bindCostCenter",
+    "mcp.feihe-travel_getDefaultContact",
+    "mcp.feihe-travel_fillPassenger",
+    "mcp.feihe-travel_validateBookingInfo",
+    "mcp.feihe-travel_recordPolicyUserDecision",
+    "mcp.feihe-travel_buildOrderPreview",
+    "mcp.feihe-travel_getOrderDetail",
+    "mcp.feihe-travel_resetBookingSession",
+    "mcp.mcporter_read_skill",
+    "mcp.mcporter_queryFlightBasic",
+    "mcp.ask_user_ask_user",
+}
+
+
+_OPENCODE_TOOL_ALIASES = {
+    "Bash": "bash",
+    "Read": "read",
+    "Grep": "grep",
+    "Glob": "glob",
+    "Edit": "edit",
+    "Write": "write",
+    "Task": "task",
+    "WebFetch": "webfetch",
+    "WebSearch": "webfetch",
 }
 
 
@@ -596,6 +669,9 @@ def _resolve_tool_names(adapter: OpenCodeAdapter, tools: Any) -> dict[str, bool]
     for t in tools:
         if isinstance(t, str):
             names.append(t)
+            alias = _OPENCODE_TOOL_ALIASES.get(t)
+            if alias:
+                names.append(alias)
             if t in _FEIHE_TRAVEL_TOOLS:
                 names.append(f"feihe-travel_{t}")
                 names.append(f"feihe-travel__{t}")
@@ -605,6 +681,9 @@ def _resolve_tool_names(adapter: OpenCodeAdapter, tools: Any) -> dict[str, bool]
             if name:
                 name_str = str(name)
                 names.append(name_str)
+                alias = _OPENCODE_TOOL_ALIASES.get(name_str)
+                if alias:
+                    names.append(alias)
                 if name_str in _FEIHE_TRAVEL_TOOLS:
                     names.append(f"feihe-travel_{name_str}")
                     names.append(f"feihe-travel__{name_str}")
@@ -622,6 +701,7 @@ def _resolve_tool_names(adapter: OpenCodeAdapter, tools: Any) -> dict[str, bool]
     # 走 Dict 是 opencode 故意为之: tool schema 走 opencode config (provider 段),
     # chat 请求只声明"启用哪些", 跟自带 tool / MCP tool 解耦.
     result = dict.fromkeys(_OPENCODE_BUILTIN_TOOLS, False)
+    result.update(dict.fromkeys(_MCP_TOOL_NAMES, False))
     result.update(dict.fromkeys(names, True))
     logger.debug("opencode_tools_resolved", tools_sent=list(result.keys()))
     return result
@@ -654,12 +734,12 @@ def _build_runtime_context(
         return base_system_prompt
     ctx = (
         "\n\n<runtime-context>\n"
-        "MCP_AUTH: 鉴权由 OpenAgent / opencode 运行时配置处理，凭证来自容器环境变量，"
+        "AUTH: 鉴权由 OpenAgent / opencode 运行时配置处理，凭证来自容器环境变量，"
         "不会也不应该出现在对话内容里。\n"
-        "MCP_USAGE: 调航班查询时直接使用原生 MCP 工具 queryFlightBasic / filterFlightList；"
-        "不要手写 curl，不要使用 Bash 拼 HTTP 请求，不要用 task 子代理代查，"
-        "不要向用户索要或解释 token。\n"
-        "MCP_SECURITY: 不要在自然语言回复、卡片、工具参数或日志说明里回显任何 token / key / header 值。\n"
+        "TOOL_USAGE: 严格按当前 scenario / SKILL 指定的通道调用工具；"
+        "如果场景要求 MCP 就调用 MCP 工具，如果场景要求 bash + 本地脚本就调用该脚本。"
+        "不要改用未声明的 fallback，不要向用户索要或解释 token。\n"
+        "SECURITY: 不要在自然语言回复、卡片、工具参数或日志说明里回显任何 token / key / header 值。\n"
         "AUIP_CARD: 如果 scenario 启用了 ask_user 工具 (查 opencode config.mcp "
         "里有 ask_user 节点), LLM 应调 ask_user(card_type=..., body=...) 发卡片, "
         "**不要**塞 Markdown 表格到 text 事件. card 渲染由 Hub→前端 FlightResultCard 接管.\n"
@@ -807,7 +887,7 @@ async def blocking_chat(
         ChatResult；包含助手回复、工具调用或失败时的错误信息。
     """
     logger.info(
-        "opencode_chat_start",
+        LM.LLM_CALL,
         session_id=session_id,
         message_count=len(messages),
         has_mcp_token=bool(mcp_token),
@@ -1053,6 +1133,8 @@ async def stream_chat(
     assistant_message_ids: set[str] = set()
     last_text: str = ""
     accumulated_text: str = ""
+    seen_tool_use_parts: set[str] = set()
+    last_bash_command: str = ""
 
     opencode_payload_kwargs = {
         "id": session_id,  # SDK param 名是 id,不是 session_id (Python kwarg 校验)
@@ -1154,6 +1236,8 @@ async def stream_chat(
                         last_text = text
                         if _is_pseudo_ask_user_text(text):
                             continue
+                        if _is_meta_commentary(text):
+                            continue
                         accumulated_text = text
                     # ask_user (AUIP card) is converted by chat_controller's
                     # outer stream interceptor. Keeping it as tool_use here
@@ -1162,6 +1246,18 @@ async def stream_chat(
                     # 卡片 (LLM 不需要知道 AUIP 存在). minimax-M3 这类弱模型即使 system
                     # 提示了也倾向把航班塞 text 事件, 不主动调 ask_user — Hub 替它做
                     # 结构化工作, 前端照样收 card 事件渲染 FlightResultCard.
+                    if mapped.type == "tool_use":
+                        pid = mapped.data.get("part_id", "")
+                        if pid and pid in seen_tool_use_parts:
+                            continue
+                        if pid:
+                            seen_tool_use_parts.add(pid)
+                        if mapped.data.get("tool_name") == "bash":
+                            cmd = mapped.data.get("input", {})
+                            if isinstance(cmd, dict):
+                                last_bash_command = cmd.get("command", "")
+                            else:
+                                last_bash_command = ""
                     if (
                         mapped.type == "tool_result"
                         and mapped.data.get("tool_name") in QUERY_FLIGHT_BASIC_TOOL_NAMES
@@ -1187,6 +1283,28 @@ async def stream_chat(
                                 card_type=card.card_type.value,
                                 card={"title": card.title, "body": card.body},
                             )
+                            continue
+                    if (
+                        mapped.type == "tool_result"
+                        and mapped.data.get("tool_name") == "bash"
+                        and "intShopping" in last_bash_command
+                        and session_id not in _FLIGHT_CARD_EMITTED
+                    ):
+                        from openagent.auip.intl_flight_card import (
+                            maybe_assemble_intl_flight_card,
+                        )
+
+                        intl_card = maybe_assemble_intl_flight_card(
+                            output=mapped.data.get("output"),
+                        )
+                        if intl_card is not None:
+                            _FLIGHT_CARD_EMITTED.add(session_id)
+                            logger.info(
+                                "intl_flight_card_emitted",
+                                session_id=session_id,
+                                card_id=intl_card.data.get("card_id", ""),
+                            )
+                            yield intl_card
                             continue
                     yield mapped
         finally:
