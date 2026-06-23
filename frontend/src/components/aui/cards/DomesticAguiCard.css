@@ -320,11 +320,48 @@
   text-align: center;
 }
 
-.dagui-cabin-tabs span:first-child {
+.dagui-cabin-tab {
+  border: 0;
+  background: transparent;
+  color: #4e5969;
+  padding: 7px 4px;
   border-radius: 8px;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+
+.dagui-cabin-tab:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.dagui-cabin-tab.active {
   background: #fff;
   color: #1677ff;
   box-shadow: 0 1px 4px rgba(15, 23, 42, 0.08);
+}
+
+.dagui-cabin-tab-count {
+  background: rgba(22, 119, 255, 0.12);
+  color: #1677ff;
+  border-radius: 999px;
+  padding: 0 6px;
+  font-size: 11px;
+  line-height: 16px;
+  min-width: 16px;
+  text-align: center;
+}
+
+.dagui-cabin-empty {
+  text-align: center;
+  color: #86909c;
+  font-size: 12px;
+  padding: 16px 0;
 }
 
 .dagui-cabin-row {

@@ -306,6 +306,38 @@ function CabinListBlock({
 }) {
   const cabins = arrayOfRecords(item.dataJson?.cabins);
   const selectedFlight = asRecord(item.dataJson?.selectedFlight);
+  const [activeTab, setActiveTab] = useState<'default' | 'economy' | 'business'>('default');
+
+  const economyCount = cabins.filter((c) => /经济舱/.test(String(c.cabinName ?? c.cab ?? ''))).length;
+  const businessCount = cabins.filter((c) => /公务舱|头等舱|商务舱/.test(String(c.cabinName ?? c.cab ?? ''))).length;
+
+  const visibleCabins = (() => {
+    if (activeTab === 'economy') {
+      return cabins.filter((c) => /经济舱/.test(String(c.cabinName ?? c.cab ?? '')));
+    }
+    if (activeTab === 'business') {
+      return cabins.filter((c) => /公务舱|头等舱|商务舱/.test(String(c.cabinName ?? c.cab ?? '')));
+    }
+    return cabins;
+  })();
+
+  const tabButton = (
+    key: 'default' | 'economy' | 'business',
+    label: string,
+    count: number,
+  ) => (
+    <button
+      type="button"
+      key={key}
+      className={`dagui-cabin-tab ${activeTab === key ? 'active' : ''}`}
+      onClick={() => setActiveTab(key)}
+      disabled={submitted}
+    >
+      {label}
+      {count > 0 && key !== 'default' && <span className="dagui-cabin-tab-count">{count}</span>}
+    </button>
+  );
+
   return (
     <section className="dagui-section">
       {selectedFlight && (
@@ -315,12 +347,15 @@ function CabinListBlock({
         </div>
       )}
       <div className="dagui-cabin-tabs">
-        <span>默认舱位</span>
-        <span>经济舱</span>
-        <span>公务/头等舱</span>
+        {tabButton('default', '默认舱位', cabins.length)}
+        {tabButton('economy', '经济舱', economyCount)}
+        {tabButton('business', '公务/头等舱', businessCount)}
       </div>
       <div className="dagui-list">
-        {cabins.map((cabin, index) => (
+        {visibleCabins.length === 0 && (
+          <div className="dagui-cabin-empty">该舱位类型暂无可选方案</div>
+        )}
+        {visibleCabins.map((cabin, index) => (
           <button
             type="button"
             key={String(cabin.cabId ?? index)}

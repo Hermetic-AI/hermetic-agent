@@ -991,6 +991,12 @@ function formatCardReply(
   if (card.card_type === 'FLIGHT_RESULT' && actionId === 'select_flight' && userInput.selectedFlight) {
     return formatFlightSelectionMessage(userInput.selectedFlight as Record<string, unknown>);
   }
+  if (actionId === 'select_cabin' && userInput.selectedCabin) {
+    return formatCabinSelectionMessage(userInput.selectedCabin as Record<string, unknown>);
+  }
+  if (card.card_type === 'PASSENGER_FORM') {
+    return formatPassengerFormMessage(userInput);
+  }
   const payload = {
     card_type: card.card_type,
     card_id: card.card_id,
@@ -1007,12 +1013,90 @@ function formatCardReplyDisplay(
   if (card.card_type === 'FLIGHT_RESULT' && userInput.selectedFlight) {
     return formatFlightSelectionDisplay(userInput.selectedFlight as Record<string, unknown>);
   }
+  if (userInput.selectedCabin) {
+    return formatCabinSelectionDisplay(userInput.selectedCabin as Record<string, unknown>);
+  }
+  if (card.card_type === 'PASSENGER_FORM') {
+    return formatPassengerFormDisplay(userInput);
+  }
   const labels = new Map(
     (card.fields ?? []).map((field) => [field.id ?? field.key ?? field.name ?? field.label, field.label]),
   );
   return Object.entries(userInput)
     .map(([key, value]) => `${labels.get(key) ?? key}：${formatUserInputValue(value)}`)
     .join('，');
+}
+
+const PASSENGER_FIELD_LABELS: Record<string, string> = {
+  passengerName: '姓名',
+  passengerNamePinyin: '护照拼音',
+  certType: '证件类型',
+  certNo: '证件号',
+  nationality: '国籍',
+  birthDay: '出生日期',
+  certExpiry: '证件有效期',
+  phoneNumber: '联系电话',
+  email: '邮箱',
+};
+
+const CERT_TYPE_NAMES: Record<string, string> = {
+  '0': '护照',
+  '1': '港澳通行证',
+  '2': '台胞证',
+  '3': '回乡证',
+  '4': '台湾通行证',
+};
+
+function formatPassengerFieldValue(id: string, value: unknown): string {
+  if (id === 'certType') {
+    return CERT_TYPE_NAMES[String(value)] ?? String(value);
+  }
+  return String(value ?? '').trim();
+}
+
+function formatPassengerFormMessage(userInput: Record<string, unknown>): string {
+  const parts: string[] = ['乘机人信息已补全：'];
+  for (const [id, value] of Object.entries(userInput)) {
+    const label = PASSENGER_FIELD_LABELS[id] ?? id;
+    parts.push(`${label}=${formatPassengerFieldValue(id, value)}`);
+  }
+  return (
+    parts.join('，')
+    + '\n请基于上述信息直接调用 waitSave 与 saveOrder 完成下单（不要重新调 findPassenger）。'
+  );
+}
+
+function formatPassengerFormDisplay(userInput: Record<string, unknown>): string {
+  const items: string[] = [];
+  for (const [id, value] of Object.entries(userInput)) {
+    const label = PASSENGER_FIELD_LABELS[id] ?? id;
+    items.push(`${label}：${formatPassengerFieldValue(id, value)}`);
+  }
+  return items.length > 0 ? `已补全乘机人信息：${items.join('，')}` : '已补全乘机人信息';
+}
+
+function formatCabinSelectionMessage(cabin: Record<string, unknown>): string {
+  const cabinName = String(cabin.cabinName ?? cabin.cab ?? '舱位');
+  const price = Number(cabin.totalPrice ?? cabin.price ?? 0);
+  const luggage = String(cabin.luggage ?? '');
+  const cabId = String(cabin.cabId ?? '');
+  const parts: string[] = [`选择${cabinName}`];
+  if (price) parts.push(`¥${price}`);
+  if (luggage) parts.push(`（${luggage}）`);
+  let result = parts.join(' ');
+  if (cabId) {
+    result += `\n[选择参数: priceId=${cabId}]`;
+  }
+  result += '\n请基于此舱位继续核价（intPricing）和差标（intPolicy）。';
+  return result;
+}
+
+function formatCabinSelectionDisplay(cabin: Record<string, unknown>): string {
+  const cabinName = String(cabin.cabinName ?? cabin.cab ?? '舱位');
+  const price = Number(cabin.totalPrice ?? cabin.price ?? 0);
+  const parts: string[] = [`选择${cabinName}`];
+  if (price) parts.push(`¥${price}`);
+  return parts.length > 0 ? parts.join(' ') : '选择舱位';
 }
 
 function formatFlightSelectionMessage(flight: Record<string, unknown>): string {
