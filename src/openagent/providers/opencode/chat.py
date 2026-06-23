@@ -162,9 +162,16 @@ _META_COMMENTARY_RE = re.compile(
 
 
 def _is_meta_commentary(text: str) -> bool:
-    """Detect process narration that should not be shown to users."""
+    """Detect process narration that should not be shown to users.
+
+    Only filters obvious "let me / 正在 / 已...完成" meta-narration.
+    Internal-info leakage (serialNumber / ask_user / compact_intl_payload)
+    is handled by the Operating Rules in SKILL.md, not by this regex.
+    """
     stripped = (text or "").strip()
-    if not stripped or len(stripped) > 200:
+    if not stripped:
+        return True  # empty text is always noise
+    if len(stripped) > 400:
         return False
     return bool(_META_COMMENTARY_RE.search(stripped))
 
@@ -1287,6 +1294,26 @@ async def stream_chat(
                     if (
                         mapped.type == "tool_result"
                         and mapped.data.get("tool_name") == "bash"
+                        and "findPassenger" in last_bash_command
+                    ):
+                        from openagent.auip.passenger_form_card import (
+                            maybe_assemble_passenger_form_card,
+                        )
+
+                        pf_card = maybe_assemble_passenger_form_card(
+                            output=mapped.data.get("output"),
+                            session_id=session_id,
+                        )
+                        if pf_card is not None:
+                            logger.info(
+                                "passenger_form_card_emitted",
+                                session_id=session_id,
+                                card_id=pf_card.data.get("card_id", ""),
+                            )
+                            yield pf_card
+                    if (
+                        mapped.type == "tool_result"
+                        and mapped.data.get("tool_name") == "bash"
                         and "intShopping" in last_bash_command
                         and session_id not in _FLIGHT_CARD_EMITTED
                     ):
@@ -1297,7 +1324,14 @@ async def stream_chat(
                         intl_card = maybe_assemble_intl_flight_card(
                             output=mapped.data.get("output"),
                         )
-                        if intl_card is not None:
+                        if intl_card is None:
+                            logger.warning(
+                                "intl_auto_assemble_returned_none",
+                                session_id=session_id,
+                                output_len=len(mapped.data.get("output") or ""),
+                                output_head=str(mapped.data.get("output") or "")[:200],
+                            )
+                        else:
                             _FLIGHT_CARD_EMITTED.add(session_id)
                             logger.info(
                                 "intl_flight_card_emitted",
