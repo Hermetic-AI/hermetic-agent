@@ -85,56 +85,49 @@
 
 **API**: `POST /air/international/saveOrder`
 
-**请求体组装**：
+**完整请求体模板**（已验证可成功下单，2026-06-22 真实下单 ZH305/SZX→BKK）：
 
 ```json
 {
-  "outlayType": "<ctx.outlayType 或 '1'(公费)>",
+  "outlayType": "1",
   "interfaceSupplier": "",
   "savePassenger": "true",
-  "clientId": "<ctx.clientId>",
-  "payType": "<ctx.payType 或 '0'(挂账)>",
-  "orderer": "<ctx.userName>",
-  "orderTel": "<ctx.contactPhone>",
-  "userCode": "<ctx.userCode>",
+  "clientId": "",
+  "payType": "0",
+  "orderer": "刘酝泽",
+  "orderTel": "13384459987",
+  "userCode": "013",
   "orderMail": "",
-  "noadvanceReason": "<ctx.travelReason 或 ''>",
-  "applicationDh": "<ctx.applicationDh 或 ''>",
-  "applicationId": "<ctx.applicationId 或 ''>",
-  "depId": "<ctx.costCenterId>",
-  "projectName": "<ctx.projectName 或 ''>",
-  "belongProjectCode": "<ctx.belongProjectCode 或 ''>",
-  "belongCompany": "<ctx.belongCompany 或 ''>",
-  "belongCompanyCode": "<ctx.belongCompanyCode 或 ''>",
-  "depName": "<ctx.costCenterName 或 ''>",
-  "needAddress": "<需要纸质行程单则 '1' 否则 '0'>",
-  "deliverType": "<needAddress=='1' 则 '2' 否则 '3'>",
-  "receiver": {
-    "contact": "<ctx.addressInfo.realName>",
-    "clientTel": "<ctx.addressInfo.mobile>",
-    "sendAddress": "<ctx.addressInfo.address>"
-  },
-  "budgetCode": "<ctx.budgetCode 或 ''>",
-  "specificPolicy": <ctx.policyPassed>,
-  "travelPolicyList": [
-    {"id": "<policy.id>", "reason": "<用户填写的差标原因>"}
-  ],
+  "noadvanceReason": "",
+  "applicationDh": "",
+  "applicationId": "",
+  "depId": 115275,
+  "projectName": "",
+  "belongProjectCode": "",
+  "belongCompany": "月亮岛开发公司",
+  "belongCompanyCode": "",
+  "depName": "月亮岛开发公司",
+  "needAddress": "0",
+  "deliverType": "3",
+  "budgetCode": "",
+  "specificPolicy": true,
+  "travelPolicyList": [],
   "passengerList": [
     {
-      "cardId": <certId>,
-      "name": "<LastName/FirstName>",
-      "passengerName": "<中文姓名>",
-      "passengerType": "<0成人/1儿童/2婴儿>",
+      "cardId": 0,
+      "name": "LIU/YUNZE",
+      "passengerName": "刘酝泽",
+      "passengerType": "0",
       "issueCountry": "CN",
-      "nationality": "<nationality code>",
-      "idType": "<0护照/1港澳/2台胞/3回乡/4台湾>",
-      "userCode": "<userCode>",
-      "depId": <depId>,
-      "idNumber": "<certNo>",
-      "idExpiration": "<expiryDate>",
-      "gender": "<1男/0女>",
-      "birthday": "<birthDay>",
-      "phoneNumber": "<mobile>",
+      "nationality": "CN",
+      "idType": "0",
+      "userCode": "013",
+      "depId": 115275,
+      "idNumber": "EK3971795",
+      "idExpiration": "2033-05-15",
+      "gender": "",
+      "birthday": "2000-08-12",
+      "phoneNumber": "13384459987",
       "bx1": 0,
       "bx2": 0,
       "mileageList": []
@@ -142,14 +135,40 @@
   ],
   "flightList": [
     {
-      "serialNumber": "<ctx.serialNumber>",
-      "priceId": "<ctx.selectedPriceId>",
-      "pricingId": "<ctx.pricingId>"
+      "serialNumber": "260622144826A0000001",
+      "priceId": "260622144820100004/100000/4",
+      "pricingId": "2"
     }
   ],
   "additionalList": []
 }
 ```
+
+**关键字段格式（踩坑要点，违反就报 TMS_1002 / TRAVELAIR_1002）**：
+
+| 字段 | 字面量 | 说明 |
+|---|---|---|
+| `outlayType` | `"1"` 字符串 | 1=公费 / 2=自费 |
+| `payType` | `"0"` 字符串 | 0=挂账 / 1=现付（**不是**数字） |
+| `passengerType` | `"0"` 字符串 | 0=成人 / 1=儿童 / 2=婴儿（**字符串**！） |
+| `idType` | `"0"` 字符串 | 0=护照 / 1=港澳 / 2=台胞 / 3=回乡 / 4=台湾（**字符串**！） |
+| `passengerList[].gender` | `""` 或 `"1"` | 空字符串合法（**不传**会被拒） |
+| `passengerList[].cardId` | `0`（找不到就 0） | 数字；findPassenger 没匹配到时用 0 |
+| `passengerList[].name` | **拼音** `"LIU/YUNZE"` | **不是**中文 |
+| `passengerList[].passengerName` | 中文 | 必填 |
+| `passengerList[].issueCountry` | `"CN"` | **发证国家**，**不是** `certIssuePlace` |
+| `passengerList[].nationality` | `"CN"` | 国籍 |
+| `passengerList[].idExpiration` | `"2033-05-15"` | **必填**，护照有效期 |
+| `passengerList[].birthday` | `"2000-08-12"` | **必填** |
+| `clientId` | `""` 空字符串 | **不要**填 `SZ001IVA`（那是查询客户） |
+| 顶层 `depId` | `115275` 数字 | 用户选的成本中心 ID |
+| 顶层 `belongCompany` / `depName` | `"月亮岛开发公司"` | 跟 `depId` 对应的公司/部门名 |
+| `specificPolicy` | `true` | intPolicy 通过时填 true |
+| `flightList[0].pricingId` | `"2"` 或长串 | **intPricing 返回的 `data[0].priceId`**（长串如 `"1,abc...,10,1E,TCPL,1"`） |
+| `needAddress` | `"0"` | 不需要纸质行程单 |
+| `deliverType` | `"3"` | 行程单寄送方式（无需纸质时用 3） |
+| `receiver` 块 | **不需要** | 公费挂账无需寄送地址，**不要**加 |
+| `orderMail` | `""` 空字符串 | 可选 |
 
 **参数溯源（关键字段）**：
 
@@ -158,10 +177,16 @@
 | `flightList[0].serialNumber` | intShopping → `data.serialNumber` |
 | `flightList[0].priceId` | intShopping → `groupList[].priceList[].priceId` |
 | `flightList[0].pricingId` | **intPricing** → `data[].priceId`（**不是** intShopping 的 priceId） |
-| `passengerList[].cardId` | findPassenger → `data.dataList[].id`（证件表 ID） |
+| `passengerList[].cardId` | findPassenger → `data.dataList[].id`（证件表 ID，没匹配就 0） |
 | `passengerList[].depId` | findPassenger → `data.dataList[].depId` |
 | `depId` | getMineBasicData → `data.depId` 或用户选择成本中心 |
 | `userCode` | getMineBasicData → `data.userCode` |
+| `belongCompany` / `depName` | 跟 `depId` 对应（用户选择成本中心时获得） |
+| `passengerList[].name` | 用户提供的护照拼音（或中文转拼音） |
+| `passengerList[].passengerName` | 用户提供的中文姓名 |
+| `passengerList[].idNumber` | 用户提供的护照号 |
+| `passengerList[].idExpiration` | 护照有效期（用户输入） |
+| `passengerList[].birthday` | 出生日期（用户输入） |
 
 **返回关键字段**：
 
@@ -175,7 +200,7 @@
 
 **状态转换**: `PASSENGER_FILLED → ORDER_SUBMITTED`
 
-### 6.3 支付验证 (getPlaneSendpki)
+### 6.3 支付验证 (getPlaneSendpki) — **公费挂账跳过本节**
 
 **API**: `POST /air/domestic/getPlaneSendpki`
 
@@ -187,19 +212,24 @@
 ```
 
 **返回处理**：
-- `data.payType` 确定支付方式
+- `data.payType` 确定支付方式（**1-5=需在线支付，0 或 3=公费挂账不需支付**）
 - `data.violatePolicy == true` → 需差标审批
-- `data.approveUserList[]` → 审批人列表
+- `data.approveUserList[]` → 审批人列表（公费挂账场景展示给用户）
 - `data.diffcashData` → 差额支付数据
 
-### 6.4 提交支付 (submitPlaneSendpki)
+**⚠️ 重要：公费挂账（`payType == 0`）场景**：
+- saveOrder 成功后**不要**调 getPlaneSendpki 和 submitPlaneSendpki
+- 直接告诉用户"订单已创建，订单号 XXX，请登录企业后台完成支付或联系审批人"
+- 原因：公费挂账后端不需要发起在线支付，调 submitPlaneSendpki 会因 `payType` 缺失/超范围（`[1-5]`）报错 `TRAVELAIR_1006`，浪费 5-10 秒
+
+### 6.4 提交支付 (submitPlaneSendpki) — **公费挂账跳过本节**
 
 **API**: `POST /air/domestic/submitPlaneSendpki`
 
 ```json
 {
   "orderBasicDataJson": "<getPlaneSendpki 返回的 data.orderBasicDataJson>",
-  "payType": <支付类型>,
+  "payType": <支付类型 1-5>,
   "orderPriceList": [
     {"order_id": "<orderId>", "recPrice": <recPrice>, "payPrice": 0}
   ]

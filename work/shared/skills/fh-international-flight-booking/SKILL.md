@@ -214,10 +214,96 @@ INIT → PERMISSION_CHECKED → SEARCH_PARAMS_READY → FLIGHT_LISTED
     - `waitSave`：`{"language":"cn","flightList":[{"serialNumber":"...","priceId":"...","pricingId":"..."}]}`，`pricingId` 来自 `intPricing` 返回的 `data[0].priceId`
     - `intRule`：`{"serialNumber":"...","priceId":"..."}`（这个用平铺格式）
     - **禁止**盲目试错：参数错误时**第一次**失败就立即读 workflow 文件确认格式，**禁止**重复试错 3 次以上浪费 token
+17. **saveOrder 关键参数（必读，违反会导致 TMS_1002 "没有指定客户下单权限"）**：
+    - `flightList[0].pricingId` = **`intPricing` 返回的 `data[0].priceId`**（**字面长串**如 `"1,abc...,10,1E,TCPL,1"`），**不是** `"1"` 或 `priceId` 的简写。LLM 常见错误：把 `pricingId` 填成 `"1"`（字面量），导致核价 cache 错位、后端校验失败。
+    - `flightList[0].priceId` = `intShopping` 返回的 `groupList[].priceList[].priceId`（也是长串）
+    - `flightList[0].serialNumber` = `intShopping` 返回的 `data.serialNumber`
+    - **三者** 都来自前序 API 返回，**禁止**自创或简化。
+    - 顶层 `clientId`：传 `""`（空字符串，让后端根据 `depId` 自行判断客户）。**不要**传 `getClientBasicData` 返回的 `clientId`（那是查询参数，不一定是下单客户）。
+    - 顶层 `depId`：传 `""`（空），下单客户由 `passengerList[0].depId`（来自 `findPassenger`）决定。
+    - `passengerList[0].name`：用**护照/证件上的拼音**（如 `"LIU/YUNZE"`），**不是**中文姓名。
+    - `passengerList[0].idType` = `"0"`（护照），`idNumber` = 护照号，`idExpiration` = 护照有效期（必填），`birthday` = 出生日期（必填）。
+    - 必须从 `findPassenger` 响应里取 `cardId`（证件表 ID）填到 `passengerList[0].cardId`。
+18. **saveOrder 失败立即读 workflow（避免连续试错）**：
+    - saveOrder 第一次返回 `errorCode != "0"` 时，**立即** `cat workflows/order-submit-and-payment.md` 重新读 §6.2 字段表，**不要**继续猜字段。
+    - 常见报错对照表（直接查这个表，不要猜）：
+      | 错误码/消息 | 真正缺/错的字段 |
+      |---|---|
+      | `乘客类型不能为空` | `passengerList[0].passengerType` 缺失（填 `"0"` 字符串） |
+      | `国籍代码不能为空` | `passengerList[0].nationality` 缺失（填 `"CN"`） |
+      | `发证国家不能为空` | `passengerList[0].issueCountry` 缺失（填 `"CN"`，**不是** `certIssuePlace`） |
+      | `国际机票保存订单有误: 没有指定客户下单权限` | 顶层 `clientId`/`depId`/`pricingId` 组合错（参考 Rule 17） |
+    - **禁止**在读 workflow 之前就改字段名/换值乱试。**禁止**重复试错 ≥2 次浪费时间。
+19. **公费挂账跳过 getPlaneSendpki / submitPlaneSendpki**：
+    - saveOrder 返回成功后，看 `data.orderList[].recPrice` 应付金额 → 如果是公费挂账场景（用户选了非个人现付），**不要**调 getPlaneSendpki 和 submitPlaneSendpki。
+    - 直接告诉用户"订单已创建，订单号 XXX，PNR XXX，请登录企业后台完成支付或联系审批人（X人）"。
+    - 这两步在公费挂账场景下后端会因 `payType` 超出范围（`[1-5]`）报 `TRAVELAIR_1006`，浪费 5-10 秒。
 
-## AUIP Card Contract (AGUI v2)
+20. **getPlaneSendpki 响应已精简**（Hub 端自动处理，无需 LLM 关心）：
+    - Hub 端 `http_client.py` 已对 `/air/domestic/getPlaneSendpki` 响应做精简：
+      - **删除**：`approveUserList` 全字段详情、`airlineList[].baggageList`、`nameList`、`orderPlaneTgqList[].issueRule` 等冗余字段
+      - **保留**：`payType` / `violatePolicy` / `paymentKind` / `approverCount` + 前 5 个 approver `{id, name, depName}` / `orderList[].orderId`/`recPrice`/`payPrice`/`tgq[].airId`/`fromCity`/`toCity`/`flyDate` + 截断到 200 字符的 `refundRule` / `changeRule` + **完整** `orderBasicDataJson`（submitPlaneSendpki 必须）
+    - 如果 LLM 觉得"我看的不全"想看 airlineList 详情等字段 → 响应里**没有**这些字段，已经被精简掉。**禁止**在响应里 grep / 找这些字段。**禁止**调第二次 getPlaneSendpki。
+    - 想看完整响应审计（异常排查用）：响应在 `~/.opencode-tool-output/spill_*.json`（沙箱内）或 `work/tenant-A/project-1/.opencode-tool-output/spill_*.json`（host），但**日常流程不要 cat**。
+21. **getPassengerAllAddress 响应已精简**：
+    - Hub 端只保留 `current=true` 的地址，其他历史地址全部删除。
+    - **禁止**调第二次。响应里没有的地址就是没有。
 
-严格复用 AGUI v2 协议（`schemaVersion: "2"`），**不引入新的 basicType**。
+22. **乘机人信息补全自动用表单卡片，禁发消息**：
+    - findPassenger 返回的乘机人信息**不完整**（缺 `birthDay` / `nationality` / `expiryDate` / `certNamePinyin` 等）时，Hub 会**自动发 `PASSENGER_FORM` 卡片**给用户。
+    - **禁止**用 text 消息让用户"发消息补全"（如："请补充出生日期、护照有效期、拼音名"）。这种引导很慢且用户容易漏填。
+    - **禁止**调 ask_user 发 `OD_INPUT` 卡片（那是问行程用，不是问乘机人）。
+    - Hub 端会自动判断哪些字段缺失，缺失的字段才会出现在表单里；已有字段自动 pre-fill。
+    - 卡片提交后，Hub 会自动接 `waitSave` 流程，你不需要再调 findPassenger。
+    - 必填字段（Hub 端会按国际机票下单要求强制收集）：
+      | 字段 | 类型 | 备注 |
+      |---|---|---|
+      | 姓名（中文） | text | 通常 pre-fill |
+      | 护照拼音名 | text | **必须** `LIU/YUNZE` 格式 |
+      | 证件类型 | select | 护照/港澳/台胞/回乡/台湾 |
+      | 证件号码 | text | 护照号 |
+      | 国籍 | select | 默认 CN |
+      | 出生日期 | date | YYYY-MM-DD |
+      | 证件有效期 | date | YYYY-MM-DD |
+      | 联系电话 | text | 通常 pre-fill |
+      | 邮箱（可选） | text | |
+23. **getClientBasicData 必传 `productType=INTERNATIONAL`**：
+    - Hub 端 `http_client.py` 已经**自动**在 body 为 `{}` 或缺 `productType` 时补 `productType=INTERNATIONAL`。
+    - 即使如此，**主动传**这个字段更稳：
+      ```bash
+      python3 http_client.py /air/customer/getClientBasicData '{"productType":"INTERNATIONAL"}'
+      ```
+    - **不要**传 `{}` —— fh-travel BFF 会返回 `TMS_1002 / 网络异常`（不报错但实际是参数错）。
+
+24. **对用户的回复只能用"用户能看懂"的话**（最高优先级规则）：
+    - 你面对的是普通用户，他们不知道也不需要知道：API 路径（intShopping/intPricing/findPassenger/...）、卡片机制（ask_user/Hub auto-assembly）、内部 ID 字段（serialNumber/groupId/priceId/pricingId/userCode/depId/passengerId/certId）、脚本名（compact_intl_payload.py/render_intl_options.py）、技术细节。
+    - **禁止**在用户可见的 text 事件中输出以下任一内容（这些是给开发者看的）：
+      - API 名称或路径：intShopping / intPricing / intRule / intPolicy / waitSave / saveOrder / findPassenger / getMineBasicData / getClientBasicData / getPlaneSendpki / submitPlaneSendpki
+      - 内部 ID：serialNumber / groupId / priceId / pricingId / cardId / userCode / depId / passengerId / certId / orderGroupId / subOrderId / pnr
+      - 卡片机制名：ask_user / Hub / auto-assembly / FLIGHT_RESULT / PASSENGER_FORM / PLUGIN
+      - 内部脚本：compact_intl_payload.py / render_intl_options.py / http_client.py / normalize_request.py
+      - "通过 ask_user 发 X 卡片"、"Hub 端 auto-assembly 已完成"等元评论
+    - **正确做法**：直接说结果。
+      - ❌ "新查询的 serialNumber 已更新为 260623090714A0000001"
+      - ✅ "已重新查询航班"
+      - ❌ "通过 ask_user 发核价确认卡片"
+      - ✅ "核价完成，KE864 经济舱 ¥1006（不可退/可改）"
+      - ❌ "Hub 端 auto-assembly 已生成 FLIGHT_RESULT 卡片"
+      - ✅ "已为您找到 5 个航班方案"
+    - 内部 ID 仅在**调 API 时**作为参数使用，**不要**复读给用户。
+    - **空 text 事件不要发**——如果你想"提示一下进度"，直接发空字符串会被过滤；想说什么就一句话说完整。
+25. **你只调 `http_client.py`，**禁止**调其它渲染脚本**（历史经验教训，违反会让交互流程退化）：
+    - **禁止**调 `compact_intl_payload.py` / `render_intl_options.py`。
+    - Hub 端会在 `intShopping` tool_result 到达时**自动**拼好航班卡片并发送给用户，你不需要做任何额外渲染工作。
+    - 即使你看到 spill 文件路径，**不要** `cat` 它、不要 `python3 compact_intl_payload.py`、不要 `python3 render_intl_options.py`。
+    - **唯一允许**的额外脚本调用是 `http_client.py` 一个，所有 API 都通过它。
+26. **省 token：避免空 text、避免重复描述、避免 cat workflow 文件超过 1 次**：
+    - 每次发空 text（content=""）就是浪费用户带宽。
+    - 同一个结果不要用 text 说一遍再发"好的"/"已收到"再说一遍。
+    - 调 API 失败时**第一次**立即 `cat workflows/<相关>.md` 确认格式，**不要**反复重试浪费 token。
+    - 同一 session 内已读过的 workflow 文件不要重读，除非参数有变化。
+
+## AUIP Card ContractType**。
 航班搜索结果使用 `AIR_DOMESTIC_FLIGHT_LIST` 展示富卡片（前端已支持国际航班数据）。
 其他场景使用 `PLAIN_TEXT` 展示结构化文本。详细映射见 `references/agui-mapping.md`。
 
