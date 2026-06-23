@@ -53,20 +53,89 @@ def _day_offset(d1: str, d2: str) -> int:
         return 0
 
 
+def _resolve_spill_path(spill_path: str) -> str:
+    """Translate sandbox-side spill path to a Hub-container-readable path.
+
+    Sandbox (opencode-1 Node.js) writes spill files at:
+      /mnt/c/WorkSpace/Coding/fh-openagent/work/.../spill_*.json
+    (because the Node process runs under WSL where ``/mnt/c`` is the host
+    rootfs entry point).
+
+    Hub container has the same host dir bind-mounted as:
+      /app/work/.../spill_*.json
+    (see docker-compose Hub ``volumes: - ./work:/app/work:ro``).
+
+    So if the marker carries a ``/mnt/c/...`` path, rewrite it to
+    ``/app/<rest>`` so the Hub's ``open()`` can actually find the file.
+
+    Also handles the inverse (sandbox might use ``/work/...`` if
+    WORKSPACE_CWD is set to a non-WSL path).
+    """
+    if not spill_path:
+        return spill_path
+    # Common prefixes seen in the wild on this stack:
+    for src_prefix, dst_prefix in (
+        ("/mnt/c/WorkSpace/Coding/fh-openagent/", "/app/"),
+        ("/mnt/c/WorkSpace/Coding/OpenAgent/", "/app/"),
+        ("/work/", "/app/work/"),
+    ):
+        if spill_path.startswith(src_prefix):
+            return dst_prefix + spill_path[len(src_prefix):]
+    return spill_path
+
+
 def _parse_output(output: Any) -> dict[str, Any] | None:
+    import structlog
+    _log = structlog.get_logger(__name__)
     if isinstance(output, dict):
         data = output
     elif isinstance(output, str):
+        text = output.strip()
+        if (
+            text.startswith("...output truncated...")
+            or "Full output saved to:" in text[:200]
+        ):
+            brace_idx = text.find("{")
+            if brace_idx < 0:
+                _log.warning("intl_parse_no_brace_in_truncated", output_head=text[:200])
+                return None
+            text = text[brace_idx:]
         try:
-            data = json.loads(output)
-        except (json.JSONDecodeError, TypeError):
+            data = json.loads(text)
+        except (json.JSONDecodeError, TypeError) as e:
+            _log.warning("intl_parse_json_failed", error=str(e), output_head=text[:200])
             return None
     else:
+        _log.warning("intl_parse_unsupported_type", output_type=type(output).__name__)
         return None
     if str(data.get("errorCode", "0")) != "0":
+        _log.warning("intl_parse_error_code_nonzero", error_code=data.get("errorCode"))
         return None
+    if data.get("_hub_marker") == "full_output_spilled":
+        spill_path = data.get("_output_file")
+        if not spill_path:
+            _log.warning("intl_parse_no_spill_path")
+            return None
+        spill_path = _resolve_spill_path(spill_path)
+        try:
+            with open(spill_path, encoding="utf-8") as f:
+                full = json.load(f)
+        except (OSError, json.JSONDecodeError) as e:
+            _log.warning("intl_parse_spill_read_failed", spill_path=spill_path, error=str(e))
+            return None
+        if str(full.get("errorCode", "0")) != "0":
+            _log.warning("intl_parse_spill_error_code", spill_path=spill_path, error_code=full.get("errorCode"))
+            return None
+        inner = full.get("data")
+        if not isinstance(inner, dict):
+            _log.warning("intl_parse_spill_data_not_dict", data_type=type(inner).__name__)
+            return None
+        return inner
     inner = data.get("data")
-    return inner if isinstance(inner, dict) else None
+    if not isinstance(inner, dict):
+        _log.warning("intl_parse_data_not_dict", data_type=type(inner).__name__)
+        return None
+    return inner
 
 
 def _build_flights(
