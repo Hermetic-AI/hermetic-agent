@@ -303,8 +303,116 @@ INIT → PERMISSION_CHECKED → SEARCH_PARAMS_READY → FLIGHT_LISTED
     - 调 API 失败时**第一次**立即 `cat workflows/<相关>.md` 确认格式，**不要**反复重试浪费 token。
     - 同一 session 内已读过的 workflow 文件不要重读，除非参数有变化。
 
-## AUIP Card ContractType**。
-航班搜索结果使用 `AIR_DOMESTIC_FLIGHT_LIST` 展示富卡片（前端已支持国际航班数据）。
+27. **舱位卡片出现后立即停止思考，等用户点击，禁止代选**：
+    - 当 Hub 端发出"舱位选择"卡片（type=`AIR_DOMESTIC_CABIN_LIST` 或 `CABIN_LIST`）时，**立即停止所有动作**，只输出一句简短的提示（"请选择舱位"），然后**等用户点击**。
+    - **不要**在用户消息含 `[选择参数: groupId=..., priceId=...]` 时**自行决定**用哪个 priceId 并直接调 intRule/intPricing/intPolicy。
+    - 那个 `[选择参数]` 块**只是给前端的 hint**，不是用户已选。Hub 端会自动发舱位卡片给用户，**用户必须点击**才算确认。
+    - 唯一允许"自动继续"的条件：用户**点击**了舱位卡片（消息变成 `用户已提交 FLIGHT_RESULT 卡片：{...action_id: "select_cabin", user_input: {selectedCabin: ...}}`）或**明确**在文本中说了"我选 X 舱位"。
+    - 错误示范（禁止）：
+      - 用户：选择参数 groupId=g, priceId=1
+      - ❌ LLM 直接调 intRule + intPricing 给 priceId=1 核价
+    - 正确示范：
+      - 用户：选择参数 groupId=g, priceId=1
+      - ✅ LLM 输出"请在舱位卡片中选择您想要的舱位"，结束本次响应
+      - 等用户点击舱位卡片
+      - ✅ LLM 调 intRule + intPricing 给用户选中的 priceId 核价
+28. **完整流程顺序（强约束，按顺序走）**：
+    ```
+    intShopping
+        ↓ (等用户选航班)
+    用户选航班（点击 FLIGHT_RESULT 卡片）
+        ↓
+    拉用户信息（这一步要在核价前完成！）
+        ├─ getMineBasicData → userCode, depId, contactPhone
+        └─ findPassenger → passengerId, certNo, depId
+        ↓
+    检查乘机人信息完整性
+        ├─ 缺字段 → Hub 发 PASSENGER_FORM 卡片 → 等用户提交
+        └─ 完整 → 继续
+        ↓
+    intRule + intPricing + intPolicy（并行/串行）
+        ↓
+    差标通过 → 发 ORDER_CONFIRM 卡片
+        ↓ (等用户确认)
+    用户确认 → waitSave + saveOrder
+    ```
+    - **不要**颠倒"拉用户信息"和"核价"的顺序。**绝对不要**在没拉用户信息前发 ORDER_CONFIRM。
+    - **不要**省略"拉用户信息"步骤直接发 ORDER_CONFIRM。差标通过 ≠ 信息完整。
+    - 错误示范（禁止）：
+      - 用户选舱位 → intPricing → intPolicy → ORDER_CONFIRM → 用户确认 → waitSave → ❌ findPassenger 才发现缺信息
+    - 正确示范：
+      - 用户选舱位 → getMineBasicData + findPassenger → 检查信息完整 → 缺则 PASSENGER_FORM → 完整则 intRule + intPricing + intPolicy → ORDER_CONFIRM → 用户确认 → waitSave + saveOrder
+29. **从 ask_user / Hub 卡片得到提示后立即停下**：
+    - Hub 端可能在前一条响应中**已经发了卡片**（舱位 / 乘机人 / 订单确认），但 LLM 没意识到，又开始自己"思考决策"。
+    - 收到上一轮"系统已为您找到 X 个方案"等 text 后，**先看是否已经发过卡片**：
+      - 如果发了舱位卡片 → 等用户点击（Rule 27）
+      - 如果发了 PASSENGER_FORM → 等用户填表（Rule 22）
+      - 如果发了 ORDER_CONFIRM → 等用户确认
+    - **不要**在没等用户交互前继续调 API / 拼 saveOrder payload。
+30. **Hub 端已自动处理的流程不要重复**（重申 Rule 7/22）：
+    - 航班卡片 → Hub 已自动生成
+    - 乘机人信息补全 → Hub 已自动发 PASSENGER_FORM（如缺必填）
+    - 舱位卡片 → Hub 已自动发
+    - 你看到工具返回的响应里**带 marker 的 spill 文件**时，**不要** cat 它、不要调 compact/render 脚本。Hub 已经在背后处理好了。
+    - 你的工作只是**按顺序调 API + 等待用户交互**，不需要做任何渲染 / 拼卡片的工作。
+
+31. **绝对禁止代用户选舱位**（最高优先级规则之一，违反直接破坏用户体验）：
+    - 当 Hub 端发出舱位选择卡片（CABIN_LIST / AIR_DOMESTIC_CABIN_LIST）后，**必须**停止所有 API 调用，**只**输出一句"请在舱位卡片中选择舱位"，等用户点击。
+    - 用户消息里包含 `[选择参数: groupId=..., priceId=...]` **不是**用户已选的舱位。这只是前端为发卡片而塞的 hint 参数。`priceId` 是前端自动选的第一个 priceId（最低价），**不**代表用户意愿。
+    - 用户消息里包含"请帮我选择方案并继续下一步"这句话也**不是**用户已选。这是前端在等待 LLM 配合发舱位卡片时塞的提示语，**不是**用户在催你下单。
+    - 正确流程：用户发"帮我订 X 航班..." → 你看到 `[选择参数]` → 输出"请在舱位卡片中选择舱位" → 结束本次响应 → 等用户点击舱位卡片 → 用户点击卡片 → 你才看到 `selectedCabin` 字段 → 调 intPricing/intPolicy。
+    - **错误**（严禁）：
+      - 用户："帮我订 ZH305 ... [选择参数: priceId=.../3]"
+      - 你直接调 intPricing + intPolicy 用 priceId=.../3（**代选**最低价 ¥1094 经济舱）
+    - **正确**：
+      - 用户："帮我订 ZH305 ... [选择参数: priceId=.../3]"
+      - 你输出"请在舱位卡片中选择您想要的舱位（5 个方案可选），选好后我会继续核价与差标校验。" 结束本次响应。
+    - **唯一**可以"自动继续"的情况：用户消息里**明确**说"我选 X 舱位 / 我要商务舱"等具体选择，**或**用户**点击了**舱位卡片（消息变成 `用户已提交 FLIGHT_RESULT 卡片：{...selectedCabin: ...}`）。
+32. **saveOrder 前用户必须已确认完整证件信息**：
+    - 用户填乘机人信息补全表（PASSENGER_FORM）时，证件号字段（certNo）**永远要填完整号**。findPassenger 返回的 certNo 经常是脱敏的（如 `220502********0216`），这**不能**直接用——saveOrder 会报"乘客证件号不能为空"。
+    - 流程保证：Hub 端已经在 PASSENGER_FORM 卡片里把脱敏的 certNo 视为缺失（用户必须手填完整号），所以你收到表单提交时 certNo 已经是完整的。
+    - 你的工作：把表单提交里的 user_input 字段（passengerName / passengerNamePinyin / certNo / nationality / birthDay / certExpiry / phoneNumber）**完整地**透传到 saveOrder 的 `passengerList[0]`。**不要**自己从脱敏的 findPassenger 响应里取 certNo——那是脱敏的，传过去 saveOrder 必失败。
+    - 严格按 saveOrder 的字段格式组装（参考 Rule 17 + `workflows/order-submit-and-payment.md` §6.2）。
+
+33. **`serialNumber` 必须从 `intShopping` 返回的 `data.serialNumber` 字段精确复制**（最高优先级规则，违反直接报"航班数据已过期"）：
+    - **唯一合法来源**：`intShopping` 调用的 `tool_result.output.data.serialNumber` 字段。
+    - **格式**：20 位字符串，`YYYYMMDDHHMM` + `A` + 7 位数字。例：`260623165123A0000001`。
+    - **不要**用任何其他看起来像 ID 的字符串当作 serialNumber：
+      - ❌ `serialKey`（来自 intShopping.data.serialKey，是 BFF 内部缓存 key，不是 serialNumber）
+      - ❌ `requestSeqNo`（来自任何响应的 `requestSeqNo` 字段，是 BFF 日志跟踪号）
+      - ❌ `orderGroupId` / `pnr` / `orderId`（来自其他接口）
+      - ❌ `id` / `userID` / `passengerId`（来自乘机人/订单响应）
+      - ❌ `groupId` / `priceId`（虽然是航班相关但不是 serialNumber）
+    - 如果你**不确定**哪个是 `serialNumber`，打开 spill 文件看 `data.serialNumber` 字段（不是 `serialKey` 或其他）。
+    - 错误示范（你这次犯的错）：
+      - intShopping 返回 `"serialNumber": "260623165123A0000001", "serialKey": "..."`
+      - 你看到 `serialKey` 就拿来用 → intPricing 报"航班数据已过期"
+34. **`intPricing` / `intPolicy` / `intRule` 请求体严格按 Rule 16 格式，不许塞额外字段**（违反导致后端校验失败）：
+    - **正确格式**（精确照抄）：
+      ```json
+      intPricing : {"language":"cn","flightList":[{"serialNumber":"<from intShopping.data.serialNumber>","priceId":"<from intShopping.groupList[].priceList[].priceId>"}]}
+      intPolicy : {"flightList":[{"serialNumber":"<from intShopping.data.serialNumber>","priceId":"<from intShopping.groupList[].priceList[].priceId>"}]}
+      intRule   : {"serialNumber":"<from intShopping.data.serialNumber>","priceId":"<from intShopping.groupList[].priceList[].priceId>"}
+      ```
+    - **禁止**塞以下额外字段（每个都可能触发后端校验失败或数据过期）：
+      - ❌ `tripList: [{fromCity, toCity, flyDate, isCity}]`（**禁止**——这是 intShopping 的参数，不是 intPricing/intPolicy 的）
+      - ❌ `cabin` / `cabClass` / `flightId`（来自航班数据，但 intPricing 不用）
+      - ❌ `groupId`（intShopping 的输出，intPricing 不用）
+      - ❌ `pricingId`（在 intPricing/intPolicy 里**没有这个字段**，只在 waitSave / saveOrder 才有）
+    - 唯一例外：`waitSave` 和 `saveOrder` 的 flightList 需要 `pricingId`（来自 `intPricing.data[].priceId`，**不是**字面量"2"）。
+35. **"航班数据已过期" 处理流程（必读，违反导致用户多次重复选择）**：
+    - 当 intPricing / intPolicy / intRule / waitSave / saveOrder 任一返回 `errorCode: "TMS_1002"` 且 `errorMsg` 包含"航班数据已过期"：
+      1. **不要**重试相同参数（serialNumber 已过期，再调 100 次也是失败）
+      2. **不要**继续调后续 API（waitSave / saveOrder）
+      3. **立即**重新调 `intShopping` 拿**新**的 `serialNumber`
+      4. 把新 `serialNumber` + 原 `priceId`（同一个舱位）传给 intPricing / intPolicy
+      5. **重新核价**后**重新**走完后续流程
+      6. 如果重新调 intShopping 后用户原来选的航班/舱位**不在新结果里** → 发"该航班已售完，请重新选择"提示 + 让用户重新点击航班卡片
+    - 一次性自查：在调 intPricing 前**先看** `serialNumber` 字段长度：
+      - 20 位 + `A` → 正确
+      - 不是 20 位 / 没有 `A` / 看起来像 `serialKey` 或 `requestSeqNo` → **错误**，必须重新查 intShopping
+
+## AUIP Card Contract
 其他场景使用 `PLAIN_TEXT` 展示结构化文本。详细映射见 `references/agui-mapping.md`。
 
 ### Card Types

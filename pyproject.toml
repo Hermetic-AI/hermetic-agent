@@ -38,6 +38,7 @@ dependencies = [
     "sanic-ext>=24.0.0",
     "redis>=5.0.0",
     "cryptography>=41.0.0",
+    "nacos-sdk-python>=3.0.0",
 ]
 
 [project.optional-dependencies]

@@ -607,6 +607,85 @@ class Settings(BaseSettings):
         description="OpenAPI 文档 license name",
     )
 
+    # =========================================================================
+    # 15. Nacos — 配置中心 + AI 注册表 (MCP/Agent/Skill/Prompt)
+    # =========================================================================
+
+    nacos_enabled: bool = Field(
+        default=False,
+        description="是否启用 Nacos 集成. 关闭后所有 Nacos 功能跳过.",
+    )
+    nacos_server_addr: str = Field(
+        default="127.0.0.1:8848",
+        description=(
+            "Nacos Server 地址 (host:port). Docker 部署时 = nacos:8848. "
+            "集群模式用逗号分隔: nacos-1:8848,nacos-2:8848."
+        ),
+    )
+    nacos_namespace: str = Field(
+        default="",
+        description=(
+            "Nacos 命名空间 ID (留空 = public). 用于环境隔离 "
+            "(dev/test/prod) 或多租户隔离."
+        ),
+    )
+    nacos_group: str = Field(
+        default="DEFAULT_GROUP",
+        description="Nacos 配置分组. 通常按应用名或环境分.",
+    )
+    nacos_username: str = Field(
+        default="nacos",
+        description="Nacos 认证用户名.",
+    )
+    nacos_password: str = Field(
+        default="nacos",
+        description="Nacos 认证密码.",
+    )
+    nacos_config_data_id: str = Field(
+        default="openagent",
+        description="Nacos 配置中心的 Data ID (主配置文件).",
+    )
+    nacos_config_group: str = Field(
+        default="DEFAULT_GROUP",
+        description="Nacos 配置中心的 Group.",
+    )
+    nacos_config_format: str = Field(
+        default="yaml",
+        description="Nacos 配置格式: yaml / json / properties.",
+    )
+    nacos_ai_enabled: bool = Field(
+        default=True,
+        description="是否启用 Nacos AI 注册表功能 (MCP/Agent/Skill/Prompt 同步).",
+    )
+    nacos_ai_mcp_sync: bool = Field(
+        default=True,
+        description="是否将本地 MCPRegistry 同步到 Nacos MCP Server 注册表.",
+    )
+    nacos_ai_agent_sync: bool = Field(
+        default=True,
+        description="是否将本地 AgentPool 同步到 Nacos Agent Card 注册表.",
+    )
+    nacos_ai_skill_sync: bool = Field(
+        default=True,
+        description="是否将本地 SkillRegistry 同步到 Nacos Skill 注册表.",
+    )
+    nacos_ai_prompt_sync: bool = Field(
+        default=True,
+        description="是否从 Nacos Prompt 注册表拉取 prompt 模板.",
+    )
+    nacos_service_name: str = Field(
+        default="openagent-hub",
+        description="Hub 在 Nacos 服务注册表中的服务名.",
+    )
+    nacos_service_ip: str = Field(
+        default="",
+        description="Hub 注册到 Nacos 的 IP (留空 = 自动探测).",
+    )
+    nacos_service_port: int = Field(
+        default=8000,
+        description="Hub 注册到 Nacos 的端口 (跟 Hub port 一致).",
+    )
+
 
 @lru_cache
 def get_settings() -> Settings:

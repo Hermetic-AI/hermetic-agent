@@ -1,9 +1,10 @@
 # OpenAgent 容器化部署 (Phase 1) — 统一 compose
 #
-# 3 个 service:
-#   - openagent-hub      (Sanic, L1-L3)               :18000→8000
-#   - opencode-1         (sandbox,  L4)               :14096/:7778 (调试用)
-#   - openagent-frontend (nginx,  静态 + /api 反代)    :13000→3000  [profile: frontend]
+# 4 个 service:
+#   - nacos               (Nacos v3.2.2, 配置中心 + AI 注册表)  :8848/:8080/:9848
+#   - openagent-hub        (Sanic, L1-L3)                        :18000→8000
+#   - opencode-1           (sandbox,  L4)                        :14096/:7778 (调试用)
+#   - openagent-frontend   (nginx,  静态 + /api 反代)             :13000→3000  [profile: frontend]
 #
 # 启动模式 (2 选 1):
 #   * local  (默认):   本地 Dockerfile 构建, tag = openagent:dev 等
@@ -26,6 +27,8 @@
 #     想直接调: 7778 端口已暴露 host, 可用 Swagger UI (http://localhost:7778/docs)
 #
 # 调试端口 (生产环境把对应 ports 段注释掉, sandbox/frontend 不应直接对外):
+#   http://localhost:8080                   Nacos Console UI
+#   http://localhost:8848/nacos             Nacos Client API
 #   http://localhost:18000                 Hub 主 API
 #   http://localhost:18000/ready          Hub 就绪检查
 #   http://localhost:14096/doc            opencode 原生 OpenAPI Swagger
@@ -45,6 +48,35 @@
 # ----------------------------------------------------------------------------
 
 services:
+  # ============================================================
+  # 0. Nacos v3.2.2 (配置中心 + AI 注册表: MCP/Agent/Skill/Prompt)
+  # ============================================================
+  nacos:
+    image: nacos/nacos-server:v3.2.2
+    container_name: nacos-standalone
+    pull_policy: ${PULL_POLICY:-missing}
+    restart: unless-stopped
+    environment:
+      - MODE=standalone
+      - NACOS_AUTH_ENABLE=false
+      - NACOS_AUTH_TOKEN=${NACOS_AUTH_TOKEN:-VGhpc0lzTXlDdXN0b21TZWNyZXRLZXkwMTIzNDU2Nzg5MDEyMzQ1Njc4OTAxMjM0NTY3ODkw}
+      - NACOS_AUTH_IDENTITY_KEY=${NACOS_AUTH_IDENTITY_KEY:-openagent}
+      - NACOS_AUTH_IDENTITY_VALUE=${NACOS_AUTH_IDENTITY_VALUE:-openagent}
+      - JVM_XMS=256m
+      - JVM_XMX=256m
+      - JVM_XMN=128m
+    ports:
+      - "8080:8080"
+      - "8848:8848"
+      - "9848:9848"
+    networks: [sandbox-net]
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS -o /dev/null -w '%{http_code}' http://127.0.0.1:8848/nacos/ | grep -q 200"]
+      interval: 10s
+      timeout: 5s
+      start_period: 30s
+      retries: 5
+
   # ============================================================
   # 1. OpenAgent Hub (主服务, L1-L3, Sanic + scenarios + skills)
   # ============================================================
@@ -74,7 +106,12 @@ services:
       - WORK_ROOT=/app/work
       - SCENARIO_PATHS=["/app/work/scenarios"]
       - WORKSPACE_PATH=${WORKSPACE_PATH:-/work/tenant-A/project-1}
+      - NACOS_SERVER_ADDR=nacos:8848
+      - NACOS_NAMESPACE=6375a990-9df8-4783-a7fe-fb3a3effba93
+      - NACOS_ENABLED=${NACOS_ENABLED:-true}
     depends_on:
+      nacos:
+        condition: service_healthy
       opencode-1:
         condition: service_healthy
     networks: [sandbox-net]

@@ -155,7 +155,12 @@ def _is_field_missing(passenger: dict[str, Any], field_id: str) -> bool:
     if field_id == "certType":
         return not passenger.get("certType")
     if field_id == "certNo":
-        return not passenger.get("certNo")
+        # findPassenger often returns masked certNo like "220502********0216".
+        # Treat masked values as missing — saveOrder needs the real cert number.
+        raw = str(passenger.get("certNo") or "")
+        if not raw or "*" in raw or raw.endswith("***"):
+            return True
+        return False
     if field_id == "nationality":
         return not (passenger.get("nationality") or passenger.get("nationalityName"))
     if field_id == "birthDay":
@@ -178,7 +183,11 @@ def _prefill(passenger: dict[str, Any], field_id: str) -> Any:
     if field_id == "certType":
         return _cert_type_to_code(passenger.get("certType"))
     if field_id == "certNo":
-        return passenger.get("certNo")
+        # Don't pre-fill masked certNo — leave the field blank for the user.
+        raw = str(passenger.get("certNo") or "")
+        if "*" in raw or raw.endswith("***"):
+            return None
+        return raw
     if field_id == "nationality":
         return passenger.get("nationality")
     if field_id == "birthDay":

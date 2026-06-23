@@ -404,6 +404,36 @@ async def startup(app: Sanic, settings: Any) -> None:
     await setup_log_platform(settings)
     logger.info(LM.APP_READY)
 
+    # Nacos 配置中心 + AI 注册表 (MCP/Agent/Skill/Prompt 同步)
+    from openagent.config.nacos_client import NacosClient
+    from openagent.core.nacos_ai_sync import NacosAISync
+
+    nacos_client = NacosClient(settings)
+    nacos_ok = await nacos_client.start()
+    app.ctx.nacos_client = nacos_client
+    if nacos_ok:
+        await nacos_client.register_service()
+        # 发布当前配置到 Nacos 配置中心
+        from pathlib import Path
+        cfg_file = Path("work/nacos/openagent.yaml")
+        if cfg_file.exists():
+            cfg_content = cfg_file.read_text(encoding="utf-8")
+            await nacos_client.publish_config(
+                data_id=settings.nacos_config_data_id,
+                content=cfg_content,
+                group=settings.nacos_config_group,
+                config_format=settings.nacos_config_format,
+            )
+        ai_sync = NacosAISync(nacos_client, settings)
+        await ai_sync.sync_all(
+            mcp_registry=mcp_registry,
+            agent_bridge=bridge,
+            skill_registry=skill_registry,
+        )
+        logger.info("nacos_integration_ready")
+    else:
+        logger.info("nacos_integration_disabled_or_unavailable")
+
     logger.info(
         LM.APP_READY,
         skills=len(skill_registry.list_all()),
@@ -448,6 +478,13 @@ async def shutdown(app: Sanic) -> None:
             await mcp_registry.close()
         except Exception as e:
             logger.error(LM.MCP_REGISTRY, component="close", error=str(e))
+    nacos_client = getattr(app.ctx, "nacos_client", None)
+    if nacos_client is not None:
+        try:
+            await nacos_client.deregister_service()
+            await nacos_client.stop()
+        except Exception as e:
+            logger.error("nacos_shutdown_error", error=str(e))
     logger.info(LM.APP_SHUTDOWN)
     if sys_log:
         sys_log.info("shutdown", LM.APP_SHUTDOWN, status="completed")
