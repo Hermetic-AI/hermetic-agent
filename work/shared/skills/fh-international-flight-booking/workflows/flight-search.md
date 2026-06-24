@@ -56,32 +56,26 @@
 
 **禁止**填入用户未提及的可选参数。禁止假设默认舱等。
 
-### 2.2 返回体精简
+### 2.2 Hub 自动生成航班卡片
 
-`intShopping` 返回体巨大（可能 > 100KB），必须经 `compact_intl_payload.py` 压缩：
+`intShopping` 返回后，Hub 端会**自动拦截结果并生成 `FLIGHT_RESULT` 卡片**发送给用户。
+**不要**调用 `compact_intl_payload.py` 或 `render_intl_options.py`。
 
-```bash
-python3 scripts/compact_intl_payload.py raw_result.json --limit 10
-```
+**禁止读取 spill 文件**：`intShopping` 返回大量数据时，`tool_result` 会包含 `_hub_marker: full_output_spilled` 指向 spill 文件。
+**绝对禁止** `python3 -c "... open(spill.json) ..."` 读取和解析 spill 文件。这会产生 5-10 次无意义工具调用。
+Hub 已经处理完毕，你只需要用简短中文概述查询结果（如"已为您找到 103 个航班"），然后等待用户选择航班。
 
-保留的决策字段：
-- `data.serialNumber`
-- `data.groupList[].groupId`
-- `data.groupList[].tripList[].flightList[].flightId, flyDate, arrDate, duration, fromPort, toPort`
-- `data.groupList[].priceList[].priceId, price, tax, totalPrice, cabClass, passengerType`
-- `data.cityList[]`
-- `data.airwayList[]`
-- `data.baggageList[]`
+### 2.3 serialNumber 提取（关键）
 
-### 2.3 航班列表渲染
+**唯一合法来源**：`intShopping` 返回的 `data.serialNumber`（20位 `YYYYMMDDHHMMA+7位`，如 `260623165123A0000001`）。
 
-触发标准 AGUI：`PLAIN_TEXT`
+**不要**用以下字符串替代：
+- ❌ `serialKey`（BFF 内部缓存 key）
+- ❌ `requestSeqNo`（日志跟踪号）
+- ❌ `orderGroupId` / `pnr` / `orderId`
+- ❌ `groupId` / `priceId`
 
-将压缩后的结果渲染为 Markdown 表格，通过 `FLIGHT_RESULT` 卡片的 `body.contentJson.dataList[0]` 传递。
-
-```bash
-python3 scripts/render_intl_options.py compact.json
-```
+如果不确定，打开 spill 文件确认 `data.serialNumber` 字段。
 
 ### 2.4 签证提醒（条件执行）
 
@@ -104,10 +98,16 @@ python3 scripts/render_intl_options.py compact.json
 | 上下文变量 | 来源 |
 |---|---|
 | `ctx.serialNumber` | `intShopping` → `data.serialNumber` |
-| `ctx.rawGroupList` | 压缩后的 `data.groupList[]` |
+| `ctx.rawGroupList` | `data.groupList[]`（原始返回） |
 | `ctx.cityList` | `data.cityList[]` |
 | `ctx.airwayList` | `data.airwayList[]` |
 | `ctx.baggageList` | `data.baggageList[]` |
+
+## 关键约束
+
+- **严格查询范围**：用户说"深圳到曼谷"只查深圳→曼谷，**禁止**自行扩展增查曼谷→吉隆坡、吉隆坡→上海等。
+- **往返/多程**：`tripList` 长度 > 1 时，去程 `io=0` / 回程 `io=1` 在同一 group 中绑定，价格含全部段。
+- **Hub 自动卡片**：`intShopping` 后 Hub 自动生成航班卡片，**不要**调 compact/render 脚本，不要手动发 FLIGHT_RESULT。
 
 ## 错误处理
 

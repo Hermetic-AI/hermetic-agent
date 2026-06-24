@@ -96,18 +96,13 @@ def _format_natural_language_flight_selection(message: str) -> RewriteResult:
           2. 商务舱 ¥3500 (可退/可改) priceId=p2
         请帮我选择方案并继续下一步。
     """
-    group_id = ""
-    price_id = ""
     price_options: list[dict[str, Any]] = []
 
     param_match = re.search(r"\[选择参数:\s*([^\]]+)\]", message)
     if param_match:
         for part in param_match.group(1).split(","):
             part = part.strip()
-            if part.startswith("groupId="):
-                group_id = part[len("groupId="):]
-            elif part.startswith("priceId="):
-                price_id = part[len("priceId="):]
+            # groupId and priceId parsed for context but used via price_options extraction below
 
     option_pattern = re.compile(
         r"^\s*(\d+)\.\s+(\S+)\s+¥(\d+)\s+\(([^)]+)\)\s+priceId=(\S+)",
@@ -152,7 +147,14 @@ def _format_natural_language_flight_selection(message: str) -> RewriteResult:
             auto_cards.append(cabin_card)
 
     if auto_cards:
-        return RewriteResult(message=message, auto_cards=auto_cards)
+        # 已生成舱位卡片发送到前端，LLM 消息中不保留"继续下一步"指令
+        wait_msg = re.sub(
+            r"\n请帮我选择方案并继续下一步[。.]?",
+            "",
+            message,
+        )
+        wait_msg += "\n已发送舱位选择卡片，请等待用户在卡片中点击选择舱位，不要自行决定。"
+        return RewriteResult(message=wait_msg, auto_cards=auto_cards)
     return RewriteResult(message=message)
 
 
@@ -216,7 +218,7 @@ def _format_flight_selection(user_input: dict[str, Any]) -> RewriteResult:
                 f"  {i+1}. {cab} ¥{int(total)} ({refund}/{change}) priceId={pid}"
             )
         result += "\n".join(options_lines)
-        result += "\n请帮我选择方案并继续下一步。"
+        result += "\n已发送舱位选择卡片，请等待用户在卡片中点击选择舱位，不要自行决定。"
         cabin_card = _build_cabin_selection_card(
             dep_city=dep_city,
             arr_city=arr_city,
@@ -327,7 +329,7 @@ def _format_cabin_selection(user_input: dict[str, Any]) -> str:
     result = " ".join(parts)
     if cab_id:
         result += f"\n[选择参数: priceId={cab_id}]"
-    result += "\n请基于此舱位继续核价（intPricing）和差标（intPolicy）。"
+    result += "\n用户已在舱位卡片中选择此舱位，请按此继续后续流程（核价、差标、填乘机人信息）。"
 
     return result
 

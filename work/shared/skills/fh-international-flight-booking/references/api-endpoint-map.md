@@ -128,3 +128,23 @@
 | 2 | 需审批 |
 | 3 | 现付下单 |
 | 4 | 不能下单 |
+
+## 关键参数溯源（禁止编造）
+
+| 参数 | 唯一来源 | 禁止 |
+|---|---|---|
+| `serialNumber` | `intShopping` → `data.serialNumber`（20位 `YYYYMMDDHHMMA+7位`） | 禁止编造，禁止用 `serialKey`/`requestSeqNo` |
+| `priceId` | `intShopping` → `groupList[].priceList[].priceId` | 禁止编造 |
+| `pricingId` | `intPricing` → `data[].priceId`（**不是** intShopping 的 priceId） | 禁止编造，禁止用字面量 `"2"` |
+| `applicationId` | 用户提供 或 OA 跳转 或 `listOneUserApplications` | 禁止编造 |
+| `clientId` | `getClientBasicData` 返回 或用户指定 | 禁止编造 |
+| `depId` | `getMineBasicData` → `data.depId` 或用户选择成本中心 | 禁止编造 |
+| `userCode` | `getMineBasicData` → `data.userCode` | 禁止编造 |
+
+### 前置参数强校验规则
+
+调用任何 API 前，确认所有前置参数已存在。缺失 → 回退补齐，禁止调用 API：
+
+1. 可从上游获取但未获取 → 先调上游 API
+2. 需用户提供 → 发 `ask_user` 卡片一次性收集
+3. 不可获取（如 Token 缺失）→ 发 `CANNOT_ORDER`

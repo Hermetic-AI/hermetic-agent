@@ -110,6 +110,16 @@
 - 证件过期 → 提醒用户"证件有效期不足6个月，部分航司可能拒绝登机"
 - 性别为空 → 发 `PASSENGER_FORM` 补充
 
+**PASSENGER_FORM 自动卡片**：
+- findPassenger 返回的乘机人信息不完整时，Hub 会**自动发 `PASSENGER_FORM` 卡片**。
+- **禁止**用 text 消息让用户"发消息补全"（如"请补充出生日期、护照有效期、拼音名"）—— 这种引导很慢，用户容易漏填。
+- **禁止**调 ask_user 发 `OD_INPUT` 卡片（那是问行程用，不是问乘机人）。
+- Hub 自动判断缺失字段，已有时 pre-fill。卡片提交后，Hub 自动接 `waitSave` 流程。
+- **必填字段**（国际机票要求）：姓名（中文）、护照拼音名（`LIU/YUNZE` 格式）、证件类型、证件号码、国籍（默认 CN）、出生日期、证件有效期、联系电话。
+
+**certNo 脱敏处理**：
+findPassenger 返回的 `certNo` 经常脱敏（`220502********0216`）。Hub 在 PASSENGER_FORM 中将其视为缺失，用户必须手填完整号。你拿到表单提交的 certNo 时已是完整号。
+
 **状态转换**: `WAIT_SAVE_LOADED → PASSENGER_FILLED`
 
 ### 5.3 出差单绑定（条件执行）

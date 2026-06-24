@@ -38,6 +38,8 @@
 }
 ```
 
+> **必须传 `productType=INTERNATIONAL`**。Hub 端的 `http_client.py` 在 body 为 `{}` 或缺 `productType` 时会自动补 `productType=INTERNATIONAL`，但主动传更稳。**不要**传 `{}`—— fh-travel BFF 可能返回 `TMS_1002 / 网络异常`。
+
 **API 2**: `POST /customer/mine/getMineBasicData`
 
 ```json

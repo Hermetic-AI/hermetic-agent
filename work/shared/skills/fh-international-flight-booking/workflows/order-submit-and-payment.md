@@ -259,6 +259,40 @@
 }
 ```
 
+## 失败恢复
+
+### saveOrder 第一次失败立即读 workflow
+
+saveOrder 返回 `errorCode != "0"` → **立即重新读本文件 §6.2 字段表**，不要猜字段、不要直接重试。
+
+**常见报错 → 缺/错字段速查**：
+
+| 错误码/消息 | 真正缺/错的字段 | 修正 |
+|---|---|---|
+| `乘客类型不能为空` | `passengerList[0].passengerType` 缺失 | 填 `"0"` |
+| `国籍代码不能为空` | `passengerList[0].nationality` 缺失 | 填 `"CN"` |
+| `发证国家不能为空` | `passengerList[0].issueCountry` 缺失 | 填 `"CN"`（**不是** `certIssuePlace`） |
+| `没有指定客户下单权限` | `clientId`/`depId`/`pricingId` 组合错 | `clientId=""`, `depId` 数字 |
+| `乘客证件号不能为空` | certNo 用了脱敏值 | 从 PASSENGER_FORM 提交取完整号 |
+
+**禁止**在读 workflow 前改字段乱试。**禁止**重复试错 ≥2 次。
+
+### 公费挂账跳过 getPlaneSendpki / submitPlaneSendpki
+
+saveOrder 成功后，如果公费挂账（用户选非个人现付），**不要**调 getPlaneSendpki 和 submitPlaneSendpki。
+直接告诉用户"订单已创建，订单号 XXX，PNR XXX，请登录企业后台完成支付或联系审批人"。
+
+### Hub 响应精简说明
+
+- **getPlaneSendpki** 响应已被 Hub 精简：删除了 `approveUserList` 详情、`airlineList[].baggageList`、`nameList` 等冗余字段。保留 `payType` / `violatePolicy` / `paymentKind` / `approverCount` + 前 5 个 approver + **完整** `orderBasicDataJson`。
+- 如果你觉得"看的不全"想找 airlineList 详情 → 响应里**没有**这些字段。**禁止**调第二次。
+- **getPassengerAllAddress** 响应只保留 `current=true` 的地址，**禁止**调第二次。
+
+### certNo 必须完整
+
+findPassenger 返回的 `certNo` 经常脱敏（如 `220502********0216`），**不能**直接用于 saveOrder。
+必须等用户通过 PASSENGER_FORM 提交完整证件号，否则 saveOrder 报"乘客证件号不能为空"。
+
 ## 错误处理
 
 | 场景 | 行为 |

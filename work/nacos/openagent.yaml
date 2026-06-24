@@ -1,0 +1,155 @@
+  server:
+  host: 0.0.0.0
+  port: 8000
+  workers: 1
+  debug: false
+  cors_origins:
+    - "*"
+  sanic_request_timeout: 600
+  sanic_request_max_size: 50000000
+  sanic_keep_alive_timeout: 120
+  sanic_websocket_ping_timeout: 60
+  sanic_websocket_pong_timeout: 60
+  default_timeout: 120.0
+  health_check_interval: 30.0
+  max_retries: 3
+
+opencode:
+  base_url: http://opencode-1:14096
+  admin_port: 7778
+  reload_settle_seconds: 1.0
+  wait_health_timeout: 8.0
+  wait_health_interval: 0.25
+
+logging:
+  level: DEBUG
+  format: console
+  llm_payload: true
+  use_redis_log: true
+  queue_name: dev_queue
+  system_type: ai_dev
+  tee_to_stdout: false
+  redis_poll_interval: 0.5
+  redis_host: 10.100.30.21
+  redis_port: 6379
+  redis_database: 15
+  max_queue_size: 100000
+  redis_timeout: 5.0
+
+storage:
+  backend: mysql
+  mysql_dsn: mysql://root:1014@192.168.3.16:13306/openagent
+  mysql_pool_min_size: 5
+  mysql_pool_max_size: 20
+  mysql_echo: false
+
+skill_runtime:
+  skill_paths:
+    - /app/src/openagent/.skills
+  fragment_budget_tokens: 4000
+  fragment_budget_policy: error
+
+mcp:
+  tools_config: []
+  flight_mcp_token_env: FLIGHT_API_KEY
+
+agent:
+  auto_register_default_agents: true
+  default_agents_json: []
+
+sandbox:
+  docker_bin: docker
+  network: openagent-sandbox-net
+  mem_limit: 2g
+  cpu_limit: 2.0
+  pids_limit: 128
+  health_port: 7777
+  opencode_port: 14096
+  health_check_timeout: 2.0
+  health_check_retries: 3
+
+policy:
+  network_allowed_local_ports:
+    - 80
+    - 443
+    - 53
+    - 8080
+    - 8443
+    - 3000
+    - 5000
+    - 5432
+    - 6379
+  path_blocked_patterns:
+    - "**/.env"
+    - "**/.env.*"
+    - "**/id_rsa"
+    - "**/id_ed25519"
+    - "**/id_*"
+    - "**/.ssh/**"
+    - "**/.aws/credentials"
+    - "**/.config/gcloud/**"
+    - "**/*.pem"
+    - "**/*.key"
+    - "**/*.p12"
+    - "**/secrets/**"
+    - "**/credentials/**"
+
+scenario:
+  scenario_paths:
+    - work/scenarios
+  default_scenario: _default
+  work_root: work
+  project_dir_fallback: tenants/tenant-A/projects/project-1
+
+launcher:
+  config_dir: work/cache/opencode-configs
+  forbidden_cwds:
+    - "/"
+    - "~"
+    - "${HOME}"
+    - "$HOME"
+    - "/root"
+    - "/home"
+    - ""
+  default_tool_level: standard
+  default_network: local
+  opencode_hostname: 127.0.0.1
+  stop_grace_seconds: 5.0
+
+chat:
+  sse_keepalive_interval: 15.0
+  opencode_client_timeout_connect: 10.0
+  opencode_client_timeout_read: 300.0
+  opencode_client_timeout_write: 10.0
+  opencode_client_timeout_pool: 5.0
+  opencode_client_max_connections: 100
+  opencode_client_max_keepalive: 100
+  opencode_client_keepalive_expiry: 120.0
+  agent_pool_health_check_http_timeout: 5.0
+
+feihe_auth:
+  base_url: https://traveldev.feiheair.com
+  request_timeout: 10.0
+  origin_url: https://crmdev.feiheair.com
+
+app_metadata:
+  title: Agent Scheduler Hub
+  version: 0.1.0
+  contact_email: dev@openagent.local
+  license_name: MIT
+
+nacos:
+  enabled: true
+  server_addr: nacos:8848
+  namespace: 6375a990-9df8-4783-a7fe-fb3a3effba93
+  group: DEFAULT_GROUP
+  config_data_id: openagent
+  config_group: DEFAULT_GROUP
+  config_format: yaml
+  ai_enabled: true
+  ai_mcp_sync: true
+  ai_agent_sync: true
+  ai_skill_sync: true
+  ai_prompt_sync: true
+  service_name: openagent-hub
+  service_port: 8000

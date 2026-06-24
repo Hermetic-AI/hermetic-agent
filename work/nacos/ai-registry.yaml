@@ -1,0 +1,70 @@
+ai_registry:
+  mcp_servers:
+    - name: feihe-travel
+      description: 飞鹤差旅 MCP Server - 航班查询/机票预订
+      protocol: streamable-http
+      tools:
+        - name: queryFlightBasic
+          description: 查询国内航班 (单程/往返)
+        - name: choose_flight
+          description: 选择航班
+        - name: choose_cabin
+          description: 选择舱位
+        - name: fill_passenger
+          description: 填写乘机人信息
+        - name: validate_booking_info
+          description: 校验预订信息
+        - name: build_order_preview
+          description: 构建订单预览
+        - name: submit_order
+          description: 提交订单
+        - name: confirm_order
+          description: 确认订单
+        - name: reset_booking_session
+          description: 重置预订会话
+
+  agents:
+    - name: openagent-hub
+      description: OpenAgent Hub - 统一调度 OpenCode/Claude Code Agent
+      protocol: http
+      capabilities:
+        - chat
+        - streaming
+        - skill_execution
+        - mcp_tool_call
+      endpoints:
+        - transport: http
+          path: /agent/chat
+          description: 同步聊天端点
+        - transport: http
+          path: /agent/chat/stream
+          description: SSE 流式聊天端点
+
+  skills:
+    - name: flight-query
+      description: 通过 MCP 端点查询国内航班
+      version: 1.4.0
+      triggers:
+        - 查航班
+        - 查机票
+        - 航班查询
+    - name: flight-booking
+      description: 国内机票查询订购全流程 (13 状态机)
+      version: 1.0.0
+      triggers:
+        - 订机票
+        - 买机票
+        - 机票预订
+
+  prompts:
+    - name: openagent-system
+      description: OpenAgent 系统提示词模板
+      variables:
+        - name: agent_name
+          default: OpenAgent
+        - name: scenario_name
+          default: _default
+        - name: available_skills
+          default: ""
+        - name: available_tools
+          default: ""

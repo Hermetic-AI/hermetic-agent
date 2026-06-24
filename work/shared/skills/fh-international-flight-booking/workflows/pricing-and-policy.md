@@ -203,3 +203,34 @@ if verifiedTotalPrice != originalTotalPrice:
 | 价格已失效 | intPricing errorCode != "0" | 提示"所选舱位价格已变动" → 回退 Step 2 |
 | 差标服务不可达 | `FH_UNREACHABLE` | `CANNOT_ORDER`: "差旅政策服务暂时不可用" |
 | 出差单不匹配 | intCheckApplication flag=0 | `OAT_BINDING` 卡片让用户重选 |
+
+## 请求体格式约束（禁止额外字段）
+
+**正确格式**（精确照抄，不要塞多余字段）：
+
+```json
+intPricing : {"language":"cn","flightList":[{"serialNumber":"<intShopping.data.serialNumber>","priceId":"<intShopping groupList[].priceList[].priceId>"}]}
+intPolicy : {"flightList":[{"serialNumber":"<intShopping.data.serialNumber>","priceId":"<intShopping groupList[].priceList[].priceId>"}]}
+intRule   : {"serialNumber":"<intShopping.data.serialNumber>","priceId":"<intShopping groupList[].priceList[].priceId>"}
+```
+
+**禁止**塞入以下字段（每个都可能触发后端校验失败）：
+- ❌ `tripList` / `fromCity` / `toCity` / `flyDate` / `isCity`（intShopping 的参数，**不是** intPricing/intPolicy 的）
+- ❌ `cabin` / `cabClass` / `flightId`（来自航班数据，但 intPricing 不用）
+- ❌ `groupId`（intShopping 输出，intPricing 不用）
+- ❌ `pricingId`（intPricing/intPolicy 里**没有**这个字段，只在 waitSave/saveOrder 有）
+
+`waitSave` 和 `saveOrder` 才需要 `pricingId`（来自 `intPricing.data[].priceId`，**不是**字面量 `"2"`）。
+
+## "航班数据已过期" 恢复流程
+
+当 intPricing / intPolicy / intRule / waitSave / saveOrder 返回 `errorCode: "TMS_1002"` 且 `errorMsg` 含"航班数据已过期"：
+
+1. **不要**重试相同参数（serialNumber 已过期，100 次也失败）
+2. **不要**继续调后续 API
+3. **立即**重新调 `intShopping` 拿**新** `serialNumber`
+4. 新 `serialNumber` + 原 `priceId`（同舱位）→ 重新 intPricing / intPolicy
+5. 重新核价后**重新**走完后续流程
+6. 如原航班/舱位不在新结果 → 提示"该航班已售完，请重新选择"
+
+**自查**：调 intPricing 前确认 `serialNumber` 是 20 位 + `A` 格式。不是 → 重新 intShopping。

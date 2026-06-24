@@ -47,16 +47,22 @@ Agent 从 `ctx.rawGroupList` 中匹配，确认后存储：
 
 ### 3.3 用户选择价格方案
 
-用户回复序号选择价格方案后存储：
+**只有**用户真正点击了舱位卡片（消息为 `用户已提交 FLIGHT_RESULT 卡片：{...selectedCabin: ...}`）后才能进入此步骤。
+
+用户点击后，消息包含 `selectedCabin.priceId`，将其存入：
 
 | 上下文变量 | 值 |
-|---|---|
-| `ctx.selectedPriceId` | 用户选中的 `priceList[].priceId` |
-| `ctx.selectedPrice` | 完整 price 对象 |
-| `ctx.selectedCabClass` | `price.tripList[0].cabClass` |
-| `ctx.originalTotalPrice` | `price.totalPrice`（原始总价，用于后续核价对比） |
+| :--- | :--- |
+| `ctx.selectedPriceId` | `user_input.selectedCabin.priceId` |
+| `ctx.selectedCabClass` | `user_input.selectedCabin.cabinName` |
+| `ctx.originalTotalPrice` | `user_input.selectedCabin.totalPrice` |
+
+**不要**用消息中 `[选择参数: priceId=...]` 里的 `priceId`（那是前端 hint，是最低价）。
+**只**用 `selectedCabin.priceId`。
 
 **状态转换**: `GROUP_SELECTED → PRICE_SELECTED`
+
+接下来按 Rule 10 的完整流程：getMineBasicData + findPassenger → 检查信息 → 缺则等 PASSENGER_FORM → 完整则 intRule+intPricing+intPolicy。
 
 ### 3.4 退改规则查询（可选）
 
@@ -95,6 +101,23 @@ Agent 从 `ctx.rawGroupList` 中匹配，确认后存储：
 
 对于多程（`tripList` 长度 > 2）：
 - 按相同规则，所有程在同一 group 中绑定
+
+## 舱位选择规则（绝对禁止代选）
+
+Hub 在用户选航班后**自动发送舱位选择卡片**（`AIR_DOMESTIC_CABIN_LIST` / `CABIN_LIST`），消息中会包含：
+> "已发送舱位选择卡片，请等待用户在卡片中点击选择舱位，不要自行决定"
+
+收到此消息后**必须立即停止**，输出一句"请在舱位卡片中选择舱位"，等待用户点击。
+
+**关键识别**：
+- 用户消息含 `[选择参数: groupId=..., priceId=...]` → 这只是前端发卡片的 hint 参数。`priceId` 是前端自动选的最低价格方案，**不**代表用户意愿。
+- 用户消息含"已发送舱位选择卡片，请等待..." → **立即停止**，不调任何 API。
+- **唯一可自动继续**：消息为 `用户已提交 FLIGHT_RESULT 卡片：{...selectedCabin: ...}`（用户真正点击了舱位卡片）。
+
+**禁止行为**：
+- ❌ 看到价格方案列表就用第一个 priceId 调 intPricing（等于代选最低价）
+- ❌ 看到"请帮我选择方案并继续下一步"就继续（旧版消息，新版已改为等待指令）
+- ❌ 跳过舱位选择直接调用 intRule/intPricing
 
 ## 错误处理
 
