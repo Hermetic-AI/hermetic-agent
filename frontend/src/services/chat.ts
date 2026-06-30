@@ -1,16 +1,8 @@
 // Chat service — wraps the streaming and sync chat endpoints.
 //
-// The backend exposes a unified entry point (`/agent/chat`, `/agent/chat/stream`)
-// and picks the right scenario based on the 6-priority router:
-//   1. URL path (`/agent/scenarios/{name}/chat`)  — not used here
-//   2. `X-Scenario` header                        — we set this when caller supplies a scenario
-//   3. `body.scenario` field                      — same value, sent as fallback
-//   4. keyword matching
-//   5. intent classifier
-//   6. `_default`
-//
-// The MCP token (from `VITE_MCP_TOKEN`) is forwarded as `X-MCP-Token` so
-// per-tenant MCP servers can authorise the call.
+// The backend exposes a unified entry point (`/agent/chat`, `/agent/chat/stream`).
+// Domain-specific routing is configured server-side; the generic frontend
+// just sends the user message and lets the backend decide.
 
 import { http, ApiError, resolveAuthToken } from './http';
 import { parseSSE } from './sse';
@@ -26,10 +18,6 @@ export interface ChatRequest {
   model?: string;
   system_prompt?: string;
   timeout?: number;
-  skills?: string[];
-  tools?: string[];
-  /** Routing hint: scenario name, sets both `X-Scenario` header and body. */
-  scenario?: string;
 }
 
 export interface ChatToolCall {
@@ -51,8 +39,6 @@ export interface ChatResponse {
   result: ChatSyncResult | null;
   error: string | null;
   duration: number | null;
-  scenario?: { name: string; version?: string; matched_by?: string; orchestration?: string };
-  routing?: { matched_by?: string; rejected_skills?: string[]; rejected_tools?: string[] };
 }
 
 export interface SendStreamOptions {
@@ -84,8 +70,8 @@ export const chatService = {
     try {
       res = await fetch(buildStreamUrl(), {
         method: 'POST',
-        headers: buildHeaders(payload, { accept: 'text/event-stream' }),
-        body: JSON.stringify(stripNullScenario(payload)),
+        headers: buildHeaders({ accept: 'text/event-stream' }),
+        body: JSON.stringify(payload),
         signal: opts.signal,
         credentials: 'omit',
       });
@@ -123,10 +109,9 @@ export const chatService = {
         opts.onEvent(event);
         if (event.type === 'done') break;
       }
-      // If the server terminated without an explicit `done` event
-      // (e.g. abrupt close, or suspended turn), still signal a clean
-      // completion.  Suspended turns emit a `suspend` event so callers
-      // can distinguish via their own state.
+      // If the server terminated without an explicit `done` event, signal
+      // a clean completion.  Any unmatched events on the wire are silently
+      // dropped by useChatStream's switch default branch.
       const reason: 'done' | 'aborted' =
         opts.signal?.aborted
           ? 'aborted'
@@ -144,10 +129,10 @@ export const chatService = {
   },
 };
 
-// --- Header / URL helpers (extracted so the turn service can reuse them) ---
+// --- Header / URL helpers (extracted so callers can reuse them) ---
 
-export function buildStreamHeaders(payload: ChatRequest): Record<string, string> {
-  return buildHeaders(payload, { accept: 'text/event-stream' });
+export function buildStreamHeaders(_payload: ChatRequest): Record<string, string> {
+  return buildHeaders({ accept: 'text/event-stream' });
 }
 
 export function buildStreamUrl(): string {
@@ -167,21 +152,12 @@ export function joinUrl(base: string, path: string): string {
   return `${b}${p}`;
 }
 
-function buildHeaders(
-  payload: ChatRequest,
-  extra: { accept: string },
-): Record<string, string> {
+function buildHeaders(extra: { accept: string }): Record<string, string> {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     Accept: extra.accept,
   };
-  // X-Scenario has higher router priority than body.scenario, but we
-  // forward both so backend middleware can pick whichever it likes.
-  if (payload.scenario) {
-    headers['X-Scenario'] = payload.scenario;
-  }
-  // 运行时 login token 优先, build-time VITE_MCP_TOKEN 兜底.
-  // 同一 header 不重复塞, 后写的覆盖先写的.
+  // Runtime login token preferred, build-time VITE_MCP_TOKEN fallback.
   const runtimeToken = resolveAuthToken();
   if (runtimeToken) {
     headers['X-MCP-Token'] = runtimeToken;
@@ -190,9 +166,4 @@ function buildHeaders(
     headers['X-MCP-Token'] = config.mcpToken;
   }
   return headers;
-}
-
-function stripNullScenario(payload: ChatRequest): ChatRequest {
-  if (!payload.scenario) return payload;
-  return payload;
 }

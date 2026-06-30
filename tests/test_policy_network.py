@@ -1,10 +1,10 @@
-"""network_check 模块单测."""
+﻿"""network_check 模块单测."""
 
 from __future__ import annotations
 
 import pytest
 
-from openagent.policy.network_check import is_url_allowed
+from hermetic_agent.policy.network_check import is_url_allowed
 
 
 def test_network_off_blocks_all() -> None:

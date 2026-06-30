@@ -1,4 +1,4 @@
-# ============================================================
+﻿# ============================================================
 # 默认场景 — 优先级低于 _generic
 # 与 _generic 行为相同，但 priority 略高（更早被选中）
 # 用作: 业务场景不存在时的中间兜底
@@ -8,7 +8,7 @@ version: "1.0.0"
 description: "默认场景，业务场景不存在时的中间兜底"
 enabled: true
 tags: [default, fallback]
-owner: openagent-core
+owner: hermetic_agent-core
 tier: bronze
 
 routing:
@@ -17,7 +17,7 @@ routing:
 
 execution:
   system_prompt: |
-    你是 OpenAgent 默认助手。请礼貌、简洁地回答用户问题。
+    你是 hermetic_agent 默认助手。请礼貌、简洁地回答用户问题。
     超出能力范围时主动转人工。
   skills: []
   tools: []

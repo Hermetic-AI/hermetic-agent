@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback, type FormEvent, type KeyboardEvent } from 'react';
-import { SendIcon, EmojiIcon, MicIcon } from './Icons';
+import { SendIcon } from './Icons';
 import './ChatInput.css';
 
 interface ChatInputProps {
@@ -8,7 +8,7 @@ interface ChatInputProps {
   placeholder?: string;
 }
 
-export function ChatInput({ onSend, disabled = false, placeholder = '输入消息...' }: ChatInputProps) {
+export function ChatInput({ onSend, disabled = false, placeholder = 'Message AI...' }: ChatInputProps) {
   const [value, setValue] = useState('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -16,7 +16,7 @@ export function ChatInput({ onSend, disabled = false, placeholder = '输入消�
     const textarea = textareaRef.current;
     if (textarea) {
       textarea.style.height = 'auto';
-      textarea.style.height = `${Math.min(textarea.scrollHeight, 120)}px`;
+      textarea.style.height = `${Math.min(textarea.scrollHeight, 200)}px`;
     }
   }, []);
 
@@ -43,21 +43,11 @@ export function ChatInput({ onSend, disabled = false, placeholder = '输入消�
     }
   };
 
-  const handleEmoji = () => {
-    const emojis = ['😊', '👍', '🙏', '😅', '🤔', '😎'];
-    const randomEmoji = emojis[Math.floor(Math.random() * emojis.length)];
-    setValue((prev) => prev + randomEmoji);
-    textareaRef.current?.focus();
-  };
-
   const canSend = value.trim().length > 0 && !disabled;
 
   return (
     <form className="chat-input-form" onSubmit={handleSubmit}>
       <div className="chat-input-container">
-        <button type="button" className="input-action-btn" onClick={handleEmoji}>
-          <EmojiIcon />
-        </button>
         <textarea
           ref={textareaRef}
           className="chat-input"
@@ -68,19 +58,17 @@ export function ChatInput({ onSend, disabled = false, placeholder = '输入消�
           disabled={disabled}
           rows={1}
         />
-        <button type="button" className="input-action-btn">
-          <MicIcon />
-        </button>
         <button
           type="submit"
-          className={`chat-send-btn ${canSend ? 'active' : ''}`}
+          className={`chat-send-btn ${canSend ? 'is-active' : ''}`}
           disabled={!canSend}
+          aria-label="Send"
         >
           <SendIcon />
         </button>
       </div>
-      <div className="input-hint">
-        按 Enter 发送，Shift + Enter 换行
+      <div className="chat-input-hint">
+        Press Enter to send · Shift+Enter for newline
       </div>
     </form>
   );

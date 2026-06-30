@@ -1,12 +1,12 @@
-"""tests/test_skill_runtime_state_guard.py — StateGuard 单元测试."""
+﻿"""tests/test_skill_runtime_state_guard.py — StateGuard 单元测试."""
 
 from __future__ import annotations
 
 import pytest
 
-from openagent.skills.runtime.errors import StateGuardViolation
-from openagent.skills.runtime.manifest import SkillManifest, StateSpec
-from openagent.skills.runtime.state_guard import StateGuard
+from hermetic_agent.skills.runtime.errors import StateGuardViolation
+from hermetic_agent.skills.runtime.manifest import SkillManifest, StateSpec
+from hermetic_agent.skills.runtime.state_guard import StateGuard
 
 
 def _manifest() -> SkillManifest:

@@ -1,6 +1,6 @@
-# OpenAgent API Reference
+﻿# hermetic_agent API Reference
 
-> **OpenAgent Agent Scheduler Hub** — OpenCode / Claude Code 双 SDK Agent 调度平台
+> **hermetic_agent Agent Scheduler Hub** — OpenCode / Claude Code 双 SDK Agent 调度平台
 >
 > **完整 OpenAPI 规范**: [openapi.json](openapi.json) (26 paths, 8 tags, 12 错误码)
 >
@@ -12,7 +12,7 @@
 
 ```bash
 # 启动 server
-python -m openagent.main
+python -m hermetic_agent.main
 
 # 健康检查
 curl http://localhost:8000/health

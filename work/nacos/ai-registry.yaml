@@ -1,70 +1,30 @@
+# ai-registry.yaml — Nacos AI Registry example
+#
+# Nacos AI Registry 模式下的 MCP / Agent / Skill / Prompt 注册表. 业务方按需修改.
+# 基座 hermetic-agent 不感知具体业务, 此处仅给出一个 example 模板.
+
 ai_registry:
   mcp_servers:
-    - name: feihe-travel
-      description: 飞鹤差旅 MCP Server - 航班查询/机票预订
+    - name: example-mcp
+      description: Example MCP Server. 业务方按需修改.
       protocol: streamable-http
       tools:
-        - name: queryFlightBasic
-          description: 查询国内航班 (单程/往返)
-        - name: choose_flight
-          description: 选择航班
-        - name: choose_cabin
-          description: 选择舱位
-        - name: fill_passenger
-          description: 填写乘机人信息
-        - name: validate_booking_info
-          description: 校验预订信息
-        - name: build_order_preview
-          description: 构建订单预览
-        - name: submit_order
-          description: 提交订单
-        - name: confirm_order
-          description: 确认订单
-        - name: reset_booking_session
-          description: 重置预订会话
-
+        - name: example_query
+          description: 示例查询工具
+        - name: example_action
+          description: 示例动作工具
   agents:
-    - name: openagent-hub
-      description: OpenAgent Hub - 统一调度 OpenCode/Claude Code Agent
-      protocol: http
-      capabilities:
-        - chat
-        - streaming
-        - skill_execution
-        - mcp_tool_call
-      endpoints:
-        - transport: http
-          path: /agent/chat
-          description: 同步聊天端点
-        - transport: http
-          path: /agent/chat/stream
-          description: SSE 流式聊天端点
-
+    - name: example-agent
+      description: 示例 Agent. 业务方按需修改.
+      model: openai/<your-model>
+      skills: [example-echo-skill]
   skills:
-    - name: flight-query
-      description: 通过 MCP 端点查询国内航班
-      version: 1.4.0
-      triggers:
-        - 查航班
-        - 查机票
-        - 航班查询
-    - name: flight-booking
-      description: 国内机票查询订购全流程 (13 状态机)
+    - name: example-echo-skill
       version: 1.0.0
-      triggers:
-        - 订机票
-        - 买机票
-        - 机票预订
-
+      description: 示例 SKILL — 演示 hermetic-agent SKILL 编写规范
+      source: work/shared/skills/example-echo-skill
   prompts:
-    - name: openagent-system
-      description: OpenAgent 系统提示词模板
-      variables:
-        - name: agent_name
-          default: OpenAgent
-        - name: scenario_name
-          default: _default
-        - name: available_skills
-          default: ""
-        - name: available_tools
-          default: ""
+    - name: example-system-prompt
+      description: 示例 system prompt
+      content: |
+        你是 hermetic-agent 示例助手...

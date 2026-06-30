@@ -1,15 +1,15 @@
-# OpenAgent 镜像构建指南
+﻿# hermetic_agent 镜像构建指南
 
 ## 缓存策略
 
-`docker/Dockerfile.openagent` 用 **2 阶段 + BuildKit cache mount** 最大化构建缓存:
+`docker/hermetic-agent/Dockerfile` 用 **2 阶段 + BuildKit cache mount** 最大化构建缓存:
 
 | 改了什么 | 阶段 A (deps) | 阶段 B (wheel) | 整体耗时 |
 |---|---|---|---|
 | **首次冷构** | 跑 | 跑 | ~3-4 min |
-| 改 `src/openagent/**/*.py` | CACHED | 跑 (~7s) | **~9s** |
+| 改 `src/hermetic_agent/**/*.py` | CACHED | 跑 (~7s) | **~9s** |
 | 改 `requirements.txt` / `pyproject.toml` | 失效 (~55s) | CACHED | **~65s** |
-| 改 `docker/Dockerfile.openagent` | 全部失效 | 失效 | ~3-4 min |
+| 改 `docker/hermetic-agent/Dockerfile` | 全部失效 | 失效 | ~3-4 min |
 
 ## 怎么保持缓存
 
@@ -23,11 +23,11 @@
 
 ```bash
 # 镜像能装 deps 吗
-docker run --rm openagent:dev python -c "import sanic, httpx, pydantic, structlog; print('ok')"
+docker run --rm hermetic_agent:dev python -c "import sanic, httpx, pydantic, structlog; print('ok')"
 
 # Hub 能起吗
-docker compose up -d openagent-hub
-curl http://localhost:18000/ready
+docker compose up -d hermetic_agent-hub
+curl http://localhost:28000/ready
 ```
 
 ## Troubleshooting
@@ -41,10 +41,10 @@ curl http://localhost:18000/ready
 
 ```bash
 docker buildx build \
-    -f docker/Dockerfile.openagent \
-    -t openagent:dev --load \
-    --cache-from type=local,src=/tmp/openagent-cache \
-    --cache-to type=local,dest=/tmp/openagent-cache,mode=max \
+    -f docker/hermetic-agent/Dockerfile \
+    -t hermetic_agent:dev --load \
+    --cache-from type=local,src=/tmp/hermetic_agent-cache \
+    --cache-to type=local,dest=/tmp/hermetic_agent-cache,mode=max \
     .
 ```
 

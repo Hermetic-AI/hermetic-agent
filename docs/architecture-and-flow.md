@@ -1,4 +1,4 @@
-# OpenAgent 架构与对话流程
+﻿# hermetic_agent 架构与对话流程
 
 > **版本**：v0.2 · 2026-06-05
 > **读者**：新成员 onboarding / 跨团队 review / 业务方了解"一次 chat 背后发生了什么"
@@ -9,7 +9,7 @@
 
 ## 0. 一句话总结
 
-> **OpenAgent = 一个 Sanic 网关 + 一个进程内"Scenario 编排层" + 一组外部 LLM 引擎进程（opencode / claude-agent）**。
+> **hermetic_agent = 一个 Sanic 网关 + 一个进程内"Scenario 编排层" + 一组外部 LLM 引擎进程（opencode / claude-agent）**。
 > **所有 chat 走同一个入口** `POST /agent/chat[/stream]`，由 `ScenarioMiddleware` 决定走哪一套策略，再由 `SuspendableScheduler` 串起 Skill/AUIP/Provider/Policy。
 
 ---
@@ -104,7 +104,7 @@ flowchart LR
 
 ### 2.1 仅 2 个端点
 
-> 全在 `src/openagent/api/controllers/chat_controller.py`：
+> 全在 `src/hermetic_agent/api/controllers/chat_controller.py`：
 >
 > - `POST /agent/chat` — 同步 JSON
 > - `POST /agent/chat/stream` — SSE 流式
@@ -219,7 +219,7 @@ sequenceDiagram
     SCH-->>FE: SSE: done
 ```
 
-**SSE 事件类型**（12 种，定义在 `src/openagent/streaming.py`）：
+**SSE 事件类型**（12 种，定义在 `src/hermetic_agent/streaming.py`）：
 
 | 事件 | 含义 |
 |---|---|

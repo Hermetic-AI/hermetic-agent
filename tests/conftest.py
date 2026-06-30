@@ -1,15 +1,15 @@
-"""Test configuration - pytest 配置"""
+﻿"""Test configuration - pytest 配置"""
 
 import pytest
 from sanic import Sanic
 
-from openagent.api.app.app import create_app
-from openagent.config.settings import Settings
-from openagent.core import AgentPoolManager, Scheduler
-from openagent.mcp.registry import MCPRegistry
-from openagent.providers.agent_bridge import AgentBridge
-from openagent.skills.registry import SkillRegistry
-from openagent.store.memory import MemoryStorage
+from hermetic_agent.api.app.app import create_app
+from hermetic_agent.config.settings import Settings
+from hermetic_agent.core import AgentPoolManager, Scheduler
+from hermetic_agent.mcp.registry import MCPRegistry
+from hermetic_agent.providers.agent_bridge import AgentBridge
+from hermetic_agent.skills.registry import SkillRegistry
+from hermetic_agent.store.memory import MemoryStorage
 
 
 @pytest.fixture

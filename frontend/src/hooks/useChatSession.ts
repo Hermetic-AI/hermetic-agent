@@ -1,11 +1,11 @@
-// useChatSession — persists the active chat session id to localStorage
+﻿// useChatSession — persists the active chat session id to localStorage
 // and exposes helpers to start a new one or restore from history.
 
 import { useCallback, useEffect, useState } from 'react';
 import { sessionService, ApiError } from '../services';
 import type { SessionInfo, ChatMessage } from '../types';
 
-const STORAGE_KEY = 'openagent.session_id';
+const STORAGE_KEY = 'hermetic_agent.session_id';
 
 function readStoredId(): string | null {
   try {

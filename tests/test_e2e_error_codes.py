@@ -1,4 +1,4 @@
-"""E2E: 12 个 error code 全部能触发并带可行动信息.
+﻿"""E2E: 12 个 error code 全部能触发并带可行动信息.
 
 对应设计文档 §10:
 - 400 SCENARIO_NOT_FOUND
@@ -22,12 +22,12 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from openagent.scenarios import (
+from hermetic_agent.scenarios import (
     ScenarioRegistry,
     ScenarioRouter,
     ScenarioError,
 )
-from openagent.scenarios.errors import (
+from hermetic_agent.scenarios.errors import (
     ScenarioLoadError,
     ScenarioResourceError,
     ScenarioNotFoundError,
@@ -35,14 +35,14 @@ from openagent.scenarios.errors import (
     ScenarioInjectionError,
     RoutingFailedError,
 )
-from openagent.scenarios.config import ScenarioConfig, RoutingConfig, ExecutionConfig, WorkspaceConfig
-from openagent.scenarios.injector import ScenarioInjector
-from openagent.scenarios.loader import resolve_placeholders
-from openagent.providers.launcher import EngineLauncher, LauncherError, LauncherRefusedRoot
-from openagent.providers.base import AgentConfig
-from openagent.policy import path_check, command_check, network_check
-from openagent.skills.runtime import FragmentLoader
-from openagent.skills.runtime.errors import SkillBudgetExceeded
+from hermetic_agent.scenarios.config import ScenarioConfig, RoutingConfig, ExecutionConfig, WorkspaceConfig
+from hermetic_agent.scenarios.injector import ScenarioInjector
+from hermetic_agent.scenarios.loader import resolve_placeholders
+from hermetic_agent.providers.launcher import EngineLauncher, LauncherError, LauncherRefusedRoot
+from hermetic_agent.providers.base import AgentConfig
+from hermetic_agent.policy import path_check, command_check, network_check
+from hermetic_agent.skills.runtime import FragmentLoader
+from hermetic_agent.skills.runtime.errors import SkillBudgetExceeded
 
 
 # ---------------------------------------------------------------------------
@@ -62,7 +62,7 @@ def test_scenario_not_found():
 
 
 def test_scenario_disabled_filtered_out():
-    from openagent.scenarios.config import ProgressiveSkillConfig
+    from hermetic_agent.scenarios.config import ProgressiveSkillConfig
     reg = ScenarioRegistry()
     cfg = ScenarioConfig(
         name="_test_disabled_e2e",
@@ -119,7 +119,7 @@ def test_scenario_validation_failed_missing_routing():
 
 
 def test_scenario_resource_unavailable_missing_cards_dir(tmp_path):
-    from openagent.scenarios.config import ProgressiveSkillConfig
+    from hermetic_agent.scenarios.config import ProgressiveSkillConfig
     # 直接构造一个 a2ui.enabled=True 但 cards_dir 指向不存在路径的 cfg
     # 验证 a2ui 字段可被设置, 且 fields 有效 (即使物理路径缺失也是 cfg 层面的 OK)
     cfg = ScenarioConfig(
@@ -184,7 +184,7 @@ def test_scenario_workspace_forbidden_root():
 
 
 def test_skill_not_allowed_in_injector():
-    from openagent.scenarios.config import ProgressiveSkillConfig
+    from hermetic_agent.scenarios.config import ProgressiveSkillConfig
     cfg = ScenarioConfig(
         name="skillstrict_e2e",
         version="1.0.0",
@@ -222,7 +222,7 @@ def test_skill_not_allowed_in_injector():
 
 
 def test_tool_not_allowed_in_injector():
-    from openagent.scenarios.config import ProgressiveSkillConfig
+    from hermetic_agent.scenarios.config import ProgressiveSkillConfig
     cfg = ScenarioConfig(
         name="toolstrict_e2e",
         version="1.0.0",
@@ -313,7 +313,7 @@ def test_policy_violation_network_off_blocks_all():
 
 def test_skill_budget_exceeded():
     """fragment 总 token 超出 budget → SkillBudgetExceeded."""
-    from openagent.scenarios.config import ProgressiveSkillConfig
+    from hermetic_agent.scenarios.config import ProgressiveSkillConfig
     cfg = ScenarioConfig(
         name="big_skill_e2e",
         version="1.0.0",
@@ -468,7 +468,7 @@ def test_scenario_exceptions_have_action():
 
 def test_policy_exceptions_have_action():
     """Policy 异常都有 action 字段."""
-    from openagent.policy import PathNotAllowed, CommandNotAllowed, NetworkNotAllowed
+    from hermetic_agent.policy import PathNotAllowed, CommandNotAllowed, NetworkNotAllowed
     excs = [
         PathNotAllowed("/etc/passwd", workspace_dirs=["/work"], action="Set workspace_dirs"),
         CommandNotAllowed("rm -rf /", "blocked", action="Remove the command"),
@@ -481,7 +481,7 @@ def test_policy_exceptions_have_action():
 
 def test_skill_runtime_exceptions_have_action_or_details():
     """SkillRuntime 异常带 action 或 details."""
-    from openagent.skills.runtime.errors import SkillRuntimeError, ManifestLoadError
+    from hermetic_agent.skills.runtime.errors import SkillRuntimeError, ManifestLoadError
     excs = [
         SkillRuntimeError("test", action="Do X"),
         ManifestLoadError("/path", "reason"),

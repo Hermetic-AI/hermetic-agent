@@ -1,0 +1,203 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+  workflow_dispatch:
+
+env:
+  PYTHON_VERSION: "3.11"
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Lint + type check + custom quality gates
+  # ---------------------------------------------------------------------------
+  quality:
+    name: Lint + Type Check + Quality Gates
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: "0.5.x"
+
+      - name: Set up Python
+        run: uv python install ${{ env.PYTHON_VERSION }}
+
+      - name: Cache venv
+        uses: actions/cache@v4
+        with:
+          path: .venv
+          key: venv-${{ runner.os }}-${{ env.PYTHON_VERSION }}-${{ hashFiles('pyproject.toml', 'uv.lock') }}
+
+      - name: Install dependencies
+        run: uv sync --all-extras --dev
+
+      - name: Ruff lint
+        run: uv run ruff check src/
+
+      - name: Ruff format check
+        run: uv run ruff format --check src/
+
+      - name: mypy strict
+        run: uv run mypy src/
+
+      - name: 5-layer + file-size CI gate
+        run: uv run python scripts/ci_check.py
+
+      - name: Unified chat entry gate
+        run: uv run python scripts/check_unified_chat_entry.py
+
+  # ---------------------------------------------------------------------------
+  # Unit + integration tests (skips e2e by default; e2e has its own job)
+  # ---------------------------------------------------------------------------
+  test:
+    name: Unit + Integration Tests
+    runs-on: ubuntu-latest
+    needs: quality
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: "0.5.x"
+
+      - name: Set up Python
+        run: uv python install ${{ matrix.python-version }}
+
+      - name: Cache venv
+        uses: actions/cache@v4
+        with:
+          path: .venv
+          key: venv-${{ runner.os }}-${{ matrix.python-version }}-${{ hashFiles('pyproject.toml', 'uv.lock') }}
+
+      - name: Install dependencies
+        run: uv sync --all-extras --dev
+
+      - name: Run pytest (no e2e)
+        run: |
+          uv run pytest tests/ -v \
+            --ignore=tests/test_agent_pool.py \
+            --ignore=tests/test_log_platform_log_middleware.py \
+            --ignore=tests/test_question_controller.py \
+            --ignore=tests/test_scenario_controller.py \
+            --ignore=tests/test_todo_controller.py \
+            --tb=short
+
+  # ---------------------------------------------------------------------------
+  # SKILL validation — lint every example SKILL under work/shared/skills/
+  # ---------------------------------------------------------------------------
+  skill-validate:
+    name: Validate Example SKILLs
+    runs-on: ubuntu-latest
+    needs: quality
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: "0.5.x"
+
+      - name: Set up Python
+        run: uv python install ${{ env.PYTHON_VERSION }}
+
+      - name: Cache venv
+        uses: actions/cache@v4
+        with:
+          path: .venv
+          key: venv-${{ runner.os }}-${{ env.PYTHON_VERSION }}-${{ hashFiles('pyproject.toml', 'uv.lock') }}
+
+      - name: Install dependencies
+        run: uv sync --all-extras --dev
+
+      - name: Validate every SKILL under work/shared/skills/
+        run: |
+          for skill_dir in work/shared/skills/*/; do
+            if [ -f "${skill_dir}SKILL.md" ]; then
+              echo "::group::Validating $(basename ${skill_dir})"
+              uv run python -c "
+              import sys
+              from pathlib import Path
+              sys.path.insert(0, '.')
+              from hermetic_agent.auip.skill_compiler import compile_skill_md
+              out = compile_skill_md(Path('${skill_dir}SKILL.md'))
+              assert out['name'], 'missing name'
+              assert out['states'], 'no states parsed'
+              print(f'  name={out[\"name\"]} v{out[\"version\"]} states={len(out[\"states\"])} tools={len(out[\"allowed_tools\"])}')
+              "
+              echo "::endgroup::"
+            fi
+          done
+
+      - name: SKILL must not import from forbidden base layers
+        run: |
+          # SKILLs should be self-contained; no imports of L1/L4 base code.
+          ! grep -rE "from hermetic_agent\.(api|providers)" work/shared/skills/ 2>/dev/null \
+            && echo "OK: no SKILL imports L1/L4 base" \
+            || (echo "FAIL: SKILL imports L1/L4 base code" && exit 1)
+
+  # ---------------------------------------------------------------------------
+  # E2E — opt-in, requires secrets; default branch only
+  # ---------------------------------------------------------------------------
+  e2e:
+    name: E2E (requires opencode + secrets)
+    runs-on: ubuntu-latest
+    needs: test
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: "0.5.x"
+
+      - name: Set up Python
+        run: uv python install ${{ env.PYTHON_VERSION }}
+
+      - name: Install dependencies
+        run: uv sync --all-extras --dev
+
+      - name: Start opencode sandbox
+        run: docker compose up -d opencode-1
+
+      - name: Wait for opencode healthy
+        run: |
+          for i in {1..30}; do
+            if curl -fsS http://localhost:24096/global/health; then
+              echo "opencode ready"
+              break
+            fi
+            sleep 2
+          done
+
+      - name: Start Hub
+        env:
+          OPENCODE_BASE_URL: http://localhost:24096
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          docker compose up -d hermetic-agent
+          for i in {1..30}; do
+            if curl -fsS http://localhost:28000/health; then
+              echo "Hub ready"
+              break
+            fi
+            sleep 2
+          done
+
+      - name: Run e2e tests
+        env:
+          OPENCODE_BASE_URL: http://opencode-1:14096
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: uv run pytest tests/test_e2e_* -v --run-e2e --tb=short

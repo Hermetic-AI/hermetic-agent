@@ -1,4 +1,4 @@
-"""tests/test_question_sdk.py — P7: question SDK 包装 (mock httpx)."""
+﻿"""tests/test_question_sdk.py — P7: question SDK 包装 (mock httpx)."""
 from __future__ import annotations
 
 from unittest.mock import AsyncMock, MagicMock
@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, MagicMock
 import httpx
 import pytest
 
-from openagent.providers.opencode import native_sdk as sdk
+from hermetic_agent.providers.opencode import native_sdk as sdk
 
 # ---------------------------------------------------------------------------
 # question_list

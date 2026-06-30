@@ -1,17 +1,17 @@
-"""ScenarioInjector 单测 — 白名单 + 提示词拼接."""
+﻿"""ScenarioInjector 单测 — 白名单 + 提示词拼接."""
 
 from __future__ import annotations
 
 import pytest
 
-from openagent.scenarios.config import (
+from hermetic_agent.scenarios.config import (
     ExecutionConfig,
     ProgressiveSkillConfig,
     RoutingConfig,
     ScenarioConfig,
     WorkspaceConfig,
 )
-from openagent.scenarios.injector import (
+from hermetic_agent.scenarios.injector import (
     InMemoryAuditLogger,
     InjectionResult,
     ScenarioInjector,

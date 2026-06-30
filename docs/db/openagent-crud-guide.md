@@ -1,6 +1,6 @@
-# OpenAgent · 持久层 CRUD 初始化操作指南
+﻿# hermetic_agent · 持久层 CRUD 初始化操作指南
 
-> 版本: v1  ·  配套: v2 schema (`docs/db/openagent-schema.sql`)
+> 版本: v1  ·  配套: v2 schema (`docs/db/hermetic_agent-schema.sql`)
 > 范围: 6 个实体, Models / DTO / Repositories / Services 4 层完整落地
 
 ---
@@ -8,7 +8,7 @@
 ## 0. 层次总览
 
 ```
-src/openagent/store/
+src/hermetic_agent/store/
 ├── __init__.py                  # 公开 API 入口
 ├── driver.py                    # ① 驱动层: MySQL 连接池 + 事务 + 启动 DDL
 ├── exceptions.py                # ② 异常体系 (StoreError / NotFoundError / ...)
@@ -74,7 +74,7 @@ pip install asyncmy pymysql
 `.env`:
 ```ini
 AGENT_SCHEDULER_STORAGE_BACKEND=mysql
-AGENT_SCHEDULER_MYSQL_DSN=mysql://root:1014@127.0.0.1:13306/openagent
+AGENT_SCHEDULER_MYSQL_DSN=mysql://root:1014@127.0.0.1:13306/hermetic_agent
 AGENT_SCHEDULER_MYSQL_POOL_MIN_SIZE=5
 AGENT_SCHEDULER_MYSQL_POOL_MAX_SIZE=20
 AGENT_SCHEDULER_MYSQL_ECHO=false
@@ -112,7 +112,7 @@ DSN 格式: `mysql://user:password@host:port/database?charset=utf8mb4`
 ### 示例: `Scenario` Model
 
 ```python
-from openagent.store.models import Scenario
+from hermetic_agent.store.models import Scenario
 
 s = Scenario(
     code="flight-booking",
@@ -138,8 +138,8 @@ db_dict = s.to_db_dict()    # -> dict ready for INSERT
 ### 示例
 
 ```python
-from openagent.store import CreateScenarioRequest, ScenarioResponse, UpdateScenarioRequest
-from openagent.store.dto._common import iso_or_none
+from hermetic_agent.store import CreateScenarioRequest, ScenarioResponse, UpdateScenarioRequest
+from hermetic_agent.store.dto._common import iso_or_none
 
 # 入参
 req = CreateScenarioRequest(
@@ -234,7 +234,7 @@ class Repository[M](ABC):
 ### 5.3 典型调用: 完整 chat turn 生命周期
 
 ```python
-from openagent.store import (
+from hermetic_agent.store import (
     ServiceContainer,
     CreateSessionRequest,
     CreateChatTurnRequest,
@@ -291,8 +291,8 @@ assert sess_after.message_count == 2
 ### 6.1 从 settings 自动装配
 
 ```python
-from openagent.store import build_container_from_settings
-from openagent.config.settings import get_settings
+from hermetic_agent.store import build_container_from_settings
+from hermetic_agent.config.settings import get_settings
 
 settings = get_settings()
 container = build_container_from_settings(settings)  # 根据 storage_backend 自动选
@@ -305,9 +305,9 @@ container = build_container_from_settings(settings)  # 根据 storage_backend �
 ### 6.2 手动注入 (测试友好)
 
 ```python
-from openagent.store import build_container, MySQLPool, MySQLConfig
+from hermetic_agent.store import build_container, MySQLPool, MySQLConfig
 
-pool = MySQLPool(MySQLConfig.from_dsn("mysql://root:1014@127.0.0.1:13306/openagent"))
+pool = MySQLPool(MySQLConfig.from_dsn("mysql://root:1014@127.0.0.1:13306/hermetic_agent"))
 await pool.connect()
 await pool.init_schema(DDL_SQL)
 
@@ -321,8 +321,8 @@ container = build_container(
 ### 6.3 内存版 (无 MySQL)
 
 ```python
-from openagent.store import build_container
-from openagent.store.repositories.memory import (
+from hermetic_agent.store import build_container
+from hermetic_agent.store.repositories.memory import (
     MemoryScenarioRepository, MemorySessionRepository, ...
 )
 
@@ -365,7 +365,7 @@ pytest tests/store/ -v
 pytest tests/store/test_memory_repo.py -v
 
 # 自定义 DSN
-OPENAGENT_TEST_MYSQL_DSN=mysql://user:pass@host:3306/db pytest tests/store/
+HERMETIC_AGENT_TEST_MYSQL_DSN=mysql://user:pass@host:3306/db pytest tests/store/
 ```
 
 ### 8.2 测试覆盖 (17 个, 全部通过)

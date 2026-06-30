@@ -1,9 +1,9 @@
-# OpenAgent · MySQL 8 持久化 Schema 设计说明
+﻿# hermetic_agent · MySQL 8 持久化 Schema 设计说明
 
-> 版本: **v2**  ·  数据库: `openagent`  ·  引擎: InnoDB  ·  字符集: utf8mb4 / utf8mb4_0900_ai_ci
-> 适用对象: OpenAgent Agent Scheduler Hub
+> 版本: **v2**  ·  数据库: `hermetic_agent`  ·  引擎: InnoDB  ·  字符集: utf8mb4 / utf8mb4_0900_ai_ci
+> 适用对象: hermetic_agent Agent Scheduler Hub
 > 配套脚本:
-> - 完整 schema: [`openagent-schema.sql`](./openagent-schema.sql)
+> - 完整 schema: [`hermetic_agent-schema.sql`](./hermetic_agent-schema.sql)
 > - v1→v2 数据迁移: [`migrate-v1-to-v2.sql`](./migrate-v1-to-v2.sql)
 >
 > 参考: 对照 `relate_project/opencode/` 设计,采纳其 3 表拆 session/message/part、复合排序索引、token/cost 聚合反规范化等模式
@@ -189,7 +189,7 @@
 
 ## 8. 与 opencode 的对照 (借鉴 vs 不照搬)
 
-| opencode 特性 | OpenAgent 采纳 | 备注 |
+| opencode 特性 | hermetic_agent 采纳 | 备注 |
 |---------------|---------------|------|
 | `session`/`message`/`part` 3 表拆 | ✅ 采纳 | parts.session_id 冗余一并采纳 |
 | `(session_id, time_created, id)` 复合索引 | ✅ 采纳 | 我们用 `DATETIME(6)` 替代 `integer` 毫秒 |
@@ -199,7 +199,7 @@
 | `session_message` 第二类消息 | ❌ 不采纳 | 等业务真出现再补 |
 | `permission` / `account` / `control_account` | ❌ 不采纳 | 等需求来了再加 |
 | `data_migration` 表 + 自管 migration runner | ❌ 不采纳 | 用 DDL 幂等 + 启动期执行, 简单可控 |
-| `DatabasePath.absoluteColumn` 平台路径归一 | ❌ 不采纳 | OpenAgent 是服务端 Linux/Docker, 路径问题少 |
+| `DatabasePath.absoluteColumn` 平台路径归一 | ❌ 不采纳 | hermetic_agent 是服务端 Linux/Docker, 路径问题少 |
 | 表名单数 (`session`, `message`, `part`) | ❌ 保留复数 | 与 Django/Java 风格一致 |
 
 ---
@@ -208,12 +208,12 @@
 
 | 现有模块 | 改造点 |
 |---------|--------|
-| `src/openagent/store/base.py` | `SessionRepository` ABC 不变, 新增 `ScenarioRepository` / `ChatTurnRepository` / `PartRepository` / `AuditLogRepository` |
-| `src/openagent/store/postgres.py` | 替换驱动为 `asyncmy`, 拆出独立 DDL 字符串, 启动期 `engine.execute(SCHEMA)` |
-| `src/openagent/store/memory.py` | 保留 dev/test, 多加内存实现 |
-| `src/openagent/store/__init__.py` | 工厂模式扩展 |
-| `src/openagent/scenarios/registry.py` | `load_from_db` stub 已有, 接入 `ScenarioRepository.list_active()` |
-| `src/openagent/config/settings.py` | 把 `postgres_dsn` 改为通用 `database_url`, 解析 MySQL DSN |
+| `src/hermetic_agent/store/base.py` | `SessionRepository` ABC 不变, 新增 `ScenarioRepository` / `ChatTurnRepository` / `PartRepository` / `AuditLogRepository` |
+| `src/hermetic_agent/store/postgres.py` | 替换驱动为 `asyncmy`, 拆出独立 DDL 字符串, 启动期 `engine.execute(SCHEMA)` |
+| `src/hermetic_agent/store/memory.py` | 保留 dev/test, 多加内存实现 |
+| `src/hermetic_agent/store/__init__.py` | 工厂模式扩展 |
+| `src/hermetic_agent/scenarios/registry.py` | `load_from_db` stub 已有, 接入 `ScenarioRepository.list_active()` |
+| `src/hermetic_agent/config/settings.py` | 把 `postgres_dsn` 改为通用 `database_url`, 解析 MySQL DSN |
 
 **驱动选型建议**:
 - **`asyncmy`** (推荐): 纯异步, 性能最好, Sanic 全异步栈首选

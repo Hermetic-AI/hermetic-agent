@@ -1,4 +1,4 @@
-"""ScenarioRegistry 单测 — load / register / get / list / reload."""
+﻿"""ScenarioRegistry 单测 — load / register / get / list / reload."""
 
 from __future__ import annotations
 
@@ -6,15 +6,15 @@ from pathlib import Path
 
 import pytest
 
-from openagent.scenarios.config import (
+from hermetic_agent.scenarios.config import (
     ExecutionConfig,
     ProgressiveSkillConfig,
     RoutingConfig,
     ScenarioConfig,
     WorkspaceConfig,
 )
-from openagent.scenarios.errors import ScenarioNotFoundError
-from openagent.scenarios.registry import ScenarioRegistry
+from hermetic_agent.scenarios.errors import ScenarioNotFoundError
+from hermetic_agent.scenarios.registry import ScenarioRegistry
 
 
 def _make_scenario(tmp_path: Path, name: str, priority: int = 100) -> Path:

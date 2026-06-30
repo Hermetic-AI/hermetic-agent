@@ -1,4 +1,4 @@
-"""tests/test_auip_smoke.py — AUIP + SuspendableScheduler 端到端烟囱测试.
+﻿"""tests/test_auip_smoke.py — AUIP + SuspendableScheduler 端到端烟囱测试.
 
 完整跑一遍: 创建 turn → run_turn (走完整挂起流程) → 验证 Card + Checkpoint
 → 用户填表 → resume → 验证 done 终态.
@@ -8,23 +8,31 @@ from __future__ import annotations
 
 import pytest
 
-from openagent.auip import (
+from hermetic_agent.auip import (
     CARD_TYPES_SET,
     Card,
-    CardType,
     TurnEventType,
     compile_skill_md,
+    register_card_type,
+    reset_registered_card_types,
 )
-from openagent.core.suspendable_scheduler import (
+from hermetic_agent.core.suspendable_scheduler import (
     SuspendableScheduler,
     UserInput,
 )
-from openagent.core.turn_store import (
+from hermetic_agent.core.turn_store import (
     TURN_STATUS_DONE,
     TURN_STATUS_SUSPENDED,
     InMemoryTurnStore,
 )
-from openagent.skills.runtime.manifest import SkillManifest, StateSpec
+from hermetic_agent.skills.runtime.manifest import SkillManifest, StateSpec
+
+
+@pytest.fixture(autouse=True)
+def _reset_card_types() -> None:
+    reset_registered_card_types()
+    yield
+    reset_registered_card_types()
 
 
 # ---------------------------------------------------------------------------
@@ -34,6 +42,7 @@ from openagent.skills.runtime.manifest import SkillManifest, StateSpec
 
 def test_smoke_card_yaml_to_event(tmp_path) -> None:
     """Card YAML → Card → to_dict, 喂给 SuspendableScheduler 走完."""
+    register_card_type("FLIGHT_LIST")
     yaml_text = """
 card_type: FLIGHT_LIST
 schema_version: "1.0"
@@ -60,8 +69,8 @@ metadata:
     assert d["card_type"] == "FLIGHT_LIST"
     assert len(d["options"]) == 2
     assert d["metadata"]["state"] == "S05"
-    # CardType 枚举必须含 FLIGHT_LIST
-    assert CardType.FLIGHT_LIST.value in CARD_TYPES_SET
+    # 注册过的 CardType 必须在动态白名单里
+    assert "FLIGHT_LIST" in CARD_TYPES_SET
 
 
 # ---------------------------------------------------------------------------
@@ -222,5 +231,5 @@ async def test_smoke_resume_without_suspend_raises() -> None:
         async for _ in sched.resume(turn_id, UserInput(correlation_id="x")):
             pass
     # 必须是 TurnNotFound
-    from openagent.auip.errors import TurnNotFound
+    from hermetic_agent.auip.errors import TurnNotFound
     assert isinstance(exc_info.value, TurnNotFound)

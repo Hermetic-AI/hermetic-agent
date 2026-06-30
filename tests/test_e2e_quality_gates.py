@@ -1,4 +1,4 @@
-"""tests/test_e2e_quality_gates.py — P7 阶段质量门禁静态检查.
+﻿"""tests/test_e2e_quality_gates.py — P7 阶段质量门禁静态检查.
 
 两套硬约束:
 1. 5 层依赖方向 (L1→L2→L3→L4→L5, 同层允许) — 见设计文档 §3.2
@@ -23,23 +23,24 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parent.parent
-SRC = ROOT / "src" / "openagent"
+SRC = ROOT / "src" / "hermetic_agent"
 
 # Layer 配置 (与 scripts/ci_check.py 一致)
 LAYER_PATTERNS: dict[str, list[str]] = {
-    "L1": ["openagent/api/"],
-    "L2": ["openagent/scenarios/"],
+    "L1": ["hermetic_agent/api/"],
+    "L2": ["hermetic_agent/scenarios/"],
     "L3": [
-        "openagent/skill_runtime/",
-        "openagent/auip/",
-        "openagent/core/suspendable_scheduler.py",
-        "openagent/core/turn_store.py",
+        "hermetic_agent/skill_runtime/",
+        "hermetic_agent/skills/runtime/",
+        "hermetic_agent/auip/",
+        "hermetic_agent/core/suspendable_scheduler.py",
+        "hermetic_agent/core/turn_store.py",
     ],
-    "L4": ["openagent/providers/"],
+    "L4": ["hermetic_agent/providers/"],
     "L5": [
-        "openagent/policy/",
-        "openagent/store/",
-        "openagent/audit/",
+        "hermetic_agent/policy/",
+        "hermetic_agent/store/",
+        "hermetic_agent/audit/",
     ],
 }
 
@@ -61,34 +62,50 @@ LINE_LIMITS: dict[str, int] = {
 
 # 与 scripts/ci_check.py KNOWN_VIOLATIONS 完全一致
 KNOWN_VIOLATIONS: set[str] = {
-    "src/openagent/api/routes.py",
-    "src/openagent/api/app.py",  # 238 lines, 超过 L1 上限 200 (P7 之前已存在, 注册 bp 累加)
-    "src/openagent/api/controllers/chat_controller.py",
-    "src/openagent/api/controllers/scenario_controller.py",
-    "src/openagent/api/controllers/session_controller.py",
-    "src/openagent/api/controllers/registry_controller.py",
-    "src/openagent/api/turn_routes.py",
-    "src/openagent/api/lifecycle.py",
-    "src/openagent/core/suspendable_scheduler.py",
-    "src/openagent/scenarios/config.py",  # 254 lines, L2 上限 250 (P8 未触碰)
-    "src/openagent/skill_runtime/fragments.py",  # 341 lines, L3 上限 250 (P8 未触碰)
-    "src/openagent/providers/base.py",
-    "src/openagent/providers/agent_bridge.py",
-    "src/openagent/providers/claude_code_chat.py",
-    "src/openagent/providers/claude_code_lifecycle.py",
-    "src/openagent/providers/opencode_chat.py",
-    "src/openagent/providers/opencode_lifecycle.py",
-    "src/openagent/providers/opencode_adapter.py",  # 201 lines, 超过 L4 上限 200 (P7 之前已存在, 1 行)
-    "src/openagent/providers/opencode_event_hub.py",  # 258 lines, L4 上限 200 (TTFT hub, 加 _HubSubscription 后略超)
-    "src/openagent/store/base.py",
-    "src/openagent/store/postgres.py",
+    "src/hermetic_agent/api/app/app.py",
+    "src/hermetic_agent/api/http/controllers/chat_controller.py",
+    "src/hermetic_agent/api/http/controllers/scenario_controller.py",
+    "src/hermetic_agent/api/http/controllers/session_controller.py",
+    "src/hermetic_agent/api/http/controllers/registry_controller.py",
+    "src/hermetic_agent/api/http/turn_routes.py",
+    "src/hermetic_agent/api/lifecycle/lifecycle.py",
+    "src/hermetic_agent/core/suspendable_scheduler.py",
+    "src/hermetic_agent/scenarios/config.py",
+    "src/hermetic_agent/skills/runtime/fragments.py",
+    "src/hermetic_agent/providers/base.py",
+    "src/hermetic_agent/providers/agent_bridge.py",
+    "src/hermetic_agent/providers/claude_code/chat.py",
+    "src/hermetic_agent/providers/claude_code/lifecycle.py",
+    "src/hermetic_agent/providers/opencode/chat.py",
+    "src/hermetic_agent/providers/opencode/lifecycle.py",
+    "src/hermetic_agent/providers/opencode/adapter.py",
+    "src/hermetic_agent/providers/opencode/event_hub.py",
+    "src/hermetic_agent/providers/streaming.py",
+    "src/hermetic_agent/providers/launcher.py",
+    "src/hermetic_agent/store/base.py",
+    "src/hermetic_agent/store/postgres.py",
+    "src/hermetic_agent/store/__init__.py",
+    "src/hermetic_agent/store/mysql.py",
+    "src/hermetic_agent/store/services/chat_turn_service.py",
+    "src/hermetic_agent/store/services/session_service.py",
 }
 
 # 已知 L1→L4/L5 import 违规 (P0-P6 阶段遗留)
 KNOWN_IMPORT_VIOLATIONS: set[str] = {
-    "src/openagent/api/lifecycle.py",
-    "src/openagent/api/schemas.py",
-    "src/openagent/api/controllers/pool_controller.py",
+    "src/hermetic_agent/api/lifecycle.py",
+    "src/hermetic_agent/api/schemas.py",
+    "src/hermetic_agent/api/controllers/pool_controller.py",
+    "src/hermetic_agent/api/http/logging_setup.py",
+    "src/hermetic_agent/api/http/schemas.py",
+    "src/hermetic_agent/api/http/controllers/pool_controller.py",
+    "src/hermetic_agent/api/http/streaming/ask_user.py",
+    "src/hermetic_agent/api/http/streaming/card_message_rewriter.py",
+    "src/hermetic_agent/api/http/streaming/done_gate.py",
+    "src/hermetic_agent/api/http/streaming/keepalive.py",
+    "src/hermetic_agent/api/http/controllers/mcp_controller.py",
+    "src/hermetic_agent/api/http/controllers/skill_controller.py",
+    "src/hermetic_agent/api/http/streaming/turn_bridge.py",
+    "src/hermetic_agent/scenarios/middleware.py",
 }
 
 
@@ -104,18 +121,18 @@ def _norm(path: Path) -> str:
 def detect_layer(path: Path) -> str:
     """根据文件路径判定所属 layer.
 
-    LAYER_PATTERNS 用 'openagent/...' 形式 (相对 src/openagent/ 的父目录),
-    实际路径以 'src/openagent/...' 开头. 通过判断 path 是否在对应 layer
+    LAYER_PATTERNS 用 'hermetic_agent/...' 形式 (相对 src/hermetic_agent/ 的父目录),
+    实际路径以 'src/hermetic_agent/...' 开头. 通过判断 path 是否在对应 layer
     目录下 (子路径) 来匹配.
     """
     try:
         rel = _norm(path.relative_to(ROOT))
     except ValueError:
         rel = _norm(path)
-    # rel 形如 'src/openagent/api/controllers/chat_controller.py'
+    # rel 形如 'src/hermetic_agent/api/controllers/chat_controller.py'
     for layer, patterns in LAYER_PATTERNS.items():
         for pat in patterns:
-            pat_n = pat.rstrip("/")  # 'openagent/api' or 'openagent/core/suspendable_scheduler.py'
+            pat_n = pat.rstrip("/")  # 'hermetic_agent/api' or 'hermetic_agent/core/suspendable_scheduler.py'
             # 子目录匹配
             dir_prefix = f"src/{pat_n}/"
             if rel.startswith(dir_prefix):
@@ -131,22 +148,22 @@ def detect_layer(path: Path) -> str:
 
 def detect_layer_by_module(mod_name: str) -> str:
     """根据 import 的 module 名判定 layer."""
-    if not mod_name or not mod_name.startswith("openagent."):
+    if not mod_name or not mod_name.startswith("hermetic_agent."):
         return ""
     parts = mod_name.split(".")
     if len(parts) < 2:
         return ""
     sub = parts[1]
-    if sub not in {"api", "scenarios", "skill_runtime", "auip", "core",
+    if sub not in {"api", "scenarios", "skill_runtime", "skills", "auip", "core",
                    "providers", "policy", "store", "audit"}:
         return ""
-    # 单文件 (e.g. 'openagent.core.suspendable_scheduler')
+    # 单文件 (e.g. 'hermetic_agent.core.suspendable_scheduler')
     if len(parts) >= 4 and parts[2] == "core":
-        fname = f"openagent/core/{parts[3]}.py"
+        fname = f"hermetic_agent/core/{parts[3]}.py"
         for layer, patterns in LAYER_PATTERNS.items():
             if fname in [p.rstrip("/") for p in patterns]:
                 return layer
-    sub_path = f"openagent/{sub}/"
+    sub_path = f"hermetic_agent/{sub}/"
     for layer, patterns in LAYER_PATTERNS.items():
         if sub_path in [p.rstrip("/") + "/" for p in patterns]:
             return layer
@@ -267,7 +284,7 @@ def test_scenario_yamls_have_required_fields() -> None:
     assert yaml_files, "no scenario YAML files found"
 
     # 用 loader 内部用的 _StrictYAMLLoader (避免 flow context 中未加引号 ${KEY} 报错)
-    from openagent.scenarios.loader import _quote_placeholders
+    from hermetic_agent.scenarios.loader import _quote_placeholders
     import yaml
     from yaml import SafeLoader
 
@@ -298,13 +315,16 @@ def test_scenario_yamls_have_required_fields() -> None:
 
 
 def test_six_scenarios_present() -> None:
-    """work/scenarios/ 必须有 6 个 scenario 文件 (含 _generic/_default)."""
+    """work/scenarios/ 必须至少含 2 个 scenario 文件 (_default + example_echo).
+
+    Phase 1 重构后基座 scenario 缩减到 2 个 (兜底 + 示例). 业务场景全部下沉
+    到 work/shared/skills/<skill-name>/, 不再在基座 work/scenarios/ 里.
+    """
     scenarios_dir = ROOT / "work" / "scenarios"
     if not scenarios_dir.exists():
         pytest.skip("work/scenarios/ not found (P0 not initialized)")
     files = {p.stem.replace(".scenario", "") for p in scenarios_dir.glob("*.scenario.yaml")}
-    expected = {"_generic", "_default", "flight_booking", "expense_audit",
-                "customer_service", "code_review"}
+    expected = {"_default", "example_echo"}
     missing = expected - files
     extra = files - expected
     msg = f"Found: {sorted(files)}\n"

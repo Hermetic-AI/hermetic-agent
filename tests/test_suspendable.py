@@ -1,4 +1,4 @@
-"""tests/test_suspendable.py — SuspendableScheduler 单元测试.
+﻿"""tests/test_suspendable.py — SuspendableScheduler 单元测试.
 
 P5 范围: run_turn 模拟事件流, 验证每种事件类型, 验证 Checkpoint
 写入, 验证 resume 链路, 验证 StateGuard 拦截.
@@ -8,19 +8,19 @@ from __future__ import annotations
 
 import pytest
 
-from openagent.auip.errors import TurnNotFound
-from openagent.auip.events import TurnEventType
-from openagent.core.suspendable_scheduler import (
+from hermetic_agent.auip.errors import TurnNotFound
+from hermetic_agent.auip.events import TurnEventType
+from hermetic_agent.core.suspendable_scheduler import (
     ASK_USER_TOOL,
     SuspendableScheduler,
     UserInput,
 )
-from openagent.core.turn_store import (
+from hermetic_agent.core.turn_store import (
     TURN_STATUS_DONE,
     TURN_STATUS_SUSPENDED,
     InMemoryTurnStore,
 )
-from openagent.skills.runtime.manifest import SkillManifest, StateSpec
+from hermetic_agent.skills.runtime.manifest import SkillManifest, StateSpec
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -86,9 +86,9 @@ async def test_run_turn_emits_ask_user_tool_use() -> None:
     assert tu_evts[0].data["input"]["card_type"] == "OD_INPUT"
     fields = tu_evts[0].data["input"]["fields"]
     assert [f["id"] for f in fields] == [
-        "departureCity",
-        "arrivalCity",
-        "departureDate",
+        "field1",
+        "field2",
+        "field3",
     ]
 
 
@@ -278,7 +278,12 @@ async def test_resume_seq_continues_from_suspend() -> None:
 
 
 def test_ask_user_tool_schema_valid_json_schema() -> None:
-    """ASK_USER_TOOL.input_schema 是合法 JSON Schema 草案 7."""
+    """ASK_USER_TOOL.input_schema 是合法 JSON Schema 草案 7.
+
+    SKILL 自注册协议下, ask_user 工具的 enum 来自基座内置 4 个
+    (CHAT_FALLBACK / OD_INPUT / QUESTION / TODO_LIST) + 运行时各 SKILL
+    注册的业务类型. 此测试只校验内置 4 个在场, 不依赖具体业务.
+    """
     schema = ASK_USER_TOOL["input_schema"]
     assert schema["type"] == "object"
     assert "card_type" in schema["required"]
@@ -286,11 +291,9 @@ def test_ask_user_tool_schema_valid_json_schema() -> None:
     # card_type 是 enum
     ct = props["card_type"]
     assert ct["type"] == "string"
-    # enum 包含所有 CardType 值
+    # enum 含基座内置 4 个
     enum_set = set(ct["enum"])
-    for v in ["OD_INPUT", "FLIGHT_LIST", "POLICY_DECISION", "CABIN_LIST",
-              "ORDER_CONFIRM", "ORDER_SUCCESS", "CANNOT_ORDER", "CHAT_FALLBACK",
-              "PASSENGER_FORM", "OAT_BINDING", "PRICE_VERIFY"]:
+    for v in ["CHAT_FALLBACK", "OD_INPUT", "QUESTION", "TODO_LIST"]:
         assert v in enum_set
     # 其他字段是宽松类型
     for key in ("title", "body", "options", "decision_buttons", "actions"):

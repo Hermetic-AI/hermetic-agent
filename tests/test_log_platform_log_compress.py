@@ -1,13 +1,13 @@
-"""test_log_platform_log_compress — 阈值 + 压缩往返."""
+﻿"""test_log_platform_log_compress — 阈值 + 压缩往返."""
 from __future__ import annotations
 
 import pytest
 
-from openagent.audit.log import (
+from hermetic_agent.audit.log import (
     busi_logger as _busi, object_log_writer as _olw, request_logger as _req,
     seq_no as _seq, setup as _setup, sys_logger as _sys,
 )
-from openagent.audit.log.log_compress import (
+from hermetic_agent.audit.log.log_compress import (
     THRESHOLD_BYTES,
     maybe_compress,
     maybe_decompress,

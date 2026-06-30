@@ -1,16 +1,16 @@
-# OpenAgent 容器化部署 (Phase 1) — 统一 compose
+﻿# hermetic-agent 容器化部署 (Phase 1) — 统一 compose
 #
 # 4 个 service:
-#   - nacos               (Nacos v3.2.2, 配置中心 + AI 注册表)  :8848/:8080/:9848
-#   - openagent-hub        (Sanic, L1-L3)                        :18000→8000
-#   - opencode-1           (sandbox,  L4)                        :14096/:7778 (调试用)
-#   - openagent-frontend   (nginx,  静态 + /api 反代)             :13000→3000  [profile: frontend]
+#   - nacos               (Nacos v3.2.2, 配置中心 + AI 注册表)  :28848/:28080/:29848
+#   - hermetic-agent        (Sanic, L1-L3)                        :28000→8000
+#   - opencode-1           (sandbox,  L4)                        :24096/:27778 (调试用)
+#   - hermetic_agent-frontend   (nginx,  静态 + /api 反代)             :23000→13000  [profile: frontend]
 #
 # 启动模式 (2 选 1):
-#   * local  (默认):   本地 Dockerfile 构建, tag = openagent:dev 等
+#   * local  (默认):   本地 Dockerfile 构建, tag = hermetic_agent:dev 等
 #                      docker compose up -d --build
 #                      (PULL_POLICY 默认 missing: 本地有就用, 没才拉 — 即"优先 build 产物")
-#   * registry (生产): 从 registry 拉, 用 OPENAGENT_HUB_IMAGE 等
+#   * registry (生产): 从 registry 拉, 用 HERMETIC_AGENT_IMAGE 等
 #                      PULL_POLICY=always docker compose up -d
 #                      (强制从 registry 拉, 忽略本地 build 产物)
 #
@@ -24,17 +24,17 @@
 #   - 1 hub + 1 opencode 节点 (要 N 个就复制 opencode-1 块, 改 hostname)
 #   - 改 model/url/key 不 rebuild 镜像:
 #     走 admin API (容器内 :7778) 或 Hub 代理 (POST /agent/admin/opencode/opencode-1/policy[/env][/reload])
-#     想直接调: 7778 端口已暴露 host, 可用 Swagger UI (http://localhost:7778/docs)
+#     想直接调: 27778 端口已暴露 host, 可用 Swagger UI (http://localhost:27778/docs)
 #
 # 调试端口 (生产环境把对应 ports 段注释掉, sandbox/frontend 不应直接对外):
-#   http://localhost:8080                   Nacos Console UI
-#   http://localhost:8848/nacos             Nacos Client API
-#   http://localhost:18000                 Hub 主 API
-#   http://localhost:18000/ready          Hub 就绪检查
-#   http://localhost:14096/doc            opencode 原生 OpenAPI Swagger
-#   http://localhost:14096/global/health  opencode 健康
-#   http://localhost:7778/docs            sandbox admin API Swagger
-#   http://localhost:13000                frontend 入口 (/api/* 反代 Hub)
+#   http://localhost:28080                   Nacos Console UI
+#   http://localhost:28848/nacos             Nacos Client API
+#   http://localhost:28000                  Hub 主 API
+#   http://localhost:28000/ready            Hub 就绪检查
+#   http://localhost:24096/doc              opencode 原生 OpenAPI Swagger
+#   http://localhost:24096/global/health    opencode 健康
+#   http://localhost:27778/docs             sandbox admin API Swagger
+#   http://localhost:23000                  frontend 入口 (/api/* 反代 Hub)
 #
 # ----------------------------------------------------------------------------
 # local / registry 二选一实现:
@@ -43,7 +43,7 @@
 #       - missing (默认): 本地有就用, 没才拉 (= "优先 build 产物", 跟原 build 等价)
 #       - never:          严格只用本地, 缺镜像报错
 #       - always:         强制从 registry 拉, 忽略本地
-#   * 镜像 tag 由 ``${OPENAGENT_HUB_IMAGE:-openagent:dev}`` 等 env 决定
+#   * 镜像 tag 由 ``${HERMETIC_AGENT_IMAGE:-hermetic-agent:dev}`` 等 env 决定
 #   * 用 PULL_POLICY=always 触发 registry 模式 (典型: 生产 deploy)
 # ----------------------------------------------------------------------------
 
@@ -53,22 +53,22 @@ services:
   # ============================================================
   nacos:
     image: nacos/nacos-server:v3.2.2
-    container_name: nacos-standalone
+    container_name: hermetic-agent-nacos
     pull_policy: ${PULL_POLICY:-missing}
     restart: unless-stopped
     environment:
       - MODE=standalone
       - NACOS_AUTH_ENABLE=false
       - NACOS_AUTH_TOKEN=${NACOS_AUTH_TOKEN:-VGhpc0lzTXlDdXN0b21TZWNyZXRLZXkwMTIzNDU2Nzg5MDEyMzQ1Njc4OTAxMjM0NTY3ODkw}
-      - NACOS_AUTH_IDENTITY_KEY=${NACOS_AUTH_IDENTITY_KEY:-openagent}
-      - NACOS_AUTH_IDENTITY_VALUE=${NACOS_AUTH_IDENTITY_VALUE:-openagent}
+      - NACOS_AUTH_IDENTITY_KEY=${NACOS_AUTH_IDENTITY_KEY:-hermetic_agent}
+      - NACOS_AUTH_IDENTITY_VALUE=${NACOS_AUTH_IDENTITY_VALUE:-hermetic_agent}
       - JVM_XMS=256m
       - JVM_XMX=256m
       - JVM_XMN=128m
     ports:
-      - "8080:8080"
-      - "8848:8848"
-      - "9848:9848"
+      - "28080:8080"
+      - "28848:8848"
+      - "29848:9848"
     networks: [sandbox-net]
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS -o /dev/null -w '%{http_code}' http://127.0.0.1:8848/nacos/ | grep -q 200"]
@@ -78,25 +78,25 @@ services:
       retries: 5
 
   # ============================================================
-  # 1. OpenAgent Hub (主服务, L1-L3, Sanic + scenarios + skills)
+  # 1. hermetic-agent (主服务, L1-L3, Sanic + scenarios + skills)
   # ============================================================
-  openagent-hub:
-    image: ${OPENAGENT_HUB_IMAGE:-openagent:dev}
+  hermetic-agent:
+    image: ${HERMETIC_AGENT_IMAGE:-hermetic-agent:dev}
     build:
       context: .
-      dockerfile: docker/Dockerfile.openagent
+      dockerfile: docker/hermetic-agent/Dockerfile
     pull_policy: ${PULL_POLICY:-missing}
     restart: unless-stopped
     env_file:
       - path: .env
         required: false
     ports:
-      - "18000:8000"
+      - "28000:8000"
     environment:
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
       - OPENAI_BASE_URL=${OPENAI_BASE_URL:-}
-      - FLIGHT_API_KEY=${FLIGHT_API_KEY:-}
+      - MCP_TOKEN=${MCP_TOKEN:-}
       - PYTHONUNBUFFERED=1
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       - LOG_FORMAT=${LOG_FORMAT:-json}
@@ -120,7 +120,7 @@ services:
     # 开发模式 (取消注释):
     # volumes:
     #   - ./:/app
-    # command: ["python", "-m", "openagent.main", "--reload"]
+    # command: ["python", "-m", "hermetic_agent.main", "--reload"]
 
   # ============================================================
   # 2. opencode 节点 (L4 sandbox, 1 个 — 要 N 个就复制)
@@ -129,7 +129,7 @@ services:
     image: ${OPENCODE_SANDBOX_IMAGE:-opencode-sandbox:dev}
     build:
       context: .
-      dockerfile: docker/Dockerfile.opencode-sandbox
+      dockerfile: docker/opencode/Dockerfile
     pull_policy: ${PULL_POLICY:-missing}
     hostname: opencode-1
     restart: unless-stopped
@@ -151,11 +151,10 @@ services:
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
       - OPENAI_BASE_URL=${OPENAI_BASE_URL:-}
-      - FLIGHT_API_KEY=${FLIGHT_API_KEY:-}
-      - ENABLE_FLIGHT_MCP=${ENABLE_FLIGHT_MCP:-1}
+      - MCP_TOKEN=${MCP_TOKEN:-}
       - MCPORTER_ENABLED=${MCPORTER_ENABLED:-false}
       - MCPORTER_CONFIG_PATH=${MCPORTER_CONFIG_PATH:-/opt/sandbox/mcporter.json}
-      - MCPORTER_SERVERS=${MCPORTER_SERVERS:-feihe-travel}
+      - MCPORTER_SERVERS=${MCPORTER_SERVERS:-}
       - WORKSPACE_CWD=${WORKSPACE_PATH:-/work/tenant-A/project-1}
       - OPENCODE_PORT=14096
       - OPENCODE_HOST=0.0.0.0
@@ -167,8 +166,8 @@ services:
       - opencode-1-runtime:/tmp/opencode-sandbox
     networks: [sandbox-net]
     ports:
-      - "14096:14096"
-      - "7778:7778"
+      - "24096:14096"
+      - "27778:7778"
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:7777/healthz"]
       interval: 5s
@@ -177,19 +176,19 @@ services:
       retries: 3
 
   # ============================================================
-  # 3. OpenAgent Frontend (nginx serve 静态 + /api 反代 Hub)
+  # 3. hermetic_agent Frontend (nginx serve 静态 + /api 反代 Hub)
   #    默认不启, 启用: --profile frontend
   # ============================================================
-  openagent-frontend:
+  hermetic_agent-frontend:
     profiles: ["frontend"]
-    image: ${OPENAGENT_FRONTEND_IMAGE:-openagent-frontend:dev}
+    image: ${HERMETIC_AGENT_FRONTEND_IMAGE:-hermetic_agent-frontend:dev}
     build:
       context: .
-      dockerfile: docker/Dockerfile.frontend
+      dockerfile: docker/frontend/Dockerfile
       args:
         VITE_BACKEND_URL: /api
     pull_policy: ${PULL_POLICY:-missing}
-    hostname: openagent-frontend
+    hostname: hermetic_agent-frontend
     restart: unless-stopped
     # 不开 ``read_only: true`` — 跟 nginx 官方 entrypoint 的 chown 行为不兼容.
     # 不 ``cap_drop: [ALL]`` — 那样会丢 CAP_CHOWN / CAP_SETUID / CAP_SETGID,
@@ -221,10 +220,10 @@ services:
       - /var/log/nginx:size=20m,mode=0755
       - /tmp:size=20m,mode=1777
     ports:
-      - "13000:13000"
+      - "23000:13000"
     networks: [sandbox-net]
     depends_on:
-      openagent-hub:
+      hermetic-agent:
         condition: service_started
     env_file:
       - path: .env
@@ -244,4 +243,4 @@ volumes:
 networks:
   sandbox-net:
     driver: bridge
-    name: openagent-sandbox-net
+    name: hermetic_agent-sandbox-net

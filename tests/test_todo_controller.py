@@ -1,4 +1,4 @@
-"""tests/test_todo_controller.py — P7: /agent/sessions/{id}/todo 端点."""
+﻿"""tests/test_todo_controller.py — P7: /agent/sessions/{id}/todo 端点."""
 from __future__ import annotations
 
 import uuid
@@ -8,8 +8,8 @@ import httpx
 import pytest
 from sanic import Sanic
 
-from openagent.api.http.controllers.todo_controller import todo_bp
-from openagent.config.settings import Settings
+from hermetic_agent.api.http.controllers.todo_controller import todo_bp
+from hermetic_agent.config.settings import Settings
 
 
 class _FakeAdapter:

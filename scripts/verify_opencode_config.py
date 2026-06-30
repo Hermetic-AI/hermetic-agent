@@ -1,4 +1,4 @@
-"""scripts/verify_opencode_config.py — 端到端验证 opencode chat 真的 work.
+﻿"""scripts/verify_opencode_config.py — 端到端验证 opencode chat 真的 work.
 
 2026-06-10 P8 之后, opencode 容器在以下情况都会报 ProviderModelNotFoundError:
   - 跑老 render_config.py (model 字段格式不对)
@@ -32,7 +32,7 @@ import time
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-RENDER_CONFIG = REPO_ROOT / "docker" / "render_config.py"
+RENDER_CONFIG = REPO_ROOT / "docker" / "opencode" / "scripts" / "render_config.py"
 
 EXPECTED_LINE_RE = re.compile(
     r'cfg\[["\']model["\']\]\s*=\s*model_string\b'
@@ -45,9 +45,9 @@ def verify_source() -> int:
         return 1
     text = RENDER_CONFIG.read_text(encoding="utf-8")
     if EXPECTED_LINE_RE.search(text):
-        print("OK   docker/render_config.py is the fixed version (cfg[model] = model_string)")
+        print("OK   docker/opencode/scripts/render_config.py is the fixed version (cfg[model] = model_string)")
         return 0
-    print("FAIL docker/render_config.py looks like the OLD version")
+    print("FAIL docker/opencode/scripts/render_config.py looks like the OLD version")
     print("     expected: cfg[\"model\"] = model_string")
     print()
     print("Fix: rebuild the opencode image (you probably already did this,")
@@ -110,7 +110,7 @@ def verify_container(container: str) -> int:
     return 0
 
 
-def verify_chat(hub_url: str = "http://localhost:18000") -> int:
+def verify_chat(hub_url: str = "http://localhost:28000") -> int:
     """实际发一次 chat, 验证 LLM 真的返回 content."""
     try:
         import httpx
@@ -159,13 +159,13 @@ def main() -> int:
     parser.add_argument(
         "--container",
         metavar="NAME",
-        default="fh-openagent-opencode-1-1",
+        default="fh-hermetic_agent-opencode-1-1",
         help="opencode container name to inspect (default: %(default)s)",
     )
     parser.add_argument(
         "--hub-url",
         metavar="URL",
-        default="http://localhost:18000",
+        default="http://localhost:28000",
         help="Hub URL for chat smoke test (default: %(default)s)",
     )
     parser.add_argument(

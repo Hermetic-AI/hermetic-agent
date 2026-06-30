@@ -1,0 +1,356 @@
+﻿{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "opencode-sandbox admin API",
+    "version": "1.1.0",
+    "description": "容器内 admin + health 端点. 跟 Hub 走 docker 内部 DNS (:7777 / :7778). 改 model / URL / Key 都不用 rebuild 镜像, 改完 POST /admin/reload 让 supervisor 自动重启 opencode serve.",
+    "contact": {
+      "name": "hermetic-agent",
+      "url": "https://github.com/lyzsniper/hermetic-agent"
+    }
+  },
+  "servers": [
+    {
+      "url": "http://localhost:7778",
+      "description": "容器内 admin server (直连, dev / debug 用)"
+    },
+    {
+      "url": "http://{node_name}:7778",
+      "description": "通过容器名访问 (Hub 端用这种, 例 http://opencode-1:7778)",
+      "variables": {
+        "node_name": {
+          "default": "opencode-1",
+          "description": "opencode 容器的 hostname / 服务名"
+        }
+      }
+    },
+    {
+      "url": "/agent/admin/opencode/{node_name}",
+      "description": "通过 Hub 代理 (前端 / 外部推荐; 走 pool_controller)",
+      "variables": {
+        "node_name": {
+          "default": "opencode-core",
+          "description": "bridge.register 时用的名字"
+        }
+      }
+    }
+  ],
+  "tags": [
+    {"name": "policy", "description": "改 model / 场景配置"},
+    {"name": "env", "description": "改 LLM URL / API key 等环境变量"},
+    {"name": "reload", "description": "让 opencode 重新读 config + env"},
+    {"name": "status", "description": "查 opencode 进程状态 + 当前 active model"},
+    {"name": "health", "description": "健康检查"}
+  ],
+  "paths": {
+    "/admin/healthz": {
+      "get": {
+        "tags": ["health"],
+        "summary": "admin_server 自身健康检查",
+        "description": "返回 admin_server 的 uptime. 容器进程独立于 opencode — 即使 opencode 死了, admin 也能响应.",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {"type": "string", "enum": ["ok"]},
+                    "uptime": {"type": "integer", "description": "admin_server 进程启动到现在的秒数"}
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/healthz": {
+      "get": {
+        "tags": ["health"],
+        "summary": "opencode 容器整体健康检查 (同 :7777 health_server)",
+        "description": "返回 opencode 进程状态 (alive / 端口可达). 跟 :7778 admin/healthz 的区别: 这个是 \"opencode 是不是还活着\".",
+        "responses": {
+          "200": {
+            "description": "opencode alive",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {"type": "string", "enum": ["ok"]},
+                    "opencode_alive": {"type": "boolean"},
+                    "uptime_seconds": {"type": "integer"},
+                    "pid": {"type": "integer"}
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "opencode 死了, 但容器还活着 (等待 supervisor 重启)"
+          }
+        }
+      }
+    },
+    "/admin/policy": {
+      "get": {
+        "tags": ["policy"],
+        "summary": "查当前生效的 policy (baked + runtime overlay)",
+        "description": "返回 3 个层: baked (镜像 COPY 进来, ro) + runtime_overlay (admin API 写的) + effective (合并结果).",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/PolicyResponse"}
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": ["policy"],
+        "summary": "更新 policy 字段 (deep merge, partial update)",
+        "description": "Body 是 partial policy. 字段值 = null 表示删除该字段. 写完调 POST /admin/reload 才会让 opencode 用新 config 重启.\n\n**Body 也可以含 `env` 字段 (dict[str, str])**, 这部分会单独写进 env.runtime 文件, 跟 policy 走两条路. 详见 POST /admin/env.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "description": "partial policy 字段 + 可选 env 字段",
+                "properties": {
+                  "agent": {
+                    "type": "object",
+                    "description": "agent 配置 (model 在这里)",
+                    "properties": {
+                      "name": {"type": "string", "example": "opencode"},
+                      "model": {"type": "string", "example": "openai/MiniMax-M3", "description": "provider/model_id 格式"}
+                    }
+                  },
+                  "tool_level": {"type": "string", "enum": ["safe", "standard", "full"], "example": "standard"},
+                  "skills": {"type": "array", "items": {"type": "string"}, "example": ["flight-query"]},
+                  "max_turns": {"type": "integer", "example": 30},
+                  "max_budget_usd": {"type": "number", "example": 2.0},
+                  "env": {
+                    "type": "object",
+                    "description": "**可选**: 写 env.runtime (key=value 格式, supervisor source 后启 opencode). 适合改 LLM URL / API Key.",
+                    "additionalProperties": {"type": "string"},
+                    "example": {"OPENAI_API_KEY": "sk-xxx", "OPENAI_BASE_URL": "https://api.deepseek.com/v1"}
+                  }
+                },
+                "example": {
+                  "agent": {"model": "openai/anthropic-claude-sonnet-4-5"},
+                  "tool_level": "standard"
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {"type": "boolean"},
+                    "effective": {"$ref": "#/components/schemas/Policy"},
+                    "env": {"type": "string", "description": "可选, 如果 body 含 env 字段"}
+                  }
+                }
+              }
+            }
+          },
+          "400": {"description": "body 不是 JSON object"}
+        }
+      }
+    },
+    "/admin/env": {
+      "get": {
+        "tags": ["env"],
+        "summary": "查当前 env.runtime 里的变量 (secret 值遮蔽为 '***')",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+              "properties": {
+                "runtime_path": {"type": "string", "description": "固定 /tmp/opencode-sandbox/env.runtime (tmpfs, rw)"},
+                "exists": {"type": "boolean"},
+                    "env": {
+                      "type": "object",
+                      "additionalProperties": {"type": "string"},
+                      "description": "key -> value. 含 KEY/TOKEN/SECRET/PASSWORD 的值统一遮蔽成 '***'."
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": ["env"],
+        "summary": "覆盖 env.runtime 文件 (key=value 格式, 写 chmod 600)",
+        "description": "Body 是 partial env. null 值表示删除. 写完调 POST /admin/reload 让 supervisor 重新 source 这个文件再启 opencode. **注意**: LLM key / token 改完会立即生效, 不再依赖 docker-compose env.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": {"type": "string"},
+                "example": {
+                  "OPENAI_API_KEY": "sk-xxx-new",
+                  "OPENAI_BASE_URL": "https://api.deepseek.com/v1"
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {"type": "boolean"},
+                    "wrote": {"type": "integer", "description": "env.runtime 里的 key 总数"},
+                    "next": {"type": "string"}
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/reload": {
+      "post": {
+        "tags": ["reload"],
+        "summary": "重渲 config.json + SIGTERM opencode (supervisor 自动重启)",
+        "description": "两步: (1) 调 render_config.py 重渲 /root/.config/opencode/config.json (baked + runtime overlay merged); (2) 发 SIGTERM 给 opencode 进程, 容器里 entrypoint.sh 的 supervisor 循环会检测到它死了, 重新 source env.runtime + 拉起新 opencode serve. 整个流程 ~1s.\n\n**必须先 POST /admin/policy 改完再调这个**, 否则改了没生效.",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {"type": "boolean"},
+                    "render": {"type": "string", "enum": ["ok"]},
+                    "restart": {"type": "string", "description": "描述 SIGTERM 给了哪个 pid"}
+                  }
+                }
+              }
+            }
+          },
+          "500": {"description": "render_config 失败 (policy 格式错, 字段缺失等)"}
+        }
+      }
+    },
+    "/admin/opencode/status": {
+      "get": {
+        "tags": ["status"],
+        "summary": "查 opencode 进程状态 + 当前 active model",
+        "description": "opencode_alive = pgrep 能不能找到 opencode serve; active_model 从渲染后的 config.json 读 (即 opencode 实际用的).",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "opencode_alive": {"type": "boolean"},
+                    "opencode_pid": {"type": "integer", "nullable": true},
+                    "active_model": {"type": "string", "nullable": true, "description": "从 config.json 读出的 model 字段"}
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/openapi.json": {
+      "get": {
+        "tags": ["status"],
+        "summary": "返回这份 OpenAPI 规范 (self-describing)",
+        "responses": {"200": {"description": "OK"}}
+      }
+    },
+    "/docs": {
+      "get": {
+        "tags": ["status"],
+        "summary": "Swagger UI (HTML, 从 unpkg CDN 加载)",
+        "description": "访问 :7778/docs 看可视化 API 文档.",
+        "responses": {"200": {"description": "OK"}}
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Policy": {
+        "type": "object",
+        "description": "opencode policy (跟 policy.json schema 一致)",
+        "properties": {
+          "policy_version": {"type": "string", "example": "v1"},
+          "scenario": {"type": "string", "example": "flight_query"},
+          "agent": {
+            "type": "object",
+            "properties": {
+              "name": {"type": "string", "example": "opencode"},
+              "model": {"type": "string", "example": "openai/MiniMax-M3"}
+            }
+          },
+          "skills": {"type": "array", "items": {"type": "string"}},
+          "workspace_mode": {"type": "string", "example": "direct"},
+          "tool_level": {"type": "string", "enum": ["safe", "standard", "full"]},
+          "max_turns": {"type": "integer"},
+          "max_budget_usd": {"type": "number"},
+          "mcp_servers": {"type": "object", "description": "MCP server 列表, 跟 opencode config schema 对齐"}
+        }
+      },
+      "PolicyResponse": {
+        "type": "object",
+        "properties": {
+          "baked": {"$ref": "#/components/schemas/Policy", "description": "镜像 bake 的 (ro)"},
+          "runtime_overlay": {"$ref": "#/components/schemas/Policy", "description": "admin 写的, deep merge 进 baked"},
+          "effective": {"$ref": "#/components/schemas/Policy", "description": "opencode 实际用的"},
+          "sources": {
+              "baked_path": {"type": "string", "description": "固定 /opt/sandbox/policy.json (Dockerfile COPY, ro)"},
+              "runtime_path": {"type": "string", "description": "固定 /tmp/opencode-sandbox/policy.runtime.json (tmpfs, rw). 写 /opt/sandbox 会 OSError [Errno 30]"},
+              "baked_exists": {"type": "boolean"},
+              "runtime_exists": {"type": "boolean"}
+            }
+          }
+        }
+      }
+    }
+  },
+  "x-hub-proxy": {
+    "description": "Hub 端用相同 path 代理到容器, 路径前缀 /agent/admin/opencode/{node_name}/. 详见 src/hermetic_agent/api/controllers/pool_controller.py.",
+    "endpoints": {
+      "GET": "/agent/admin/opencode/{node_name}/policy",
+      "GET_POLICY": "/agent/admin/opencode/{node_name}/policy",
+      "POST_POLICY": "/agent/admin/opencode/{node_name}/policy",
+      "POST_RELOAD": "/agent/admin/opencode/{node_name}/policy/reload",
+      "GET_STATUS": "/agent/admin/opencode/{node_name}/opencode"
+    }
+  },
+  "x-upstream-opencode": {
+    "description": "opencode serve 自己的 OpenAPI 跟 Swagger UI 在 :14096 (与 admin_server 不同的进程).",
+    "openapi_url": "http://{node_name}:14096/doc",
+    "openapi_json": "http://{node_name}:14096/openapi.json"
+  }
+}

@@ -1,4 +1,4 @@
-"""test_log_platform_object_log_writer — 内存队列 + drain + file + tee."""
+﻿"""test_log_platform_object_log_writer — 内存队列 + drain + file + tee."""
 from __future__ import annotations
 
 import json
@@ -7,12 +7,12 @@ from pathlib import Path
 
 import pytest
 
-from openagent.audit.log import (
+from hermetic_agent.audit.log import (
     busi_logger as _busi, object_log_writer as _olw, request_logger as _req,
     seq_no as _seq, setup as _setup, sys_logger as _sys,
 )
-from openagent.audit.log.dto import BusiLog, RequestLog
-from openagent.audit.log.object_log_writer import ObjectLogWriter
+from hermetic_agent.audit.log.dto import BusiLog, RequestLog
+from hermetic_agent.audit.log.object_log_writer import ObjectLogWriter
 
 
 @pytest.fixture(autouse=True)

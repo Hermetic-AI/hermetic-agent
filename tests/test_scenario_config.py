@@ -1,11 +1,11 @@
-"""ScenarioConfig Pydantic schema 单测."""
+﻿"""ScenarioConfig Pydantic schema 单测."""
 
 from __future__ import annotations
 
 import pytest
 from pydantic import ValidationError
 
-from openagent.scenarios.config import (
+from hermetic_agent.scenarios.config import (
     A2UIConfig,
     ExecutionConfig,
     InitialSkillConfig,
@@ -232,7 +232,7 @@ def test_on_demand_non_hitl_warns(monkeypatch: pytest.MonkeyPatch) -> None:
     """P2-6: non-HITL (single) + on_demand + load_on_state 非空
     → 仍然能加载, 但打 warning 提示 load_on_state 永远到不了."""
     import structlog
-    from openagent.scenarios import config as cfg_mod
+    from hermetic_agent.scenarios import config as cfg_mod
 
     captured: list[tuple[str, dict]] = []
     real_get_logger = structlog.get_logger
@@ -276,7 +276,7 @@ def test_on_demand_non_hitl_warns(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_on_demand_hitl_does_not_warn(monkeypatch: pytest.MonkeyPatch) -> None:
     """P2-6 反例: HITL + on_demand 合法, 不该警告."""
     import structlog
-    from openagent.scenarios import config as cfg_mod
+    from hermetic_agent.scenarios import config as cfg_mod
 
     captured: list[tuple[str, dict]] = []
     real_get_logger = structlog.get_logger

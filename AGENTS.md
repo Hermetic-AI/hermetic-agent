@@ -1,4 +1,4 @@
-# AGENTS.md — OpenCode Agent Scheduler Hub
+﻿# AGENTS.md — hermetic-agent
 
 > Sanic 网关 + Scenario 编排层 + opencode / claude-agent 双 SDK 适配。Python 3.10+，前端 React + Vite + TS。
 
@@ -21,7 +21,7 @@
 
 | 路径 | 角色 |
 |---|---|
-| `src/openagent/` | Hub 主代码（5 层架构，CI 强校验） |
+| `src/hermetic_agent/` | Hub 主代码（5 层架构，CI 强校验） |
 | `frontend/` | **活跃前端**（React + Vite + TS，`frontend/src/`） |
 | `frontend/related_project/agent_chat_web/` | **旧 Vue 3 + Element Plus 前端** — 参考用，**不要** `cd` 进去 `pnpm dev` |
 | `work/` | 运行时：scenarios YAML / shared skills / mcp config / tenant 目录（容器内 `/app/work`） |
@@ -42,8 +42,8 @@
 uv venv && uv pip install -e ".[dev]"
 
 # 启动 Hub（无 opencode 沙箱时仅能 API 探活，chat 走不通）
-agent-scheduler                              # 等价 python -m openagent.main
-AGENT_SCHEDULER_STORAGE_BACKEND=memory agent-scheduler   # 强制内存存储
+hermetic-agent                              # 等价 python -m hermetic_agent.main
+AGENT_SCHEDULER_STORAGE_BACKEND=memory hermetic-agent   # 强制内存存储
 
 # 测试（pytest-asyncio auto mode — 无需 @pytest.mark.asyncio）
 pytest -v                                    # 全量
@@ -64,7 +64,7 @@ python scripts/check_unified_chat_entry.py
 
 ## 3. 绝对约束（CI 拦截，不要绕过）
 
-1. **统一 chat 入口**。只有 2 个端点，都集中在 `src/openagent/api/controllers/chat_controller.py`：
+1. **统一 chat 入口**。只有 2 个端点，都集中在 `src/hermetic_agent/api/controllers/chat_controller.py`：
    - `POST /agent/chat`（同步 JSON）
    - `POST /agent/chat/stream`（SSE）
 
@@ -95,11 +95,11 @@ python scripts/check_unified_chat_entry.py
 
 ---
 
-## 4. 配置（`src/openagent/config/settings.py`）
+## 4. 配置（`src/hermetic_agent/config/settings.py`）
 
 - 唯一配置中心：`pydantic-settings` + 前缀 `AGENT_SCHEDULER_`，CWD 下的 `.env` 自动加载。
 - 复杂字段（`list[dict]`）支持 inline JSON **或** JSON 文件路径（`env_sources.PathAwareEnvSource`）。
-- **不要**在模块顶层或函数默认值里写硬编码常量；统一 `from openagent.config.settings import get_settings`。
+- **不要**在模块顶层或函数默认值里写硬编码常量；统一 `from hermetic_agent.config.settings import get_settings`。
 - `pyproject.toml` 与 `requirements.txt` **必须保持同步**（镜像构建依赖 docker `COPY requirements.txt`，改了 deps 两边一起改，否则 BuildKit 缓存命中不到 → 见 `docs/BUILD.md`）。
 
 ---
@@ -110,9 +110,9 @@ python scripts/check_unified_chat_entry.py
 
 | Service | 端口 (host→container) | 角色 | 默认启用 |
 |---|---|---|---|
-| `openagent-hub` | `18000→8000` | Hub 主服务 | ✅ |
-| `opencode-1` | `14096`, `7778` (admin 调试) | opencode sandbox 节点 | ✅ |
-| `openagent-frontend` | `13000→3000` | nginx 反代 + 静态 | ❌ (`--profile frontend`) |
+| `hermetic-agent` | `28000→8000` | Hub 主服务 | ✅ |
+| `opencode-1` | `24096`, `27778` (admin 调试) | opencode sandbox 节点 | ✅ |
+| `hermetic_agent-frontend` | `23000→13000` | nginx 反代 + 静态 | ❌ (`--profile frontend`) |
 
 2 种模式靠 **`PULL_POLICY`** 切换：
 
@@ -123,13 +123,13 @@ python scripts/check_unified_chat_entry.py
 
 加 frontend：`docker compose --profile frontend up -d --build`。
 
-镜像 tag 走 env：`OPENAGENT_HUB_IMAGE` / `OPENCODE_SANDBOX_IMAGE` / `OPENAGENT_FRONTEND_IMAGE`。
+镜像 tag 走 env：`HERMETIC_AGENT_HUB_IMAGE` / `OPENCODE_SANDBOX_IMAGE` / `HERMETIC_AGENT_FRONTEND_IMAGE`。
 
 **`WORKSPACE_PATH` 关键约束**：host 与容器**必须同路径**（agent 透明），否则 sandbox 在容器内写文件后 host 看不到。
 
-**改 model / key / env 不重建镜像**：走 sandbox admin API（`POST :7778/admin/policy`、`/admin/env`、`/admin/reload`）或 Hub 代理（`POST :18000/agent/admin/opencode/opencode-1/...`）。
+**改 model / key / env 不重建镜像**：走 sandbox admin API（`POST :27778/admin/policy`、`/admin/env`、`/admin/reload`）或 Hub 代理（`POST :28000/agent/admin/opencode/opencode-1/...`）。
 
-**改 scenario / skill / mcp YAML**：ro bind 进容器，`docker compose restart openagent-hub` 即可，**不要 rebuild**。
+**改 scenario / skill / mcp YAML**：ro bind 进容器，`docker compose restart hermetic-agent` 即可，**不要 rebuild**。
 
 要 N 个 opencode 节点：复制 `opencode-1` 块，改 `hostname: opencode-N`。
 
@@ -143,7 +143,7 @@ python scripts/check_unified_chat_entry.py
 - **不要改 `tests/conftest.py`**（read-only）。新 fixture 放 `tests/test_<feature>_conftest.py`。
 - 命名约定：`test_<module>_{init,happy_path,error}_*`。
 - e2e 用例（`test_e2e_*`）默认 skip，需凭据 + 真实沙箱才会跑。
-- `work/` 改动不用 rebuild；`src/openagent/**/*.py` 改动才需要 `docker compose build openagent-hub`（BuildKit cache，增量 ~9s — 见 `docs/BUILD.md`）。
+- `work/` 改动不用 rebuild；`src/hermetic_agent/**/*.py` 改动才需要 `docker compose build hermetic-agent`（BuildKit cache，增量 ~9s — 见 `docs/BUILD.md`）。
 
 ---
 
@@ -158,11 +158,11 @@ python scripts/check_unified_chat_entry.py
 ## 8. 提交前自检
 
 ```bash
-cd "C:\WorkSpace\Coding\OpenAgent"
+cd "C:\WorkSpace\Coding\hermetic_agent"
 python scripts/ci_check.py                 # 必须 0 NEW 违规
 python scripts/check_unified_chat_entry.py # 必须 PASS
-ruff check src/openagent/<your_module>/
-mypy src/openagent/<your_module>/
+ruff check src/hermetic_agent/<your_module>/
+mypy src/hermetic_agent/<your_module>/
 pytest tests/test_<your_module>_*.py -v
 ```
 
@@ -175,6 +175,6 @@ pytest tests/test_<your_module>_*.py -v
 - Hub 报 `ProviderModelNotFoundError` → `python scripts/verify_opencode_config.py`（source / container cfg / chat smoke 3 项；失败会打印精确修复命令）。
 - opencode 升级后老 session 报 `ProviderModelNotFoundError` → 让 client 发新 session id（前端清 session_storage），或 `docker compose build opencode-1 --no-cache`。
 - frontend 容器循环重启（`chown ... client_temp` / `setgid(101) failed`）→ `cap_drop` 不能用 `ALL`，要保留 `CAP_CHOWN` / `CAP_SETUID` / `CAP_SETGID` / `CAP_DAC_OVERRIDE`。完整解释 `docs/deploy.md` Troubleshooting。
-- Port 13000 被占用（`vite` dev server）→ `ps aux | grep vite` 找进程 kill，或改 compose host 端口为 `13100:13000`。
-- 改了 `src/openagent/` 内文件但容器内未生效 → `docker compose build openagent-hub`（仅 `restart` 不会拉新代码）。
+- Port 23000 被占用（`vite` dev server）→ `ps aux | grep vite` 找进程 kill，或改 compose host 端口为 `23100:13000`。
+- 改了 `src/hermetic_agent/` 内文件但容器内未生效 → `docker compose build hermetic-agent`（仅 `restart` 不会拉新代码）。
 - 改了 `pyproject.toml` deps 但 install 报缺包 → 同步改 `requirements.txt`（镜像构建 cache 命中条件）。

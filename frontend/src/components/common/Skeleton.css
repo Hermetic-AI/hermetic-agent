@@ -1,118 +1,41 @@
+/* Skeleton — neutral grey shimmer */
+
 .skeleton {
-  background: linear-gradient(90deg, #f0f0f0 25%, #e8e8e8 50%, #f0f0f0 75%);
+  display: block;
+  background: linear-gradient(
+    90deg,
+    var(--color-bg-tertiary) 25%,
+    var(--color-bg-secondary) 50%,
+    var(--color-bg-tertiary) 75%
+  );
   background-size: 200% 100%;
-  animation: shimmer 1.5s ease-in-out infinite;
+  animation: skeleton-shimmer 1.4s ease-in-out infinite;
 }
 
 .skeleton-text {
-  border-radius: 4px;
-  height: 1em;
+  height: 12px;
+  border-radius: var(--radius-xs);
+  margin: var(--spacing-1) 0;
 }
 
 .skeleton-circular {
-  border-radius: 50%;
+  border-radius: var(--radius-full);
 }
 
 .skeleton-rectangular {
   border-radius: var(--radius-md);
 }
 
-@keyframes shimmer {
-  0% {
-    background-position: -200% 0;
-  }
-  100% {
-    background-position: 200% 0;
-  }
-}
-
-.flight-card-skeleton {
-  background: #fff;
-  border-radius: var(--radius-lg);
-  padding: 16px;
-  border-left: 4px solid #E5E5EA;
-}
-
-.skeleton-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 16px;
-  padding-bottom: 12px;
-  border-bottom: 1px solid #E5E5EA;
-}
-
-.skeleton-airline {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.skeleton-body {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 16px;
-}
-
-.skeleton-time {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 4px;
-}
-
-.skeleton-duration {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
-}
-
-.skeleton-footer {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding-top: 12px;
-  border-top: 1px solid #E5E5EA;
-}
-
-.order-card-skeleton {
-  background: #fff;
-  border-radius: var(--radius-lg);
-  padding: 16px;
-}
-
-.order-card-skeleton .skeleton-header {
-  border-bottom: none;
-  margin-bottom: 12px;
-  padding-bottom: 0;
-}
-
-.order-card-skeleton .skeleton-body {
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 8px;
-  margin-bottom: 12px;
-}
-
-.order-card-skeleton .skeleton-footer {
-  border-top: none;
-  padding-top: 0;
-}
-
 .chat-bubble-skeleton {
   display: flex;
-  gap: 12px;
-  margin-bottom: 16px;
+  align-items: flex-start;
+  gap: var(--spacing-3);
+  padding: var(--spacing-4) var(--spacing-6);
 }
 
 .chat-bubble-skeleton .skeleton-content {
   flex: 1;
   display: flex;
-  justify-content: flex-start;
-}
-
-.chat-bubble-skeleton .skeleton {
-  border-radius: var(--radius-lg);
+  flex-direction: column;
+  gap: var(--spacing-2);
 }

@@ -3,19 +3,14 @@ import './Card.css';
 
 interface CardProps {
   children: ReactNode;
-  variant?: 'default' | 'flight' | 'order';
   className?: string;
   onClick?: () => void;
 }
 
-export function Card({ children, variant = 'default', className = '', onClick }: CardProps) {
-  const classNames = [
-    'card',
-    `card-${variant}`,
-    onClick ? 'card-clickable' : '',
-    className
-  ].filter(Boolean).join(' ');
-
+export function Card({ children, className = '', onClick }: CardProps) {
+  const classNames = ['card', onClick ? 'card-clickable' : '', className]
+    .filter(Boolean)
+    .join(' ');
   return (
     <div className={classNames} onClick={onClick} role={onClick ? 'button' : undefined}>
       {children}

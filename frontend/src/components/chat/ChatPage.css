@@ -1,197 +1,130 @@
+/* ChatPage — main chat surface */
+
 .chat-page {
+  flex: 1;
   display: flex;
   flex-direction: column;
-  height: 100%;
-  background: #F5F5F7;
-  overflow: hidden;
+  min-height: 0;
+  background: var(--color-bg-primary);
 }
 
 .chat-page-empty {
-  flex: 1 1 auto;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-}
-
-.chat-health-banner {
-  flex-shrink: 0;
-  font-size: 12px;
-  padding: 6px 16px;
-  background: #F8F9FA;
-  color: #6C6C70;
-  border-bottom: 1px solid #E5E5EA;
+  flex: 1;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.chat-health-banner-left {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-}
-
-.chat-scenario-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  font-size: 11px;
-  font-weight: 500;
-  background: #E8F4FF;
-  color: #0051A1;
-  padding: 2px 8px 2px 6px;
-  border-radius: 999px;
-  border: 1px solid #B6DDFB;
-  max-width: 220px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.chat-scenario-chip-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: #4A9BE8;
-  flex-shrink: 0;
-}
-
-.chat-health-banner-warn {
-  font-size: 11px;
-  background: #FEF3C7;
-  color: #92400E;
-  padding: 2px 8px;
-  border-radius: 999px;
-}
-
-.chat-health-banner.is-healthy {
-  background: #E6F4EA;
-  color: #1E7E34;
-  border-bottom-color: #C8E6C9;
-}
-
-.chat-health-banner.is-degraded {
-  background: #FFF4E5;
-  color: #B26A00;
-  border-bottom-color: #FCD9A6;
-}
-
-.chat-health-banner.is-unreachable {
-  background: #FFEBEA;
-  color: #B00020;
-  border-bottom-color: #F5C2C0;
+  justify-content: center;
+  overflow-y: auto;
+  padding: var(--spacing-6) var(--spacing-4);
 }
 
 .chat-page-error {
-  flex-shrink: 0;
-  margin: 0 16px 8px;
-  padding: 8px 12px;
-  background: #FFEBEA;
-  color: #B00020;
-  border-radius: 8px;
-  font-size: 13px;
+  margin: 0 var(--spacing-4) var(--spacing-2);
+  padding: var(--spacing-3) var(--spacing-4);
+  background: var(--color-danger-bg);
+  color: var(--color-danger);
+  border-radius: var(--radius-lg);
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: var(--spacing-3);
+  font-size: var(--text-sm);
+  animation: fade-in var(--transition-normal) ease;
 }
 
 .chat-page-error-dismiss {
-  border: none;
-  background: transparent;
-  color: inherit;
-  font-size: 18px;
+  font-size: var(--text-lg);
   line-height: 1;
-  cursor: pointer;
+  color: var(--color-danger);
+  opacity: 0.6;
+  padding: 0 var(--spacing-1);
+  transition: opacity var(--transition-fast);
 }
 
-/* Chat toolbar — "智能助手 · 场景 · 新建对话" 顶部工具栏 */
+.chat-page-error-dismiss:hover {
+  opacity: 1;
+}
+
+/* Health banner — slim line above the conversation */
+
+.chat-health-banner {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-2);
+  padding: var(--spacing-2) var(--spacing-4);
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  border-bottom: var(--border-thin) solid var(--color-border);
+  background: var(--color-bg-primary);
+}
+
+.chat-health-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: var(--radius-full);
+  background: var(--color-text-muted);
+  flex-shrink: 0;
+}
+
+.chat-health-healthy .chat-health-dot {
+  background: var(--color-success);
+}
+
+.chat-health-degraded .chat-health-dot {
+  background: var(--color-warning);
+}
+
+.chat-health-unreachable .chat-health-dot {
+  background: var(--color-danger);
+}
+
+.chat-health-text {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.chat-health-warn {
+  font-size: var(--text-xs);
+  color: var(--color-warning);
+  padding: 1px var(--spacing-2);
+  background: var(--color-warning-bg);
+  border-radius: var(--radius-sm);
+}
+
+/* Toolbar — title + new chat button */
+
 .chat-toolbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  padding: 10px 18px;
-  background: #fff;
-  border-bottom: 1px solid var(--color-border-light, #E5E5EA);
-  flex-shrink: 0;
+  padding: var(--spacing-3) var(--spacing-4);
+  border-bottom: var(--border-thin) solid var(--color-border);
+  background: var(--color-bg-primary);
 }
 
 .chat-toolbar-title {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-  overflow: hidden;
-}
-
-.chat-toolbar-icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  border-radius: 8px;
-  background: linear-gradient(135deg, #0051A1, #4A9BE8);
-  color: #fff;
-  flex-shrink: 0;
-}
-
-.chat-toolbar-label {
-  font-size: 14px;
+  font-size: var(--text-base);
   font-weight: 600;
-  color: var(--color-text-primary, #333);
-}
-
-.chat-toolbar-divider {
-  color: var(--color-text-muted, #999);
-  font-size: 12px;
-}
-
-.chat-toolbar-scenario {
-  font-size: 13px;
-  color: var(--color-text-muted, #666);
-  max-width: 200px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.chat-toolbar-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-shrink: 0;
+  color: var(--color-text-primary);
+  letter-spacing: -0.005em;
 }
 
 .chat-toolbar-new-btn {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  height: 32px;
-  padding: 0 14px;
-  background: #fff;
-  border: 1px solid var(--color-border, #D1D1D6);
-  border-radius: 8px;
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--color-text-primary, #333);
-  cursor: pointer;
-  transition: all 0.15s ease;
+  gap: var(--spacing-2);
+  padding: var(--spacing-1) var(--spacing-3);
+  border: var(--border-thin) solid var(--color-border);
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+  background: var(--color-bg-primary);
+  transition: background var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast);
 }
 
 .chat-toolbar-new-btn:hover {
-  border-color: var(--color-primary, #0051A1);
-  background: #E8F4FF;
-  color: var(--color-primary, #0051A1);
-}
-
-.chat-toolbar-new-btn:active {
-  background: #D6EBFF;
-}
-
-.chat-toolbar-new-btn svg {
-  flex-shrink: 0;
+  background: var(--color-bg-tertiary);
+  color: var(--color-text-primary);
+  border-color: var(--color-border-strong);
 }

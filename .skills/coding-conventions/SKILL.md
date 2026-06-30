@@ -1,8 +1,8 @@
----
+﻿---
 name: coding-conventions
 description: 项目的代码风格与可观测性约定 — 中文文档字符串 + structlog 关键步骤日志。Use when writing or reviewing code that needs to be production-debuggable and team-readable.
 risk: safe
-source: C:\WorkSpace\Coding\OpenAgent\CLAUDE.md
+source: C:\WorkSpace\Coding\hermetic_agent\CLAUDE.md
 date_added: 2026-06-02
 ---
 

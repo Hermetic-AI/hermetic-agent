@@ -1,1 +1,1 @@
-"""Tests for Agent Scheduler Hub"""
+"""Tests for hermetic-agent"""

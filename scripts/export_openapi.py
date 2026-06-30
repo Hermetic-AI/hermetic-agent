@@ -1,4 +1,4 @@
-"""scripts/export_openapi.py — 启 server, curl /openapi/spec.json, 落 docs/openapi.json.
+﻿"""scripts/export_openapi.py — 启 server, curl /openapi/spec.json, 落 docs/openapi.json.
 
 sanic-ext 25 的 openapi builder 不会自动挂 /openapi/spec.json 路由, 需要在
 跑起来的 server 上抓. 用 subprocess 启 server, sleep 1s, 用 httpx 抓.
@@ -19,7 +19,7 @@ def main() -> int:
     # 1. 启 server
     print("Starting server in background...")
     proc = subprocess.Popen(
-        ["python", "-m", "openagent.main"],
+        ["python", "-m", "hermetic_agent.main"],
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
     )
@@ -65,7 +65,7 @@ def _build_handwritten_spec() -> dict:
     return {
         "openapi": "3.0.3",
         "info": {
-            "title": "OpenAgent Agent Scheduler Hub API",
+            "title": "hermetic-agent API",
             "version": "0.1.0",
             "description": (
                 "OpenCode / Claude Code 双 SDK Agent 调度平台.\n\n"

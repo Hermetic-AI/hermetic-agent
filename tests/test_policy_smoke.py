@@ -1,4 +1,4 @@
-"""L5 Policy Engine 关键场景冒烟测试.
+﻿"""L5 Policy Engine 关键场景冒烟测试.
 
 跑通 5 个最关键场景:
   1. 路径白名单 (workspace 内允许, 外拒绝, .env 永远拒绝)
@@ -14,9 +14,9 @@ import os
 
 import pytest
 
-from openagent.policy.audit import InMemoryAuditLogger, redact_path
-from openagent.policy.engine import EffectivePolicy, PolicyEngine, merge
-from openagent.policy.errors import (
+from hermetic_agent.policy.audit import InMemoryAuditLogger, redact_path
+from hermetic_agent.policy.engine import EffectivePolicy, PolicyEngine, merge
+from hermetic_agent.policy.errors import (
     CommandNotAllowed,
     NetworkNotAllowed,
     PathNotAllowed,

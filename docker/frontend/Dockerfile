@@ -1,0 +1,73 @@
+﻿# hermetic_agent Frontend 镜像 (Phase 1)
+#
+# 多阶段构建:
+#   stage 1 (build):  pnpm install + pnpm build  →  /app/dist
+#   stage 2 (serve):  nginx:alpine 把 /app/dist 暴露到 :13000
+#                     路径 /api/* 反代到 Hub (hermetic-agent:8000)
+#
+# 构建:
+#   docker build -f docker/frontend/Dockerfile -t hermetic_agent-frontend:dev .
+#
+# 镜像源: Daocloud (免认证, 国内通用). 想换回官方 Docker Hub: 去掉前缀即可
+ARG NODE_IMAGE=docker.m.daocloud.io/library/node:24-alpine
+ARG NGINX_IMAGE=docker.m.daocloud.io/library/nginx:1.27-alpine
+
+# ============================================================
+# Stage 1: build
+# ============================================================
+FROM ${NODE_IMAGE} AS build
+
+WORKDIR /app
+
+# ---- pnpm 启用 (用 corepack, 跟 packageManager 字段对齐) ----
+# 镜像里 node:24-alpine 自带 corepack, 启用 pnpm 即可
+RUN corepack enable && corepack prepare pnpm@latest --activate
+
+# ---- 装依赖 (单独一层, 改 deps 不重 build) ----
+COPY frontend/package.json     frontend/pnpm-lock.yaml* frontend/pnpm-workspace.yaml* ./frontend/
+WORKDIR /app/frontend
+RUN --mount=type=cache,target=/root/.local/share/pnpm/store \
+    pnpm install --frozen-lockfile --prefer-offline
+
+# ---- 源码 + 构建 ----
+COPY frontend/ ./
+# build 阶段用的环境变量 (Vite 读 VITE_* 前缀)
+#   VITE_BACKEND_URL: 浏览器端调 /api 时的同源代理不需要; 这里给个 placeholder 防止 tsc 报错
+#   生产环境真正生效的是 nginx 反代, 不是 VITE_BACKEND_URL
+ARG VITE_BACKEND_URL=/api
+ENV VITE_BACKEND_URL=${VITE_BACKEND_URL}
+RUN pnpm build
+
+# ============================================================
+# Stage 2: serve (nginx)
+# ============================================================
+FROM ${NGINX_IMAGE} AS serve
+
+# 替换默认配置 (SPA 路由 fallback + /api 反代 + SSE 长连接优化)
+COPY docker/frontend/nginx.conf /etc/nginx/conf.d/default.conf
+
+# 静态资源
+COPY --from=build /app/frontend/dist /usr/share/nginx/html
+
+# 预创建 nginx 运行时需要的可写子目录 + chown 给 nginx 用户 (uid 101)
+#
+# 背景: nginx master 进程 (root) 启动时会 chown 这些子目录给 nginx 用户,
+# 然后 drop 到 nginx 用户启 worker. 我们用 tmpfs 挂 /var/cache/nginx (image
+# 里的子目录被遮蔽, 是空 tmpfs), chown 走到不存在的路径就报
+# ``Operation not permitted`` → 循环重启.
+#
+# 解决: 用 init 脚本在容器启动时 (chown 之前) pre-create + chown 这些子目录.
+COPY docker/frontend/entrypoint.sh /usr/local/bin/frontend-entrypoint.sh
+RUN chmod +x /usr/local/bin/frontend-entrypoint.sh
+
+# 健康检查 (用 nginx 自带的 stub_status 或 静态 /)
+# wget -T 2 防止 healthcheck hang 90s (wget 默认 900s)
+HEALTHCHECK --interval=10s --timeout=5s --start-period=5s --retries=3 \
+    CMD wget -q -O- -T 2 http://127.0.0.1:13000/ >/dev/null 2>&1 || exit 1
+
+EXPOSE 13000
+
+# nginx 官方 entrypoint 走 ``exec "$@"``, 我们在前面 pre-create + chown
+# 后再 exec 它的 entrypoint + 原始 CMD.
+ENTRYPOINT ["/usr/local/bin/frontend-entrypoint.sh"]
+CMD ["nginx", "-g", "daemon off;"]

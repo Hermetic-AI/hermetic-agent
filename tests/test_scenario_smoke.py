@@ -1,33 +1,37 @@
-"""Scenario 5 个最关键场景烟雾测试 — 加载所有现有 scenario + 路由 + 注入.
+﻿"""Scenario 核心场景烟雾测试 — 加载所有现有 scenario + 路由 + 注入.
 
-跑通 5 个核心场景:
-1. 加载 _generic + _default 两个 scenario YAML
+跑通核心场景:
+1. 加载 _default + example_echo 两个 scenario YAML (基座默认 + 业务示例)
 2. 加载一个临时构造的 keyword scenario
 3. 路由 URL / Header / Body / Keyword / Default 全链路
 4. 注入白名单 + 拒绝记录
 5. 资源校验分层: workspace_dirs / a2ui.state_machine / 技能 SKILL.md 缺失
    仍抛 ScenarioResourceError; readonly_dirs / a2ui.cards_dir 缺失只打
    warning, 场景照常加载.
+
+Phase 1 重构后: 业务场景 (flight_booking / expense_audit / _generic) 全部
+下沉到 work/shared/skills/<skill-name>/, 基座 work/scenarios/ 只剩
+_default + example_echo 两个.
 """
 
 from __future__ import annotations
 
 from pathlib import Path
 
-from openagent.scenarios import (
+from hermetic_agent.scenarios import (
     InMemoryAuditLogger,
     ScenarioConfig,
     ScenarioInjector,
     ScenarioRegistry,
     ScenarioRouter,
 )
-from openagent.scenarios.config import (
+from hermetic_agent.scenarios.config import (
     ExecutionConfig,
     ProgressiveSkillConfig,
     RoutingConfig,
     WorkspaceConfig,
 )
-from openagent.scenarios.loader import load_scenario
+from hermetic_agent.scenarios.loader import load_scenario
 
 WORK_DIR = Path(__file__).resolve().parents[1] / "work"
 
@@ -37,7 +41,7 @@ def _ctx() -> dict[str, str]:
         "PROJECT_DIR": str(WORK_DIR),
         "WORK_SHARED": str(WORK_DIR / "shared"),
         "WORK_ROOT": str(WORK_DIR),
-        "SCENARIO_DIR": str(WORK_DIR / "scenarios" / "_generic"),
+        "SCENARIO_DIR": str(WORK_DIR / "scenarios" / "example_echo"),
     }
 
 
@@ -58,7 +62,7 @@ def _kw_scenario(name: str, kw: list[str], skills: list[str] | None = None, prio
 
 
 # ----------------------------------------------------------------------
-# 1. 加载 _generic + _default + 1 个临时 keyword scenario
+# 1. 加载 _default + example_echo + 1 个临时 keyword scenario
 # ----------------------------------------------------------------------
 
 
@@ -71,14 +75,14 @@ def test_smoke_load_six_scenarios():
     reg.register(_kw_scenario("customer_service", ["客服"], priority=60))
 
     names = set(reg.list_names())
-    # P0/P7 YAMLs: _generic, _default, flight_booking, expense_audit, code_review, customer_service
-    # P2 in-test: flight, expense, code_review, customer_service (override同名YAML)
+    # 基座 YAMLs: _default, example_echo
+    # in-test: flight, expense, code_review, customer_service
     expected = {
-        "_generic", "_default", "flight_booking", "expense_audit",
+        "_default", "example_echo",
         "flight", "expense",
     }
     assert expected.issubset(names), f"missing: {expected - names}"
-    assert len(reg.list_enabled()) >= 6
+    assert len(reg.list_enabled()) >= 4
 
 
 # ----------------------------------------------------------------------
@@ -193,13 +197,13 @@ progressive_skill: {{strategy: none}}
 
 
 # ----------------------------------------------------------------------
-# 5. _generic 必须最小化
+# 5. _default 必须最小化
 # ----------------------------------------------------------------------
 
 
-def test_smoke_generic_is_minimal():
-    cfg = load_scenario(WORK_DIR / "scenarios" / "_generic.scenario.yaml", _ctx())
-    assert cfg.name == "_generic"
+def test_smoke_default_is_minimal():
+    cfg = load_scenario(WORK_DIR / "scenarios" / "_default.scenario.yaml", _ctx())
+    assert cfg.name == "_default"
     assert cfg.security.tool_level == "safe"
     assert cfg.a2ui.enabled is False
     assert cfg.execution.skills == []

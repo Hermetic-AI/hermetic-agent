@@ -1,8 +1,8 @@
-# OpenAgent API 接口文档
+﻿# hermetic_agent API 接口文档
 
 > 最后更新：2026-06-03 ｜ 基线版本：`agent-scheduler-hub` 0.1.0
 >
-> 服务地址：默认 `http://localhost:18000`（在 `.env` 里改 `AGENT_SCHEDULER_HOST` / `AGENT_SCHEDULER_PORT`）
+> 服务地址：默认 `http://localhost:28000`（在 `.env` 里改 `AGENT_SCHEDULER_HOST` / `AGENT_SCHEDULER_PORT`）
 >
 > 认证：当前版本**无认证**（私有化部署）
 >
@@ -50,7 +50,7 @@
 进程存活探针。Liveness probe 用这个。
 
 ```bash
-curl -s http://localhost:18000/health
+curl -s http://localhost:28000/health
 ```
 
 **响应 200：**
@@ -65,7 +65,7 @@ curl -s http://localhost:18000/health
 只有当 **storage 已连接** + **至少一个 Agent 已注册** + **至少一个 Skill 已加载** + **至少一个 MCP 工具已注册** 时才返回 200。
 
 ```bash
-curl -s http://localhost:18000/ready
+curl -s http://localhost:28000/ready
 ```
 
 **响应 200（全部就绪）：**
@@ -121,7 +121,7 @@ curl -s http://localhost:18000/ready
 
 **示例：新建会话问一句**
 ```bash
-curl -s -X POST http://localhost:18000/agent/chat \
+curl -s -X POST http://localhost:28000/agent/chat \
   -H "Content-Type: application/json" \
   -d '{
     "message": "帮我查一下从北京到上海的航班"
@@ -130,7 +130,7 @@ curl -s -X POST http://localhost:18000/agent/chat \
 
 **示例：续接已有会话**
 ```bash
-curl -s -X POST http://localhost:18000/agent/chat \
+curl -s -X POST http://localhost:28000/agent/chat \
   -H "Content-Type: application/json" \
   -d '{
     "session_id": "a1b2c3d4-1234-5678-9abc-def012345678",
@@ -140,7 +140,7 @@ curl -s -X POST http://localhost:18000/agent/chat \
 
 **示例：指定 Agent、模型、技能**
 ```bash
-curl -s -X POST http://localhost:18000/agent/chat \
+curl -s -X POST http://localhost:28000/agent/chat \
   -H "Content-Type: application/json" \
   -d '{
     "message": "你是一个旅行助手",
@@ -192,7 +192,7 @@ SSE 流式回复。每个事件以 `data: <json>\n\n` 形式推。
 
 **示例：流式接收**
 ```bash
-curl -N -s -X POST http://localhost:18000/agent/chat/stream \
+curl -N -s -X POST http://localhost:28000/agent/chat/stream \
   -H "Content-Type: application/json" \
   -d '{
     "message": "讲个笑话",
@@ -244,7 +244,7 @@ data: {"type":"done","data":{"stop_reason":"end_turn"}}
 
 **示例：创建新会话**
 ```bash
-curl -s -X POST http://localhost:18000/agent/session \
+curl -s -X POST http://localhost:28000/agent/session \
   -H "Content-Type: application/json" \
   -d '{
     "agent_name": "opencode-core",
@@ -265,7 +265,7 @@ curl -s -X POST http://localhost:18000/agent/session \
 
 **示例：恢复指定 session_id**
 ```bash
-curl -s -X POST http://localhost:18000/agent/session \
+curl -s -X POST http://localhost:28000/agent/session \
   -H "Content-Type: application/json" \
   -d '{
     "agent_name": "opencode-core",
@@ -280,7 +280,7 @@ curl -s -X POST http://localhost:18000/agent/session \
 查询会话元信息。
 
 ```bash
-curl -s http://localhost:18000/agent/session/a1b2c3d4-1234-5678-9abc-def012345678
+curl -s http://localhost:28000/agent/session/a1b2c3d4-1234-5678-9abc-def012345678
 ```
 
 **响应 200：**
@@ -306,7 +306,7 @@ curl -s http://localhost:18000/agent/session/a1b2c3d4-1234-5678-9abc-def01234567
 查询会话历史消息。
 
 ```bash
-curl -s http://localhost:18000/agent/session/a1b2c3d4-1234-5678-9abc-def012345678/messages
+curl -s http://localhost:28000/agent/session/a1b2c3d4-1234-5678-9abc-def012345678/messages
 ```
 
 **响应 200：**
@@ -330,7 +330,7 @@ curl -s http://localhost:18000/agent/session/a1b2c3d4-1234-5678-9abc-def01234567
 删除会话及其所有历史消息。
 
 ```bash
-curl -s -X DELETE http://localhost:18000/agent/session/a1b2c3d4-1234-5678-9abc-def012345678
+curl -s -X DELETE http://localhost:28000/agent/session/a1b2c3d4-1234-5678-9abc-def012345678
 ```
 
 **响应 200：**
@@ -345,7 +345,7 @@ curl -s -X DELETE http://localhost:18000/agent/session/a1b2c3d4-1234-5678-9abc-d
 中止正在运行的 Agent 调用（打断当前 turn）。
 
 ```bash
-curl -s -X POST http://localhost:18000/agent/session/a1b2c3d4-1234-5678-9abc-def012345678/abort
+curl -s -X POST http://localhost:28000/agent/session/a1b2c3d4-1234-5678-9abc-def012345678/abort
 ```
 
 **响应 200：**
@@ -362,7 +362,7 @@ curl -s -X POST http://localhost:18000/agent/session/a1b2c3d4-1234-5678-9abc-def
 列出所有已注册技能。
 
 ```bash
-curl -s http://localhost:18000/agent/skills
+curl -s http://localhost:28000/agent/skills
 ```
 
 **响应 200：**
@@ -404,7 +404,7 @@ curl -s http://localhost:18000/agent/skills
 
 **示例：注册天气技能**
 ```bash
-curl -s -X POST http://localhost:18000/agent/skills \
+curl -s -X POST http://localhost:28000/agent/skills \
   -H "Content-Type: application/json" \
   -d '{
     "name": "weather",
@@ -449,7 +449,7 @@ curl -s -X POST http://localhost:18000/agent/skills \
 列出所有 MCP 工具。
 
 ```bash
-curl -s http://localhost:18000/agent/tools
+curl -s http://localhost:28000/agent/tools
 ```
 
 **响应 200：**
@@ -487,7 +487,7 @@ curl -s http://localhost:18000/agent/tools
 
 **示例：注册远程 Web 搜索工具**
 ```bash
-curl -s -X POST http://localhost:18000/agent/tools \
+curl -s -X POST http://localhost:28000/agent/tools \
   -H "Content-Type: application/json" \
   -d '{
     "name": "web_search",
@@ -529,14 +529,14 @@ curl -s -X POST http://localhost:18000/agent/tools \
 
 **示例：禁用 web_search**
 ```bash
-curl -s -X PATCH http://localhost:18000/agent/tools/web_search/enabled \
+curl -s -X PATCH http://localhost:28000/agent/tools/web_search/enabled \
   -H "Content-Type: application/json" \
   -d '{"enabled": false}'
 ```
 
 **示例：重新启用**
 ```bash
-curl -s -X PATCH http://localhost:18000/agent/tools/web_search/enabled \
+curl -s -X PATCH http://localhost:28000/agent/tools/web_search/enabled \
   -H "Content-Type: application/json" \
   -d '{"enabled": true}'
 ```
@@ -580,7 +580,7 @@ curl -s -X PATCH http://localhost:18000/agent/tools/web_search/enabled \
 
 **示例：注册一个远程 opencode 实例**
 ```bash
-curl -s -X POST http://localhost:18000/agent/pool/register \
+curl -s -X POST http://localhost:28000/agent/pool/register \
   -H "Content-Type: application/json" \
   -d '{
     "name": "agent-shanghai",
@@ -592,7 +592,7 @@ curl -s -X POST http://localhost:18000/agent/pool/register \
 
 **示例：注册一个 Claude Code 实例**
 ```bash
-curl -s -X POST http://localhost:18000/agent/pool/register \
+curl -s -X POST http://localhost:28000/agent/pool/register \
   -H "Content-Type: application/json" \
   -d '{
     "name": "claude-bot",
@@ -632,7 +632,7 @@ curl -s -X POST http://localhost:18000/agent/pool/register \
 注销 Agent 实例。**当前未实现，返回 501。**
 
 ```bash
-curl -s -X DELETE http://localhost:18000/agent/pool/agent-shanghai
+curl -s -X DELETE http://localhost:28000/agent/pool/agent-shanghai
 ```
 
 **响应 501：**
@@ -645,7 +645,7 @@ curl -s -X DELETE http://localhost:18000/agent/pool/agent-shanghai
 获取当前已注册 Agent 的统计信息。
 
 ```bash
-curl -s http://localhost:18000/agent/pool/stats
+curl -s http://localhost:28000/agent/pool/stats
 ```
 
 **响应 200：**
@@ -692,7 +692,7 @@ curl -s http://localhost:18000/agent/pool/stats
 列出所有已注册的 scenario。
 
 ```bash
-curl -s http://localhost:18000/agent/scenarios
+curl -s http://localhost:28000/agent/scenarios
 ```
 
 **响应 200：**
@@ -711,7 +711,7 @@ curl -s http://localhost:18000/agent/scenarios
 查询单个 scenario 的完整定义。
 
 ```bash
-curl -s http://localhost:18000/agent/scenarios/travel
+curl -s http://localhost:28000/agent/scenarios/travel
 ```
 
 ### `POST /agent/scenarios`
@@ -719,7 +719,7 @@ curl -s http://localhost:18000/agent/scenarios/travel
 动态注册或覆盖一个 scenario（YAML 形式的 body 字段较复杂，详见 `scenario_controller.py` 的 `@body(...)` 定义）。
 
 ```bash
-curl -s -X POST http://localhost:18000/agent/scenarios \
+curl -s -X POST http://localhost:28000/agent/scenarios \
   -H "Content-Type: application/json" \
   -d @travel_scenario.json
 ```
@@ -729,7 +729,7 @@ curl -s -X POST http://localhost:18000/agent/scenarios \
 注销一个 scenario。
 
 ```bash
-curl -s -X DELETE http://localhost:18000/agent/scenarios/travel
+curl -s -X DELETE http://localhost:28000/agent/scenarios/travel
 ```
 
 ### `POST /agent/scenarios/reload`
@@ -737,7 +737,7 @@ curl -s -X DELETE http://localhost:18000/agent/scenarios/travel
 从所有 `scenario_paths` 目录重新加载 YAML。
 
 ```bash
-curl -s -X POST http://localhost:18000/agent/scenarios/reload
+curl -s -X POST http://localhost:28000/agent/scenarios/reload
 ```
 
 **响应 200：**
@@ -750,7 +750,7 @@ curl -s -X POST http://localhost:18000/agent/scenarios/reload
 校验单个 scenario 的语法（不注册）。
 
 ```bash
-curl -s http://localhost:18000/agent/scenarios/travel/validate
+curl -s http://localhost:28000/agent/scenarios/travel/validate
 ```
 
 **响应 200：**
@@ -763,7 +763,7 @@ curl -s http://localhost:18000/agent/scenarios/travel/validate
 向指定 scenario 发起 chat（**当前为 stub**，未来用于 routing-log 复现）。
 
 ```bash
-curl -s -X POST http://localhost:18000/agent/scenarios/travel/chat \
+curl -s -X POST http://localhost:28000/agent/scenarios/travel/chat \
   -H "Content-Type: application/json" \
   -d '{"message": "北京到上海"}'
 ```
@@ -773,7 +773,7 @@ curl -s -X POST http://localhost:18000/agent/scenarios/travel/chat \
 流式版（同样 stub）。
 
 ```bash
-curl -N -s -X POST http://localhost:18000/agent/scenarios/travel/chat/stream \
+curl -N -s -X POST http://localhost:28000/agent/scenarios/travel/chat/stream \
   -H "Content-Type: application/json" \
   -d '{"message": "北京到上海"}'
 ```
@@ -783,7 +783,7 @@ curl -N -s -X POST http://localhost:18000/agent/scenarios/travel/chat/stream \
 导出 routing 决策的历史（stub）。
 
 ```bash
-curl -s http://localhost:18000/agent/scenarios/routing-log
+curl -s http://localhost:28000/agent/scenarios/routing-log
 ```
 
 ---
@@ -813,18 +813,18 @@ curl -s http://localhost:18000/agent/scenarios/routing-log
 
 ```bash
 # 1. 注册一个 Agent（如果没自动注册）
-curl -s -X POST http://localhost:18000/agent/pool/register \
+curl -s -X POST http://localhost:28000/agent/pool/register \
   -H "Content-Type: application/json" \
   -d '{"name":"opencode-core","base_url":"http://localhost:4096","sdk_type":"opencode"}'
 
 # 2. 创建一个会话
-SESSION_ID=$(curl -s -X POST http://localhost:18000/agent/session \
+SESSION_ID=$(curl -s -X POST http://localhost:28000/agent/session \
   -H "Content-Type: application/json" \
   -d '{"agent_name":"opencode-core"}' | jq -r '.session_id')
 echo "Session: $SESSION_ID"
 
 # 3. 发消息
-curl -s -X POST http://localhost:18000/agent/chat \
+curl -s -X POST http://localhost:28000/agent/chat \
   -H "Content-Type: application/json" \
   -d "{
     \"session_id\": \"$SESSION_ID\",
@@ -832,7 +832,7 @@ curl -s -X POST http://localhost:18000/agent/chat \
   }" | jq
 
 # 4. 再发消息（续接上下文）
-curl -s -X POST http://localhost:18000/agent/chat \
+curl -s -X POST http://localhost:28000/agent/chat \
   -H "Content-Type: application/json" \
   -d "{
     \"session_id\": \"$SESSION_ID\",
@@ -840,10 +840,10 @@ curl -s -X POST http://localhost:18000/agent/chat \
   }" | jq
 
 # 5. 查看历史
-curl -s http://localhost:18000/agent/session/$SESSION_ID/messages | jq
+curl -s http://localhost:28000/agent/session/$SESSION_ID/messages | jq
 
 # 6. 流式版
-curl -N -s -X POST http://localhost:18000/agent/chat/stream \
+curl -N -s -X POST http://localhost:28000/agent/chat/stream \
   -H "Content-Type: application/json" \
   -d "{
     \"session_id\": \"$SESSION_ID\",
@@ -851,17 +851,17 @@ curl -N -s -X POST http://localhost:18000/agent/chat/stream \
   }"
 
 # 7. 中止（如果在等流）
-curl -s -X POST http://localhost:18000/agent/session/$SESSION_ID/abort
+curl -s -X POST http://localhost:28000/agent/session/$SESSION_ID/abort
 
 # 8. 删除
-curl -s -X DELETE http://localhost:18000/agent/session/$SESSION_ID
+curl -s -X DELETE http://localhost:28000/agent/session/$SESSION_ID
 ```
 
 ### MCP 工具调用
 
 ```bash
 # 1. 注册工具
-curl -s -X POST http://localhost:18000/agent/tools \
+curl -s -X POST http://localhost:28000/agent/tools \
   -H "Content-Type: application/json" \
   -d '{
     "name": "calculator",
@@ -873,10 +873,10 @@ curl -s -X POST http://localhost:18000/agent/tools \
   }'
 
 # 2. 列出
-curl -s http://localhost:18000/agent/tools | jq '.tools[].name'
+curl -s http://localhost:28000/agent/tools | jq '.tools[].name'
 
 # 3. 在 chat 中使用
-curl -s -X POST http://localhost:18000/agent/chat \
+curl -s -X POST http://localhost:28000/agent/chat \
   -H "Content-Type: application/json" \
   -d '{
     "message": "100 + 200 等于多少？",
@@ -884,7 +884,7 @@ curl -s -X POST http://localhost:18000/agent/chat \
   }'
 
 # 4. 临时禁用
-curl -s -X PATCH http://localhost:18000/agent/tools/calculator/enabled \
+curl -s -X PATCH http://localhost:28000/agent/tools/calculator/enabled \
   -H "Content-Type: application/json" \
   -d '{"enabled": false}'
 ```
@@ -903,28 +903,28 @@ tail -f logs.json | jq -c '. | {ts:.timestamp, level, event, ...}'
 ### 用 jq 提取 SSE 文本流
 
 ```bash
-curl -N -s -X POST http://localhost:18000/agent/chat/stream \
+curl -N -s -X POST http://localhost:28000/agent/chat/stream \
   -H "Content-Type: application/json" \
   -d '{"message":"讲个故事"}' | grep '^data:' | sed 's/^data: //' | jq -r 'select(.type=="text") | .data.content'
 ```
 
 ### 看 OpenAPI 文档
 
-服务跑起来后，访问 `http://localhost:18000/docs`（由 sanic-ext 自动生成）。
+服务跑起来后，访问 `http://localhost:28000/docs`（由 sanic-ext 自动生成）。
 
 ---
 
 ## 11. 配置参考
 
-服务行为受 `.env` 文件里的 `AGENT_SCHEDULER_*` 前缀环境变量控制（完整列表见 `src/openagent/config/settings.py`）。最常用的：
+服务行为受 `.env` 文件里的 `AGENT_SCHEDULER_*` 前缀环境变量控制（完整列表见 `src/hermetic_agent/config/settings.py`）。最常用的：
 
 | 变量 | 默认 | 说明 |
 |------|------|------|
 | `AGENT_SCHEDULER_HOST` | `0.0.0.0` | 监听地址 |
-| `AGENT_SCHEDULER_PORT` | `8000` | 监听端口（前端用 `18000`） |
+| `AGENT_SCHEDULER_PORT` | `8000` | 监听端口（前端用 `28000`） |
 | `AGENT_SCHEDULER_LOG_FORMAT` | `json` | `json` 或 `text` |
 | `AGENT_SCHEDULER_STORAGE_BACKEND` | `postgres` | `postgres` 或 `memory` |
-| `AGENT_SCHEDULER_POSTGRES_DSN` | `postgresql://localhost:5432/openagent` | |
+| `AGENT_SCHEDULER_POSTGRES_DSN` | `postgresql://localhost:5432/hermetic_agent` | |
 | `AGENT_SCHEDULER_OPENCODE_BASE_URL` | `http://localhost:4096` | 默认 Agent 指向的 opencode serve |
 | `AGENT_SCHEDULER_AUTO_REGISTER_DEFAULTS` | `true` | 启动时自动注册默认 Agent |
 | `AGENT_SCHEDULER_DEFAULT_AGENTS_JSON` | `[]` | 自定义默认 Agent 列表 |

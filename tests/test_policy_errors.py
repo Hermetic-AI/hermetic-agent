@@ -1,10 +1,10 @@
-"""errors 模块单测."""
+﻿"""errors 模块单测."""
 
 from __future__ import annotations
 
 import pytest
 
-from openagent.policy.errors import (
+from hermetic_agent.policy.errors import (
     BudgetExceeded,
     CommandNotAllowed,
     NetworkNotAllowed,

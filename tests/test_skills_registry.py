@@ -1,9 +1,9 @@
-"""tests/test_skills_registry.py — SkillRegistry 单元测试 (P1-3 metadata_list)."""
+﻿"""tests/test_skills_registry.py — SkillRegistry 单元测试 (P1-3 metadata_list)."""
 from __future__ import annotations
 
 import pytest
 
-from openagent.skills.registry import Skill, SkillRegistry
+from hermetic_agent.skills.registry import Skill, SkillRegistry
 
 
 def _skill(name: str, desc: str = "", version: str = "1.0.0") -> Skill:

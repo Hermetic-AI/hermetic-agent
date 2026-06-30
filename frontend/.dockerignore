@@ -1,4 +1,4 @@
-# Frontend .dockerignore — 走 Dockerfile.frontend 时的 ignore
+# Frontend .dockerignore — 走 docker/frontend/Dockerfile 时的 ignore
 # 作用: 让 docker build context 最小, 加快 build, 避免把 node_modules 拷进镜像
 
 # 依赖 (容器内重装)

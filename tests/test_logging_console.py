@@ -1,4 +1,4 @@
-"""盯住新增的 console 模式 (Rich 渲染) + 字段过滤行为。
+﻿"""盯住新增的 console 模式 (Rich 渲染) + 字段过滤行为。
 
 覆盖点:
   * ``log_format=console`` 必须装上 ``RichHandler``, 主题色 + markup 渲染
@@ -17,13 +17,13 @@ import structlog
 from rich.console import Console
 from rich.logging import RichHandler
 
-from openagent.api.http.logging_setup import (
+from hermetic_agent.api.http.logging_setup import (
     LOG_THEME,
     _compact_event_renderer,
     _drop_redundant_keys,
     configure_logging,
 )
-from openagent.config.settings import Settings
+from hermetic_agent.config.settings import Settings
 
 
 def _capture_stdlib_root() -> io.StringIO:
@@ -86,12 +86,12 @@ def test_console_mode_filters_redundant_keys() -> None:
     """``logger`` 不应出现在输出里, 避免重复. timestamp 保留用于完整时间戳."""
     configure_logging(Settings(log_format="console", log_level="INFO"))
     buf = _capture_stdlib_root()
-    log = structlog.get_logger("openagent.something.deep")
+    log = structlog.get_logger("hermetic_agent.something.deep")
     log.info("ready", count=3)
 
     out = buf.getvalue()
     # 不应该有形如 [12 chars 的 logger 名] 出现
-    assert "openagent.something.deep" not in out, (
+    assert "hermetic_agent.something.deep" not in out, (
         f"logger 字段应被 _drop_redundant_keys 过滤: {out!r}"
     )
     # 现在输出完整时间戳 (YYYY-MM-DD HH:MM:SS.mmm), 验证格式正确
@@ -120,7 +120,7 @@ def test_drop_redundant_keys_removes_logger() -> None:
     out = _drop_redundant_keys(None, "info", {
         "event": "x",
         "level": "info",
-        "logger": "openagent.foo",
+        "logger": "hermetic_agent.foo",
         "timestamp": "2026-06-10T10:00:00",
         "keep": 1,
     })

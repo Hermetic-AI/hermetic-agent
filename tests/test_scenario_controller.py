@@ -1,4 +1,4 @@
-"""ScenarioController 端点测试 — 5 核心 + 4 stub 端点."""
+﻿"""ScenarioController 端点测试 — 5 核心 + 4 stub 端点."""
 
 from __future__ import annotations
 
@@ -11,18 +11,18 @@ from pathlib import Path
 import pytest
 from sanic import Sanic
 
-from openagent.api.http.controllers.scenario_controller import scenario_bp
-from openagent.config.settings import Settings
-from openagent.scenarios.config import (
+from hermetic_agent.api.http.controllers.scenario_controller import scenario_bp
+from hermetic_agent.config.settings import Settings
+from hermetic_agent.scenarios.config import (
     ExecutionConfig,
     ProgressiveSkillConfig,
     RoutingConfig,
     ScenarioConfig,
     WorkspaceConfig,
 )
-from openagent.scenarios.injector import ScenarioInjector
-from openagent.scenarios.registry import ScenarioRegistry
-from openagent.scenarios.router import ScenarioRouter
+from hermetic_agent.scenarios.injector import ScenarioInjector
+from hermetic_agent.scenarios.registry import ScenarioRegistry
+from hermetic_agent.scenarios.router import ScenarioRouter
 
 
 # ---------------------------------------------------------------------------

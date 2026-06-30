@@ -1,10 +1,10 @@
-"""command_check 模块单测."""
+﻿"""command_check 模块单测."""
 
 from __future__ import annotations
 
 import pytest
 
-from openagent.policy.command_check import (
+from hermetic_agent.policy.command_check import (
     has_metacharacter,
     is_command_allowed,
 )

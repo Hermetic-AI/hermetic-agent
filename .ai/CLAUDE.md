@@ -1,15 +1,15 @@
-# CLAUDE.md
+﻿# CLAUDE.md
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## Project Overview
 
-**OpenCode Agent Scheduler Hub** — a dual-SDK AI Agent scheduling platform supporting both OpenCode SDK and Claude Code SDK (claude-agent-sdk). It manages a pool of agent instances and provides a unified REST API for dispatching tasks, with Skills/MCP support, SSE streaming, and PostgreSQL persistence.
+**hermetic-agent** — a dual-SDK AI Agent scheduling platform supporting both OpenCode SDK and Claude Code SDK (claude-agent-sdk). It manages a pool of agent instances and provides a unified REST API for dispatching tasks, with Skills/MCP support, SSE streaming, and PostgreSQL persistence.
 
 ## Architecture
 
 ```
-openagent/
+hermetic_agent/
 ├── api/
 │   ├── app.py          # Sanic app factory (create_app), structlog config
 │   └── routes.py       # REST endpoints (Chat, Session, Skills, Tools, Pool)
@@ -64,7 +64,7 @@ uv pip install -e .                  # or: pip install -e .
 uv pip install -e ".[dev]"           # with dev dependencies
 
 # Run the server
-python -m openagent.main             # or: agent-scheduler
+python -m hermetic_agent.main             # or: hermetic-agent
 
 # Run tests
 pytest -v
@@ -99,14 +99,14 @@ pnpm lint
 - **Storage backends**: `postgres` (default, asyncpg) or `memory` (dev/fallback). Set via `AGENT_SCHEDULER_STORAGE_BACKEND=memory`.
 - **Skills**: Loaded from directories via `SkillRegistry.load_from_paths()`. Each skill is a `SKILL.md` file with frontmatter (`name`, `description`, `triggers`) and content.
 - **MCP Tools**: Registered via `MCPRegistry.register_handler()` (local) or `register_remote()` (HTTP). Tools are format-converted per SDK (`to_opencode_format`, `to_claude_code_format`).
-- **SSE streaming**: Both SDK adapters yield unified `StreamEvent` objects. See `src/openagent/streaming.py` for the 12 supported event types: `scenario`, `session`, `text`, `reasoning`, `tool_use`, `tool_result`, `card`, `state`, `suspend`, `resume`, `done`, `error`.
+- **SSE streaming**: Both SDK adapters yield unified `StreamEvent` objects. See `src/hermetic_agent/streaming.py` for the 12 supported event types: `scenario`, `session`, `text`, `reasoning`, `tool_use`, `tool_result`, `card`, `state`, `suspend`, `resume`, `done`, `error`.
 - **Structured logging**: Uses `structlog` with JSON/text output controlled by `AGENT_SCHEDULER_LOG_FORMAT`.
 
 ## 🚨 HARD CONSTRAINT: 统一对话入口
 
 > **对话 chat 入口必须全局统一**. 严禁新增任何 per-scenario chat 端点.
 
-**只有 2 个对话端点, 都集中在 `src/openagent/api/controllers/chat_controller.py`:**
+**只有 2 个对话端点, 都集中在 `src/hermetic_agent/api/controllers/chat_controller.py`:**
 
 | 端点 | 用途 | 备注 |
 |---|---|---|

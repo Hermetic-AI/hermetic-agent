@@ -1,4 +1,4 @@
-"""scripts/check_unified_chat_entry.py — 校验 统一对话入口 约束.
+﻿"""scripts/check_unified_chat_entry.py — 校验 统一对话入口 约束.
 
 P0 永远禁止: 任何 controller 文件里出现 per-scenario chat 路由.
 
@@ -21,8 +21,8 @@ ALLOWED_FILES = {
 }
 
 CONTROLLER_DIRS = [
-    Path("src/openagent/api/controllers/"),
-    Path("src/openagent/api/"),
+    Path("src/hermetic_agent/api/controllers/"),
+    Path("src/hermetic_agent/api/"),
 ]
 
 
@@ -50,7 +50,7 @@ def main() -> int:
         for v in violations:
             print(v)
         print()
-        print("所有 chat 入口必须统一在 src/openagent/api/controllers/chat_controller.py")
+        print("所有 chat 入口必须统一在 src/hermetic_agent/api/controllers/chat_controller.py")
         print("详见 CLAUDE.md §Key Implementation Notes 末尾的 🚨 HARD CONSTRAINT")
         return 1
     print("[PASS] No per-scenario chat endpoint found.")

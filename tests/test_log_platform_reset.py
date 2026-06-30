@@ -1,4 +1,4 @@
-"""Shared autouse fixture for log platform tests.
+﻿"""Shared autouse fixture for log platform tests.
 
 pytest 不识别 ``test_*_conftest.py`` 命名 (只认 ``conftest.py``), 而
 ``tests/conftest.py`` 是 read-only. 唯一可行的方案: 把 autouse fixture
@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import pytest
 
-from openagent.audit.log import (
+from hermetic_agent.audit.log import (
     busi_logger as _busi,
     object_log_writer as _olw,
     request_logger as _req,

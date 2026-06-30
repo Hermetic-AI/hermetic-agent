@@ -1,4 +1,4 @@
-# OpenAgent 部署指南 (docker compose)
+﻿# hermetic_agent 部署指南 (docker compose)
 
 统一 compose `docker-compose.yml` 通过 **`PULL_POLICY`** env-var 在 `local` / `registry` 模式间切换, 用 **`--profile frontend`** 启用 frontend. 单 service 设计, 默认 `docker compose up -d` 即工作.
 
@@ -6,9 +6,9 @@
 
 | Service | 端口 (host→container) | 角色 | 默认启用 |
 |---|---|---|---|
-| `openagent-hub` | `18000→8000` | Hub 主服务 (Sanic, L1-L3) | ✅ |
-| `opencode-1` | `14096`, `7778` (调试) | opencode sandbox 容器 (L4) | ✅ |
-| `openagent-frontend` | `13000→3000` | nginx 反代 + 静态 (L0) | ❌ (`--profile frontend`) |
+| `hermetic_agent-hub` | `28000→8000` | Hub 主服务 (Sanic, L1-L3) | ✅ |
+| `opencode-1` | `24096`, `27778` (调试) | opencode sandbox 容器 (L4) | ✅ |
+| `hermetic_agent-frontend` | `23000→13000` | nginx 反代 + 静态 (L0) | ❌ (`--profile frontend`) |
 
 要 N 个 sandbox 节点就复制 `opencode-1` 块, 改 `hostname: opencode-N` 即可 (container_name 默认由 compose 生成).
 
@@ -17,7 +17,7 @@
 | 模式 | 命令 | 镜像来源 |
 |---|---|---|
 | `local` (默认) | `docker compose up -d --build` | 本地 Dockerfile 构建 (`:dev` tag) |
-| `registry` (生产) | `PULL_POLICY=always docker compose up -d` | registry pull (用 `OPENAGENT_*_IMAGE`) |
+| `registry` (生产) | `PULL_POLICY=always docker compose up -d` | registry pull (用 `HERMETIC_AGENT_*_IMAGE`) |
 | `local` + frontend | `docker compose --profile frontend up -d --build` | 本地 + frontend |
 | `registry` + frontend | `PULL_POLICY=always docker compose --profile frontend up -d` | registry + frontend |
 
@@ -47,9 +47,9 @@
 
 | 服务 | local 默认 tag | registry 覆盖 env var |
 |---|---|---|
-| Hub | `openagent:dev` | `OPENAGENT_HUB_IMAGE` |
+| Hub | `hermetic_agent:dev` | `HERMETIC_AGENT_HUB_IMAGE` |
 | opencode sandbox | `opencode-sandbox:dev` | `OPENCODE_SANDBOX_IMAGE` |
-| frontend | `openagent-frontend:dev` | `OPENAGENT_FRONTEND_IMAGE` |
+| frontend | `hermetic_agent-frontend:dev` | `HERMETIC_AGENT_FRONTEND_IMAGE` |
 
 ## 常用命令
 
@@ -69,7 +69,7 @@ docker compose down
 docker compose down -v
 
 # 重启单个 service (改 .env / scenario YAML 完事)
-docker compose restart openagent-hub
+docker compose restart hermetic_agent-hub
 
 # 重启所有 (按依赖顺序)
 docker compose restart
@@ -78,18 +78,18 @@ docker compose restart
 ### 重新构建
 
 ```bash
-# 改 src/openagent/**/*.py → 重建 Hub 镜像 (用 BuildKit cache, 增量 ~9s)
-docker compose build openagent-hub
+# 改 src/hermetic_agent/**/*.py → 重建 Hub 镜像 (用 BuildKit cache, 增量 ~9s)
+docker compose build hermetic_agent-hub
 
 # 改 work/scenarios/*.yaml → 不需要重建, 重启 Hub 即可 (scenario loader 走 ro bind)
-docker compose restart openagent-hub
+docker compose restart hermetic_agent-hub
 
 # 改 work/sandbox/policy.opencode-1.json → 不需要重建, 走 admin API /admin/policy
-curl -X POST http://localhost:7778/admin/policy -H 'Content-Type: application/json' \
+curl -X POST http://localhost:27778/admin/policy -H 'Content-Type: application/json' \
     -d '{"agent":{"model":"MiniMax-M2.7-highspeed"}}'
 
 # 强制重建 (忽略 cache, 适用于 Dockerfile 改了)
-docker compose build --no-cache openagent-hub
+docker compose build --no-cache hermetic_agent-hub
 
 # 拉取所有镜像 (registry 模式)
 PULL_POLICY=always docker compose pull
@@ -102,26 +102,26 @@ PULL_POLICY=always docker compose pull opencode-1
 
 ```bash
 # Hub 镜像 (从项目根)
-docker build -f docker/Dockerfile.openagent -t openagent:dev .
+docker build -f docker/hermetic-agent/Dockerfile -t hermetic_agent:dev .
 
 # opencode sandbox 镜像
-docker build -f docker/Dockerfile.opencode-sandbox -t opencode-sandbox:dev .
+docker build -f docker/opencode/Dockerfile -t opencode-sandbox:dev .
 
 # frontend 镜像 (VITE_BACKEND_URL 是 build-arg)
-docker build -f docker/Dockerfile.frontend \
+docker build -f docker/frontend/Dockerfile \
     --build-arg VITE_BACKEND_URL=/api \
-    -t openagent-frontend:dev .
+    -t hermetic_agent-frontend:dev .
 
 # 推送到 registry
-docker tag openagent:dev ghcr.io/your-org/openagent-hub:1.0.0
-docker push ghcr.io/your-org/openagent-hub:1.0.0
+docker tag hermetic_agent:dev ghcr.io/your-org/hermetic_agent-hub:1.0.0
+docker push ghcr.io/your-org/hermetic_agent-hub:1.0.0
 
 # BuildKit 显式 cache (跨 build 共享, 慢网环境有用)
 DOCKER_BUILDKIT=1 docker buildx build \
-    -f docker/Dockerfile.openagent \
-    -t openagent:dev --load \
-    --cache-from type=local,src=/tmp/openagent-cache \
-    --cache-to type=local,dest=/tmp/openagent-cache,mode=max \
+    -f docker/hermetic-agent/Dockerfile \
+    -t hermetic_agent:dev --load \
+    --cache-from type=local,src=/tmp/hermetic_agent-cache \
+    --cache-to type=local,dest=/tmp/hermetic_agent-cache,mode=max \
     .
 ```
 
@@ -132,24 +132,24 @@ DOCKER_BUILDKIT=1 docker buildx build \
 docker compose logs -f
 
 # 跟指定 service
-docker compose logs -f openagent-hub
+docker compose logs -f hermetic_agent-hub
 
 # 跟指定 service 最近 100 行
-docker compose logs --tail=100 openagent-hub
+docker compose logs --tail=100 hermetic_agent-hub
 
 # 带时间戳
-docker compose logs -f -t openagent-hub
+docker compose logs -f -t hermetic_agent-hub
 ```
 
 ### 调试
 
 ```bash
 # 进容器 shell
-docker compose exec openagent-hub bash
+docker compose exec hermetic_agent-hub bash
 docker compose exec opencode-1 bash
 
 # 单次命令
-docker compose exec openagent-hub python -c "from openagent.config.settings import get_settings; s = get_settings(); print(s.feihe_base_url)"
+docker compose exec hermetic_agent-hub python -c "from hermetic_agent.config.settings import get_settings; s = get_settings(); print(s.opencode_base_url)"
 
 # 看进程 / 资源
 docker compose top
@@ -163,16 +163,16 @@ docker compose ps
 
 ```bash
 # Hub
-curl http://localhost:18000/ready
+curl http://localhost:28000/ready
 
 # opencode
-curl http://localhost:14096/global/health
+curl http://localhost:24096/global/health
 
 # admin
-open http://localhost:7778/docs  # swagger UI
+open http://localhost:27778/docs  # swagger UI
 
 # frontend
-curl http://localhost:13000/
+curl http://localhost:23000/
 ```
 
 ## 必要的挂载
@@ -191,33 +191,33 @@ curl http://localhost:13000/
 
 | 端口 | 用途 | 调试期是否暴露 host |
 |---|---|---|
-| `18000` | Hub HTTP API (Sanic) | ✅ |
+| `28000` | Hub HTTP API (Sanic) | ✅ |
 | `8000` | Hub 容器内端口 | — |
-| `13000` | frontend nginx | ✅ |
-| `3000` | frontend 容器内端口 | — |
-| `14096` | opencode serve | ✅ (调试用) |
+| `23000` | frontend nginx | ✅ |
+| `13000` | frontend 容器内端口 | — |
+| `24096` | opencode serve | ✅ (调试用) |
 | `7777` | sandbox health_server | ❌ (容器内) |
-| `7778` | sandbox admin_server | ✅ (调试用) |
+| `27778` | sandbox admin_server | ✅ (调试用) |
 
-生产环境把 `opencode-1.ports` 段 + `openagent-frontend.ports` 段注释掉, sandbox/frontend 不直接对外.
+生产环境把 `opencode-1.ports` 段 + `hermetic_agent-frontend.ports` 段注释掉, sandbox/frontend 不直接对外.
 
 ## 调试期: 改 model / key 不 rebuild 镜像
 
-走 admin API (容器内 :7778, 走 Hub 代理: `:18000/agent/admin/opencode/opencode-1/...`):
+走 admin API (容器内 :7778, 走 Hub 代理: `:28000/agent/admin/opencode/opencode-1/...`):
 
 ```bash
 # 改 model
-curl -X POST http://localhost:7778/admin/policy \
+curl -X POST http://localhost:27778/admin/policy \
     -H 'Content-Type: application/json' \
     -d '{"agent":{"model":"MiniMax-M2.7-highspeed"}}'
 
 # 改 key
-curl -X POST http://localhost:7778/admin/env \
+curl -X POST http://localhost:27778/admin/env \
     -H 'Content-Type: application/json' \
     -d '{"OPENAI_API_KEY":"sk-xxx"}'
 
 # 触发 reload (SIGTERM opencode, supervisor 1s 重启, 读新 config + env)
-curl -X POST http://localhost:7778/admin/reload
+curl -X POST http://localhost:27778/admin/reload
 ```
 
 ## Troubleshooting
@@ -281,13 +281,13 @@ python scripts/verify_opencode_config.py --chat-only       # 只跑 chat smoke t
    security_opt:
      - no-new-privileges
    ```
-3. **`docker/frontend-entrypoint.sh`** pre-create nginx 写目录子目录 (image 层目录被 tmpfs 遮蔽, 容器启动时是空 tmpfs):
+3. **`docker/frontend/entrypoint.sh`** pre-create nginx 写目录子目录 (image 层目录被 tmpfs 遮蔽, 容器启动时是空 tmpfs):
    ```
    /var/cache/nginx/{client,proxy,fastcgi,uwsgi,scgi}_temp
    /var/run/nginx.pid
    /var/log/nginx
    ```
-4. **端口 mapping 改 `13000:13000`** (不是 `13000:3000`, nginx 配的就是 13000)
+4. **端口 mapping 改 `23000:13000`** (不是 `13000:3000`, nginx 配的就是 13000)
 5. **healthcheck 加 `--timeout`** 防止 wget hang 90s
 
 ### `pull_policy: ${PULL_POLICY:-build}` 报 "此处不需要值 ..."
@@ -296,11 +296,11 @@ python scripts/verify_opencode_config.py --chat-only       # 只跑 chat smoke t
 
 **修法**: 用 spec 核心值, 默认 `missing` (= 本地有就用, 没才拉 — 跟 `build` 行为一致). 改 `PULL_POLICY=always` 触发 registry 模式.
 
-### Port 13000 已被占用 (`bind host port 0.0.0.0:13000/tcp: address already in use`)
+### Port 23000 已被占用 (`bind host port 0.0.0.0:23000/tcp: address already in use`)
 
-**原因**: 宿主机上跑了 `vite` dev server (或别的进程) 占着 13000.
+**原因**: 宿主机上跑了别的进程占着 23000.
 
-**修法**: `ps aux | grep vite` 找到进程, `kill <pid>`. 或者改 compose 端口映射: `ports: - "13100:13000"` (改 host 侧端口, 容器内仍是 13000).
+**修法**: `ps aux | grep <port>` 找到进程, `kill <pid>`. 或者改 compose 端口映射: `ports: - "23100:13000"` (改 host 侧端口, 容器内仍是 13000).
 
 ## 已删除的旧文件 (refactor 2026-06-10)
 

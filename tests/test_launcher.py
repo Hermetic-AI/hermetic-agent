@@ -1,4 +1,4 @@
-"""Tests for EngineLauncher (L4 Providers)."""
+﻿"""Tests for EngineLauncher (L4 Providers)."""
 
 from __future__ import annotations
 
@@ -8,8 +8,8 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from openagent.providers.base import AgentConfig
-from openagent.providers.launcher import (
+from hermetic_agent.providers.base import AgentConfig
+from hermetic_agent.providers.launcher import (
     ClaudeCodeHandle,
     EngineHandle,
     EngineLauncher,
@@ -75,7 +75,7 @@ def mock_popen(monkeypatch: pytest.MonkeyPatch):
         m.poll = MagicMock(return_value=None)
         return m
 
-    monkeypatch.setattr("openagent.providers.launcher.Popen", _factory)
+    monkeypatch.setattr("hermetic_agent.providers.launcher.Popen", _factory)
     return captured
 
 

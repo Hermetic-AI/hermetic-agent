@@ -25,72 +25,6 @@ wheels = [
 ]
 
 [[package]]
-name = "agent-scheduler-hub"
-version = "0.1.0"
-source = { editable = "." }
-dependencies = [
-    { name = "asyncmy" },
-    { name = "asyncpg" },
-    { name = "cryptography" },
-    { name = "httpx" },
-    { name = "nacos-sdk-python" },
-    { name = "opencode-ai" },
-    { name = "pydantic" },
-    { name = "pydantic-settings" },
-    { name = "pymysql" },
-    { name = "python-dotenv" },
-    { name = "redis" },
-    { name = "rich" },
-    { name = "sanic" },
-    { name = "sanic-cors" },
-    { name = "sanic-ext" },
-    { name = "structlog" },
-    { name = "tortoise-orm", extra = ["asyncmy"] },
-]
-
-[package.optional-dependencies]
-claude = [
-    { name = "claude-agent-sdk" },
-]
-dev = [
-    { name = "mypy" },
-    { name = "pre-commit" },
-    { name = "pytest" },
-    { name = "pytest-asyncio" },
-    { name = "pytest-cov" },
-    { name = "ruff" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "asyncmy", specifier = ">=0.2.10" },
-    { name = "asyncpg", specifier = ">=0.29.0" },
-    { name = "claude-agent-sdk", marker = "extra == 'claude'", git = "https://github.com/anthropics/claude-agent-sdk-python?rev=v0.2.87" },
-    { name = "cryptography", specifier = ">=41.0.0" },
-    { name = "httpx", specifier = ">=0.27.0" },
-    { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.9.0" },
-    { name = "nacos-sdk-python", specifier = ">=3.0.0" },
-    { name = "opencode-ai", specifier = ">=0.1.0a0" },
-    { name = "pre-commit", marker = "extra == 'dev'", specifier = ">=3.6.0" },
-    { name = "pydantic", specifier = ">=2.0.0" },
-    { name = "pydantic-settings", specifier = ">=2.0.0" },
-    { name = "pymysql", specifier = ">=1.1.0" },
-    { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0.0" },
-    { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.23.0" },
-    { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=4.0.0" },
-    { name = "python-dotenv", specifier = ">=1.0.0" },
-    { name = "redis", specifier = ">=5.0.0" },
-    { name = "rich", specifier = ">=13.7.0" },
-    { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.3.0" },
-    { name = "sanic", specifier = ">=24.0.0" },
-    { name = "sanic-cors", specifier = ">=2.0.0" },
-    { name = "sanic-ext", specifier = ">=24.0.0" },
-    { name = "structlog", specifier = ">=24.0.0" },
-    { name = "tortoise-orm", extras = ["asyncmy"], specifier = ">=0.21.0" },
-]
-provides-extras = ["claude", "dev"]
-
-[[package]]
 name = "aiofiles"
 version = "24.1.0"
 source = { registry = "https://pypi.tuna.tsinghua.edu.cn/simple" }
@@ -1423,6 +1357,72 @@ sdist = { url = "https://pypi.tuna.tsinghua.edu.cn/packages/01/ee/02a2c011bdab74
 wheels = [
     { url = "https://pypi.tuna.tsinghua.edu.cn/packages/04/4b/29cac41a4d98d144bf5f6d33995617b185d14b22401f75ca86f384e87ff1/h11-0.16.0-py3-none-any.whl", hash = "sha256:63cf8bbe7522de3bf65932fda1d9c2772064ffb3dae62d55932da54b31cb6c86", size = 37515, upload-time = "2025-04-24T03:35:24.344Z" },
 ]
+
+[[package]]
+name = "hermetic-agent"
+version = "0.1.0"
+source = { editable = "." }
+dependencies = [
+    { name = "asyncmy" },
+    { name = "asyncpg" },
+    { name = "cryptography" },
+    { name = "httpx" },
+    { name = "nacos-sdk-python" },
+    { name = "opencode-ai" },
+    { name = "pydantic" },
+    { name = "pydantic-settings" },
+    { name = "pymysql" },
+    { name = "python-dotenv" },
+    { name = "redis" },
+    { name = "rich" },
+    { name = "sanic" },
+    { name = "sanic-cors" },
+    { name = "sanic-ext" },
+    { name = "structlog" },
+    { name = "tortoise-orm", extra = ["asyncmy"] },
+]
+
+[package.optional-dependencies]
+claude = [
+    { name = "claude-agent-sdk" },
+]
+dev = [
+    { name = "mypy" },
+    { name = "pre-commit" },
+    { name = "pytest" },
+    { name = "pytest-asyncio" },
+    { name = "pytest-cov" },
+    { name = "ruff" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "asyncmy", specifier = ">=0.2.10" },
+    { name = "asyncpg", specifier = ">=0.29.0" },
+    { name = "claude-agent-sdk", marker = "extra == 'claude'", git = "https://github.com/anthropics/claude-agent-sdk-python?rev=v0.2.87" },
+    { name = "cryptography", specifier = ">=41.0.0" },
+    { name = "httpx", specifier = ">=0.27.0" },
+    { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.9.0" },
+    { name = "nacos-sdk-python", specifier = ">=3.0.0" },
+    { name = "opencode-ai", specifier = ">=0.1.0a0" },
+    { name = "pre-commit", marker = "extra == 'dev'", specifier = ">=3.6.0" },
+    { name = "pydantic", specifier = ">=2.0.0" },
+    { name = "pydantic-settings", specifier = ">=2.0.0" },
+    { name = "pymysql", specifier = ">=1.1.0" },
+    { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0.0" },
+    { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.23.0" },
+    { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=4.0.0" },
+    { name = "python-dotenv", specifier = ">=1.0.0" },
+    { name = "redis", specifier = ">=5.0.0" },
+    { name = "rich", specifier = ">=13.7.0" },
+    { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.3.0" },
+    { name = "sanic", specifier = ">=24.0.0" },
+    { name = "sanic-cors", specifier = ">=2.0.0" },
+    { name = "sanic-ext", specifier = ">=24.0.0" },
+    { name = "structlog", specifier = ">=24.0.0" },
+    { name = "tortoise-orm", extras = ["asyncmy"], specifier = ">=0.21.0" },
+]
+provides-extras = ["claude", "dev"]
 
 [[package]]
 name = "html5tagger"

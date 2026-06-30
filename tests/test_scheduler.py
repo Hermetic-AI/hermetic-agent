@@ -1,7 +1,7 @@
-"""Tests for Scheduler"""
+﻿"""Tests for Scheduler"""
 
 import pytest
-from openagent.core import Scheduler
+from hermetic_agent.core import Scheduler
 
 
 class TestScheduler:
