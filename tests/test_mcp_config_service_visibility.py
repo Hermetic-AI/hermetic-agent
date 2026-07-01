@@ -43,7 +43,7 @@ async def test_mcp_config_service_list_visible_only_returns_owner_and_public() -
     repo._store[priv.id] = priv
 
     alice = ActorContext(user_id="alice")
-    items = await svc.list(actor=alice, limit=10, offset=0)
+    items = await svc.list_for_actor(actor=alice, limit=10, offset=0)
     assert {c.code for c in items} == {"pub"}
 
 

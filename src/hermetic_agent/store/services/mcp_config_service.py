@@ -136,6 +136,19 @@ class McpConfigService:
     async def list(
         self,
         *,
+        limit: int = 50,
+        offset: int = 0,
+        include_deleted: bool = False,
+        **filters: Any,
+    ) -> list[McpConfig]:
+        return await self._repo.list(
+            limit=limit, offset=offset,
+            include_deleted=include_deleted, **filters,
+        )
+
+    async def list_for_actor(
+        self,
+        *,
         actor: ActorContext,
         limit: int = 50,
         offset: int = 0,
