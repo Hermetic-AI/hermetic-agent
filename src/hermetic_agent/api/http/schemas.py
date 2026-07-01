@@ -36,6 +36,13 @@ class ChatRequest(BaseModel):
     timeout: float | None = Field(None, description="超时时间（秒）")
     skills: list[str] | None = Field(None, description="技能名称列表")
     tools: list[str] | None = Field(None, description="工具名称列表")
+    extra_opencode_mcp: dict[str, dict] = Field(
+        default_factory=dict,
+        description=(
+            "Per-request 注入到 opencode mcpServers 的额外 server; "
+            "由 chat_inject 钩子在 chat handler 顶部合并进 bridge.chat。"
+        ),
+    )
 
 
 class ChatResponse(BaseModel):

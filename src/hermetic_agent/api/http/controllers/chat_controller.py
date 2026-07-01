@@ -787,6 +787,7 @@ async def chat(request: Request) -> JSONResponse:
             tools=params["tools"],
             timeout=json_body.timeout,
             mcp_token=_extract_effective_mcp_token(request),
+            mcp_servers=json_body.extra_opencode_mcp or None,
         )
 
         # P-Feb-2026: 持久化 assistant message + tool_calls, 然后 complete turn
@@ -1068,6 +1069,7 @@ async def chat_stream(request: Request) -> ResponseStream:
                 prompt_builder=prompt_builder,
                 scenario=scenario,
                 current_state=None,  # single-mode streaming: 走 initial state
+                mcp_servers=json_body.extra_opencode_mcp or None,
             )
             # 自动发送卡片（如舱位选择），在 LLM 响应前发送
             for auto_card in rewrite_result.auto_cards:

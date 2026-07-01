@@ -191,6 +191,11 @@ class AgentBridge:
         prompt_builder: Any = None,
         scenario: Any = None,
         current_state: str | None = None,
+        # --- chat_inject 注入的 per-request mcpServers (P3 Task 20 review) ---
+        # 由 chat_controller 从 ChatRequest.extra_opencode_mcp 透传.
+        # 当前 opencode adapter 不接受 mcp_servers kwarg, 这里仅记录到日志,
+        # 后续 Task (push-to-admin / opencode 增量 reload) 在 provider 层接.
+        mcp_servers: dict[str, dict] | None = None,
     ) -> ChatResult | AsyncIterator[Any]:
         """Route chat to the adapter that owns this session.
 
@@ -214,6 +219,8 @@ class AgentBridge:
                 一起用; 单独传会被忽略.
             current_state: 当前 state id; ``on_demand`` / ``explicit`` 策略
                 用来选 load_on_state 段; None 时回退 "S01".
+            mcp_servers: per-request 额外 mcpServers; key 是 MCP 名, value
+                是 opencode mcpServers 块除 name 外的字段; 当前仅记录.
         """
         agent_name = self._session_to_agent.get(session_id)
         if not agent_name:
@@ -231,6 +238,7 @@ class AgentBridge:
             tool_count=len(tools) if tools else 0,
             has_prompt_builder=prompt_builder is not None,
             has_scenario=scenario is not None,
+            extra_mcp_server_count=len(mcp_servers) if mcp_servers else 0,
         )
 
         # --- Skill 注入: 渐进式 (P6) > 旧全量 (向后兼容) ---

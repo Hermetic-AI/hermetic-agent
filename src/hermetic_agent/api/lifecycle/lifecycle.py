@@ -371,7 +371,7 @@ async def startup(app: Sanic, settings: Any) -> None:
     # P-Feb-2026: 挂上新的 ServiceContainer, 让 controller 用它持久化
     # user message / chat_turn / parts / assistant message. 旧 ``storage`` shim
     # 只写 sessions + assistant message, 新 container 写完整 6 实体 + audit_log.
-    from hermetic_agent.store.services.container import build_container_from_settings
+    from hermetic_agent.store.services import build_container_from_settings
     try:
         services = await build_container_from_settings(settings)
         app.ctx.services = services
