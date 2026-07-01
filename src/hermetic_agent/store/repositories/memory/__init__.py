@@ -18,6 +18,9 @@ from hermetic_agent.store.repositories.memory.message_repo_memory import (
 from hermetic_agent.store.repositories.memory.part_repo_memory import (
     MemoryPartRepository,
 )
+from hermetic_agent.store.repositories.memory.prompt_repo_memory import (
+    MemoryPromptRepository,
+)
 from hermetic_agent.store.repositories.memory.scenario_repo_memory import (
     MemoryScenarioRepository,
 )
@@ -26,6 +29,9 @@ from hermetic_agent.store.repositories.memory.session_repo_memory import (
 )
 from hermetic_agent.store.repositories.memory.skill_repo_memory import (
     MemorySkillRepository,
+)
+from hermetic_agent.store.repositories.memory.work_trace_repo_memory import (
+    MemoryWorkTraceRepository,
 )
 
 __all__ = [
@@ -37,4 +43,6 @@ __all__ = [
     "MemoryAuditLogRepository",
     "MemorySkillRepository",
     "MemoryMcpConfigRepository",
+    "MemoryWorkTraceRepository",
+    "MemoryPromptRepository",
 ]

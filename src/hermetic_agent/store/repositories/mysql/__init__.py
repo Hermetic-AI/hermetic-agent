@@ -8,9 +8,11 @@ from hermetic_agent.store.repositories.mysql.chat_turn_repo_mysql import MySQLCh
 from hermetic_agent.store.repositories.mysql.mcp_config_repo_mysql import MySQLMcpConfigRepository
 from hermetic_agent.store.repositories.mysql.message_repo_mysql import MySQLMessageRepository
 from hermetic_agent.store.repositories.mysql.part_repo_mysql import MySQLPartRepository
+from hermetic_agent.store.repositories.mysql.prompt_repo_mysql import MySQLPromptRepository
 from hermetic_agent.store.repositories.mysql.scenario_repo_mysql import MySQLScenarioRepository
 from hermetic_agent.store.repositories.mysql.session_repo_mysql import MySQLSessionRepository
 from hermetic_agent.store.repositories.mysql.skill_repo_mysql import MySQLSkillRepository
+from hermetic_agent.store.repositories.mysql.work_trace_repo_mysql import MySQLWorkTraceRepository
 
 __all__ = [
     "MySQLScenarioRepository",
@@ -21,4 +23,6 @@ __all__ = [
     "MySQLAuditLogRepository",
     "MySQLSkillRepository",
     "MySQLMcpConfigRepository",
+    "MySQLWorkTraceRepository",
+    "MySQLPromptRepository",
 ]

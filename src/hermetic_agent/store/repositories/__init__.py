@@ -20,6 +20,7 @@ from hermetic_agent.store.repositories.memory import (
     MemoryScenarioRepository,
     MemorySessionRepository,
     MemorySkillRepository,
+    MemoryWorkTraceRepository,
 )
 from hermetic_agent.store.repositories.message_repo import MessageRepository
 
@@ -30,14 +31,18 @@ from hermetic_agent.store.repositories.mysql import (
     MySQLMcpConfigRepository,
     MySQLMessageRepository,
     MySQLPartRepository,
+    MySQLPromptRepository,
     MySQLScenarioRepository,
     MySQLSessionRepository,
     MySQLSkillRepository,
+    MySQLWorkTraceRepository,
 )
 from hermetic_agent.store.repositories.part_repo import PartRepository
+from hermetic_agent.store.repositories.prompt_repo import PromptRepository
 from hermetic_agent.store.repositories.scenario_repo import ScenarioRepository
 from hermetic_agent.store.repositories.session_repo import SessionRepository
 from hermetic_agent.store.repositories.skill_repo import SkillRepository
+from hermetic_agent.store.repositories.work_trace_repo import WorkTraceRepository
 
 __all__ = [
     # ABC
@@ -50,6 +55,8 @@ __all__ = [
     "AuditLogRepository",
     "SkillRepository",
     "McpConfigRepository",
+    "WorkTraceRepository",
+    "PromptRepository",
     # MySQL
     "MySQLScenarioRepository",
     "MySQLSessionRepository",
@@ -59,6 +66,8 @@ __all__ = [
     "MySQLAuditLogRepository",
     "MySQLSkillRepository",
     "MySQLMcpConfigRepository",
+    "MySQLWorkTraceRepository",
+    "MySQLPromptRepository",
     # Memory
     "MemoryScenarioRepository",
     "MemorySessionRepository",
@@ -68,4 +77,6 @@ __all__ = [
     "MemoryAuditLogRepository",
     "MemorySkillRepository",
     "MemoryMcpConfigRepository",
+    "MemoryWorkTraceRepository",
+    "MemoryPromptRepository",
 ]
