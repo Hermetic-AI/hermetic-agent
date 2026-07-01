@@ -25,7 +25,7 @@ def build_asset_clients(settings: Any) -> dict[str, Any]:
     else:
         from hermetic_agent.store.object.memory_skill_files import MemorySkillFiles
         skills_dir.mkdir(parents=True, exist_ok=True)
-        skill_files = MemorySkillFiles(skills_dir, settings=settings)
+        skill_files = MemorySkillFiles(skills_dir)
 
     return {"minio": minio, "skill_files": skill_files}
 
