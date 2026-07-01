@@ -167,6 +167,14 @@ def create_app(settings: Settings | None = None) -> Sanic:
     # 这里不出现 ``app.blueprint(...)`` 任何调用, 全在那一个函数里.
     register_all_blueprints(app)
 
+    # ActorContextMiddleware — 从请求 headers 提取调用方身份到
+    # ``request.ctx.actor``, 供下游 controller / service 做权限判断与审计.
+    # 必须在 scenario / log middleware 之前注册, 保证它们读 ctx.actor 时
+    # 已经有值 (log 写入 operator 字段依赖它).
+    from hermetic_agent.api.http.middleware.actor_context import ActorContextMiddleware
+
+    ActorContextMiddleware(app)
+
     _install_error_handler(app)
 
     # 注册 scenario middleware — **必须在 finalize_middleware 之前**,

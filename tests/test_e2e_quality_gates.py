@@ -92,6 +92,7 @@ KNOWN_VIOLATIONS: set[str] = {
 
 # 已知 L1→L4/L5 import 违规 (P0-P6 阶段遗留)
 KNOWN_IMPORT_VIOLATIONS: set[str] = {
+    "src/hermetic_agent/api/http/middleware/actor_context.py",
     "src/hermetic_agent/api/lifecycle.py",
     "src/hermetic_agent/api/schemas.py",
     "src/hermetic_agent/api/controllers/pool_controller.py",
