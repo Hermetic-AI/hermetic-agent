@@ -20,7 +20,7 @@
 ``required_envs`` + scenario YAML 的 ``env`` 字段声明, 不进入基座
 Settings. 详见 ``docs/core-skill-boundary.md`` §4.5.
 
-按职责分 7 个 section (按文件内顺序):
+按职责分 18 个 section (按文件内顺序):
 
 1.  Server         — host/port/workers/debug/CORS/Sanic 超时
 2.  OpenCode       — opencode_serve URL + admin port + reload settle
@@ -35,6 +35,10 @@ Settings. 详见 ``docs/core-skill-boundary.md`` §4.5.
 11. Launcher       — config_dir / FORBIDDEN_CWDS / opencode serve cmd / port
 12. Chat / SSE     — keepalive interval / client timeouts
 13. App Metadata   — OpenAPI 文档 (title/version/contact/license)
+15. Nacos          — 配置中心 + AI 注册表 (MCP/Agent/Skill/Prompt)
+16. MinIO          — asset object storage (endpoint/credentials/timeout/bucket/backend)
+17. Agent Defaults — default code/model/tool_level/visibility/enabled
+18. Skill Files    — memory backend 本地缓存目录
 """
 
 from __future__ import annotations
@@ -653,7 +657,78 @@ class Settings(BaseSettings):
     )
     nacos_service_port: int = Field(
         default=8000,
-        description="Hub 注册到 Nacos 的端口 (跟 Hub port 一致).",
+        description="Hub 注册到 Nacos 的端口 (跟 Hub port 一致)",
+    )
+
+    # =========================================================================
+    # 16. MinIO (asset object storage backend)
+    # =========================================================================
+
+    minio_endpoint: str = Field(
+        default="127.0.0.1:9000",
+        description="MinIO host:port (no scheme)",
+    )
+    minio_secure: bool = Field(
+        default=False,
+        description="MinIO 是否走 https",
+    )
+    minio_access_key: str = Field(
+        default="hermetic-agent-hub",
+        description="MinIO access key",
+    )
+    minio_secret_key: str = Field(
+        default="change-me",
+        description="MinIO secret key",
+    )
+    minio_bucket_skills: str = Field(
+        default="hermetic-agent-skills",
+        description="Skill 文件所在 MinIO bucket 名",
+    )
+    minio_connect_timeout: float = Field(
+        default=5.0,
+        description="MinIO 连接超时 (秒)",
+    )
+    minio_request_timeout: float = Field(
+        default=30.0,
+        description="MinIO 单次请求超时 (秒)",
+    )
+    asset_backend: str = Field(
+        default="memory",
+        description="Asset 存储后端: 'memory' | 'minio'",
+    )
+
+    # =========================================================================
+    # 17. Agent defaults (新建 agent 时的默认值)
+    # =========================================================================
+
+    agent_default_code: str = Field(
+        default="general-assistant",
+        description="Agent 默认 code (前端 dropdown 的 default)",
+    )
+    agent_default_model: str = Field(
+        default="openai/gpt-4o-mini",
+        description="Agent 默认 model",
+    )
+    agent_default_tool_level: str = Field(
+        default="standard",
+        description="Agent 默认 tool_level: minimal/standard/full",
+    )
+    agent_default_visibility: str = Field(
+        default="private",
+        description="Agent 默认 visibility: private/team/public",
+    )
+    agent_enabled: bool = Field(
+        default=True,
+        description="Agent Pool 注册时是否默认启用新 agent",
+    )
+
+    # =========================================================================
+    # 18. Skill files (memory backend)
+    # =========================================================================
+
+    skills_default_dir: str = Field(
+        default="work/cache/_memory-skill-files",
+        description="memory backend 时本地的 skill 文件根",
     )
 
 
