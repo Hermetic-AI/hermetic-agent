@@ -163,6 +163,8 @@ services:
         condition: service_healthy
       opencode-1:
         condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
     networks: [sandbox-net]
     volumes:
       - ./work:/app/work:ro
