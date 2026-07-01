@@ -9,6 +9,9 @@ from hermetic_agent.store.repositories.memory.audit_log_repo_memory import (
 from hermetic_agent.store.repositories.memory.chat_turn_repo_memory import (
     MemoryChatTurnRepository,
 )
+from hermetic_agent.store.repositories.memory.command_repo_memory import (
+    MemoryCommandRepository,
+)
 from hermetic_agent.store.repositories.memory.mcp_config_repo_memory import (
     MemoryMcpConfigRepository,
 )
@@ -45,4 +48,5 @@ __all__ = [
     "MemoryMcpConfigRepository",
     "MemoryWorkTraceRepository",
     "MemoryPromptRepository",
+    "MemoryCommandRepository",
 ]

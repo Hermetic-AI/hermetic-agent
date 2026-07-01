@@ -5,6 +5,7 @@
 
 from hermetic_agent.store.repositories.mysql.audit_log_repo_mysql import MySQLAuditLogRepository
 from hermetic_agent.store.repositories.mysql.chat_turn_repo_mysql import MySQLChatTurnRepository
+from hermetic_agent.store.repositories.mysql.command_repo_mysql import MySQLCommandRepository
 from hermetic_agent.store.repositories.mysql.mcp_config_repo_mysql import MySQLMcpConfigRepository
 from hermetic_agent.store.repositories.mysql.message_repo_mysql import MySQLMessageRepository
 from hermetic_agent.store.repositories.mysql.part_repo_mysql import MySQLPartRepository
@@ -25,4 +26,5 @@ __all__ = [
     "MySQLMcpConfigRepository",
     "MySQLWorkTraceRepository",
     "MySQLPromptRepository",
+    "MySQLCommandRepository",
 ]

@@ -17,6 +17,7 @@
 
 from hermetic_agent.store.models.audit_log import AuditLog
 from hermetic_agent.store.models.chat_turn import ChatTurn
+from hermetic_agent.store.models.command import Command
 from hermetic_agent.store.models.mcp_config import McpConfig
 from hermetic_agent.store.models.message import Message
 from hermetic_agent.store.models.part import Part
@@ -41,4 +42,5 @@ __all__ = [
     "SkillModel",
     "McpConfig",
     "Prompt",
+    "Command",
 ]
