@@ -64,6 +64,7 @@ from hermetic_agent.api.http.streaming import (
     turn_event_to_sse,
 )
 from hermetic_agent.auip.stream_interceptor import stream_intercept_card_renderers
+from hermetic_agent.chat_inject.injector_adapter import inject_agent_into_chat
 from hermetic_agent.api.http.streaming.card_message_rewriter import rewrite_card_message
 from hermetic_agent.api.http.streaming.ask_user import _ask_user_to_card  # noqa: F401 (兼容 re-export)
 from hermetic_agent.providers.base import ChatMessage
@@ -715,6 +716,15 @@ async def chat(request: Request) -> JSONResponse:
             ErrorResponse(error=f"Invalid request body: {e}").model_dump(),
             status=400,
         )
+
+    json_body = await inject_agent_into_chat(
+        request=request,
+        chat_request=json_body,
+        agent_service=getattr(
+            getattr(request.app.ctx, "services", None), "agent", None,
+        ),
+        setting_default_code=getattr(request.app.config, "AGENT_DEFAULT_CODE", None),
+    )
 
     scenario, injection, err = _resolve_injection(request, json_body)
     if err is not None:
