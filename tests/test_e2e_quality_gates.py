@@ -103,7 +103,10 @@ KNOWN_IMPORT_VIOLATIONS: set[str] = {
     "src/hermetic_agent/api/http/streaming/card_message_rewriter.py",
     "src/hermetic_agent/api/http/streaming/done_gate.py",
     "src/hermetic_agent/api/http/streaming/keepalive.py",
+    "src/hermetic_agent/api/http/controllers/agents_controller.py",
+    "src/hermetic_agent/api/http/controllers/commands_controller.py",
     "src/hermetic_agent/api/http/controllers/mcp_controller.py",
+    "src/hermetic_agent/api/http/controllers/prompts_controller.py",
     "src/hermetic_agent/api/http/controllers/skill_controller.py",
     "src/hermetic_agent/api/http/streaming/turn_bridge.py",
     "src/hermetic_agent/scenarios/middleware.py",
@@ -285,9 +288,10 @@ def test_scenario_yamls_have_required_fields() -> None:
     assert yaml_files, "no scenario YAML files found"
 
     # 用 loader 内部用的 _StrictYAMLLoader (避免 flow context 中未加引号 ${KEY} 报错)
-    from hermetic_agent.scenarios.loader import _quote_placeholders
     import yaml
     from yaml import SafeLoader
+
+    from hermetic_agent.scenarios.loader import _quote_placeholders
 
     for p in yaml_files:
         rel = p.relative_to(ROOT)

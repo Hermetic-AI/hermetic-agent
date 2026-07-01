@@ -15,15 +15,19 @@ from sanic import Sanic
 # (2) OpenAPI 文档里端点的展示顺序
 # (3) 调试日志里 middleware 看到的端点列表顺序
 # 所以新加 controller 时**只能 append 到末尾**, 不要插队.
+from hermetic_agent.api.http.controllers.agents_controller import agent_bp
 from hermetic_agent.api.http.controllers.chat_controller import chat_bp
+from hermetic_agent.api.http.controllers.commands_controller import command_bp
 from hermetic_agent.api.http.controllers.mcp_controller import mcp_config_bp
 from hermetic_agent.api.http.controllers.pool_controller import pool_bp
+from hermetic_agent.api.http.controllers.prompts_controller import prompt_bp
 from hermetic_agent.api.http.controllers.question_controller import question_bp
 from hermetic_agent.api.http.controllers.registry_controller import registry_bp
 from hermetic_agent.api.http.controllers.scenario_controller import scenario_bp
 from hermetic_agent.api.http.controllers.session_controller import session_bp
 from hermetic_agent.api.http.controllers.skill_controller import skill_bp
 from hermetic_agent.api.http.controllers.todo_controller import todo_bp
+from hermetic_agent.api.http.controllers.turn_work_trace_controller import trace_bp
 from hermetic_agent.api.http.turn_routes import turn_bp
 
 
@@ -58,6 +62,14 @@ def register_all_blueprints(app: Sanic) -> None:
     # DB-backed Skill / MCP Config CRUD 端点 (/agent/skills/... / /agent/mcp-configs/...)
     app.blueprint(skill_bp)
     app.blueprint(mcp_config_bp)
+
+    # DB-backed asset registry (prompt / command / agent) CRUD 端点
+    app.blueprint(prompt_bp)
+    app.blueprint(command_bp)
+    app.blueprint(agent_bp)
+
+    # WorkTrace 只读端点 (/agent/turns/.../work-trace / /agent/sessions/.../work-traces)
+    app.blueprint(trace_bp)
 
     # 业务 auth 代理 (登录 / 验证码) 由业务 SKILL 通过 GenericAuthProxy 注册,
     # 不在基座硬编码. 详见 docs/core-skill-boundary.md §4.5.
