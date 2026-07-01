@@ -2,11 +2,12 @@
 import { MainLayout } from './components/layout';
 import { ChatPage } from './components/chat/ChatPage';
 import { LoginPage } from './components/auth';
+import { AssetsPage } from './routes/admin/assets';
 import { HealthProvider } from './contexts/HealthContext';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { logger } from './utils/logger';
 
-type NavId = 'chat';
+type NavId = 'chat' | 'assets';
 
 /**
  * Session id is persisted in localStorage.  When the user starts a new
@@ -50,7 +51,9 @@ function AppContent({
       userLabel={userLabel}
       onLogout={onLogout}
     >
-      <ChatPage key={chatKey} onNewChat={handleNewChat} />
+      {activeNav === 'assets'
+        ? <AssetsPage />
+        : <ChatPage key={chatKey} onNewChat={handleNewChat} />}
     </MainLayout>
   );
 }
