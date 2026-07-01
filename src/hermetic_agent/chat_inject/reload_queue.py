@@ -24,7 +24,11 @@ ReloadApplier = Callable[[ReloadTask], Awaitable[bool]]
 class ReloadQueue:
     """单消费者 + 10s 防抖队列, SkillOverlayManager 通过它触发 /admin/reload.
 
-    enqueue 在 (node_id, paths, debounce_window) 内幂等.
+    enqueue 在 (node_id, paths, debounce_window) 内幂等:
+    同一个 (node_id, paths) 在同一 debounce 时间桶内只入队一次, 后续重复请求直接跳过.
+
+    注意: ``_seen`` dict 永不清理, 长时间运行进程会单调增长.
+    如需有界, 由调用方周期性重建 ReloadQueue 或外部清理.
     """
 
     def __init__(self, *, apply: ReloadApplier,
@@ -69,10 +73,6 @@ class ReloadQueue:
             except Exception as e:  # noqa: BLE001
                 logger.error("reload_apply_failed", error=str(e),
                              node_id=task.node_id)
-            finally:
-                bucket = int(task.enqueue_ts // self._debounce)
-                self._seen.pop(
-                    (task.node_id, frozenset(task.paths), bucket), None)
 
 
 __all__ = ["ReloadQueue", "ReloadTask"]

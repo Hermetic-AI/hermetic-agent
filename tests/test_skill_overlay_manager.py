@@ -50,14 +50,14 @@ async def test_ensure_active_detects_change_and_reenqueues():
             reloads.append(t.node_id)
             return True
 
-        q = ReloadQueue(apply=apply)
+        q = ReloadQueue(apply=apply, debounce_seconds=0.05)
         await q.start()
         try:
             mgr = SkillOverlayManager(ob, q, node_id="opencode-1")
             await mgr.ensure_active(["flight"])
-            await asyncio.sleep(0.05)
             await sf.upload_file("flight", "SKILL.md",
                                  io.BytesIO(b"v2"), size=20)
+            await asyncio.sleep(0.1)
             await mgr.ensure_active(["flight"])
         finally:
             await q.stop()
