@@ -16,8 +16,9 @@ ID 兼容: Tortoise ``UUIDField(binary=False)`` 在 Python 里返回 ``uuid.UUID
 from __future__ import annotations
 
 import uuid
+from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any
+from typing import Any, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -49,8 +50,26 @@ def iso_or_none(dt: datetime | None) -> str | None:
     return dt.isoformat() if dt else None
 
 
+@dataclass
+class ActorContext:
+    """调用方身份上下文 — 资产 CRUD / resolve 时的权限判断来源.
+
+    通过 dataclass 而非 pydantic BaseModel 是因为它跨 Service / Controller
+    多层传递, 用纯数据载体更轻; 业务字段(roles)用 default_factory 避开
+    可变默认值.
+    """
+
+    user_id: str
+    tenant_id: Optional[str] = None
+    roles: list[str] = field(default_factory=list)
+
+    def is_anonymous(self) -> bool:
+        return self.user_id == "anonymous"
+
+
 __all__ = [
     "DTOMixin",
     "iso_or_none",
     "Field",
+    "ActorContext",
 ]

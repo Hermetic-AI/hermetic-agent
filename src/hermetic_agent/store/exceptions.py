@@ -43,6 +43,19 @@ class ValidationError(StoreError):
     """入参校验失败(超出 DTO pydantic 范围, 在 Service / Repository 层加的额外业务规则)."""
 
 
+class PolicyError(StoreError):
+    """权限 / 策略冲突 (例: 非 owner 尝试修改资源).
+
+    第一参数 code 表示子类型 (例 ``"FORBIDDEN"``), detail 给具体上下文.
+    """
+
+    def __init__(self, code: str, *, detail: str | None = None) -> None:
+        msg = f"[{code}] {detail}" if detail else f"[{code}]"
+        super().__init__(msg)
+        self.code = code
+        self.detail = detail
+
+
 class TransactionError(StoreError):
     """事务回滚 / 死锁 / 超时."""
 
