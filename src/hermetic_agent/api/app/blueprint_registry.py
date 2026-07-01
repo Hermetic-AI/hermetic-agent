@@ -26,6 +26,7 @@ from hermetic_agent.api.http.controllers.registry_controller import registry_bp
 from hermetic_agent.api.http.controllers.scenario_controller import scenario_bp
 from hermetic_agent.api.http.controllers.session_controller import session_bp
 from hermetic_agent.api.http.controllers.skill_controller import skill_bp
+from hermetic_agent.api.http.controllers.skill_files_controller import skill_files_bp
 from hermetic_agent.api.http.controllers.todo_controller import todo_bp
 from hermetic_agent.api.http.controllers.turn_work_trace_controller import trace_bp
 from hermetic_agent.api.http.turn_routes import turn_bp
@@ -70,6 +71,9 @@ def register_all_blueprints(app: Sanic) -> None:
 
     # WorkTrace 只读端点 (/agent/turns/.../work-trace / /agent/sessions/.../work-traces)
     app.blueprint(trace_bp)
+
+    # Skill 文件资产 (MinIO / 内存) CRUD 端点 — /agent/skills/<code>/files/...
+    app.blueprint(skill_files_bp)
 
     # 业务 auth 代理 (登录 / 验证码) 由业务 SKILL 通过 GenericAuthProxy 注册,
     # 不在基座硬编码. 详见 docs/core-skill-boundary.md §4.5.

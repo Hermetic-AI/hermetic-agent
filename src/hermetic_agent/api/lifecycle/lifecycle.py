@@ -363,6 +363,11 @@ async def startup(app: Sanic, settings: Any) -> None:
     app.ctx.settings = settings  # P6: 让 controller 能取到 settings
     app.ctx.prompt_builder = prompt_builder  # P0-1: 渐进式 SKILL 加载
 
+    # asset-registry Task 12: 构造 asset 客户端 (MinIO / 内存) 注入 app.ctx.
+    # SkillFilesController 等 L1 端点从 ``app.ctx.asset_clients`` 取客户端.
+    from hermetic_agent.store.object.factory import build_asset_clients
+    app.ctx.asset_clients = build_asset_clients(settings)
+
     # P-Feb-2026: 挂上新的 ServiceContainer, 让 controller 用它持久化
     # user message / chat_turn / parts / assistant message. 旧 ``storage`` shim
     # 只写 sessions + assistant message, 新 container 写完整 6 实体 + audit_log.

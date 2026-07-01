@@ -108,6 +108,7 @@ KNOWN_IMPORT_VIOLATIONS: set[str] = {
     "src/hermetic_agent/api/http/controllers/mcp_controller.py",
     "src/hermetic_agent/api/http/controllers/prompts_controller.py",
     "src/hermetic_agent/api/http/controllers/skill_controller.py",
+    "src/hermetic_agent/api/http/controllers/skill_files_controller.py",
     "src/hermetic_agent/api/http/streaming/turn_bridge.py",
     "src/hermetic_agent/scenarios/middleware.py",
 }
