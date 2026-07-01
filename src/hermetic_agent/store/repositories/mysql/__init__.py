@@ -3,6 +3,7 @@
 每个实体一个 MySQL 实现, 都依赖 ``MySQLPool``.
 """
 
+from hermetic_agent.store.repositories.mysql.agent_repo_mysql import MySQLAgentRepository
 from hermetic_agent.store.repositories.mysql.audit_log_repo_mysql import MySQLAuditLogRepository
 from hermetic_agent.store.repositories.mysql.chat_turn_repo_mysql import MySQLChatTurnRepository
 from hermetic_agent.store.repositories.mysql.command_repo_mysql import MySQLCommandRepository
@@ -27,4 +28,5 @@ __all__ = [
     "MySQLWorkTraceRepository",
     "MySQLPromptRepository",
     "MySQLCommandRepository",
+    "MySQLAgentRepository",
 ]

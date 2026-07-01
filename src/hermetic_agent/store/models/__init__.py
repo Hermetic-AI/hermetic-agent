@@ -15,6 +15,10 @@
       不支持的循环依赖
 """
 
+# 在所有 Model 类已定义后, 修复已实例化 ``JSONField`` 的 ``encoder`` 默认值.
+# 见 ``hermetic_agent.store.models._common._patch_existing_jsonfield_encoders`` 注释.
+from hermetic_agent.store.models._common import _patch_existing_jsonfield_encoders
+from hermetic_agent.store.models.agent import Agent
 from hermetic_agent.store.models.audit_log import AuditLog
 from hermetic_agent.store.models.chat_turn import ChatTurn
 from hermetic_agent.store.models.command import Command
@@ -26,9 +30,6 @@ from hermetic_agent.store.models.scenario import Scenario
 from hermetic_agent.store.models.session import Session
 from hermetic_agent.store.models.skill import Skill as SkillModel
 
-# 在所有 Model 类已定义后, 修复已实例化 ``JSONField`` 的 ``encoder`` 默认值.
-# 见 ``hermetic_agent.store.models._common._patch_existing_jsonfield_encoders`` 注释.
-from hermetic_agent.store.models._common import _patch_existing_jsonfield_encoders
 _patch_existing_jsonfield_encoders()
 
 
@@ -43,4 +44,5 @@ __all__ = [
     "McpConfig",
     "Prompt",
     "Command",
+    "Agent",
 ]

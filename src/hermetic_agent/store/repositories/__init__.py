@@ -6,6 +6,7 @@
 """
 
 from hermetic_agent.store.repositories._base import Repository
+from hermetic_agent.store.repositories.agent_repo import AgentRepository
 from hermetic_agent.store.repositories.audit_log_repo import AuditLogRepository
 from hermetic_agent.store.repositories.chat_turn_repo import ChatTurnRepository
 from hermetic_agent.store.repositories.command_repo import CommandRepository
@@ -13,6 +14,7 @@ from hermetic_agent.store.repositories.mcp_config_repo import McpConfigRepositor
 
 # Memory 实现
 from hermetic_agent.store.repositories.memory import (
+    MemoryAgentRepository,
     MemoryAuditLogRepository,
     MemoryChatTurnRepository,
     MemoryCommandRepository,
@@ -28,6 +30,7 @@ from hermetic_agent.store.repositories.message_repo import MessageRepository
 
 # MySQL 实现
 from hermetic_agent.store.repositories.mysql import (
+    MySQLAgentRepository,
     MySQLAuditLogRepository,
     MySQLChatTurnRepository,
     MySQLCommandRepository,
@@ -61,6 +64,7 @@ __all__ = [
     "WorkTraceRepository",
     "PromptRepository",
     "CommandRepository",
+    "AgentRepository",
     # MySQL
     "MySQLScenarioRepository",
     "MySQLSessionRepository",
@@ -73,6 +77,7 @@ __all__ = [
     "MySQLWorkTraceRepository",
     "MySQLPromptRepository",
     "MySQLCommandRepository",
+    "MySQLAgentRepository",
     # Memory
     "MemoryScenarioRepository",
     "MemorySessionRepository",
@@ -85,4 +90,5 @@ __all__ = [
     "MemoryWorkTraceRepository",
     "MemoryPromptRepository",
     "MemoryCommandRepository",
+    "MemoryAgentRepository",
 ]

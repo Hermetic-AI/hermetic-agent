@@ -3,6 +3,9 @@
 每个实体一个内存版, 用于开发 / 测试.
 """
 
+from hermetic_agent.store.repositories.memory.agent_repo_memory import (
+    MemoryAgentRepository,
+)
 from hermetic_agent.store.repositories.memory.audit_log_repo_memory import (
     MemoryAuditLogRepository,
 )
@@ -49,4 +52,5 @@ __all__ = [
     "MemoryWorkTraceRepository",
     "MemoryPromptRepository",
     "MemoryCommandRepository",
+    "MemoryAgentRepository",
 ]
