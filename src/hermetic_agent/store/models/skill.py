@@ -31,12 +31,22 @@ class Skill(Model):
     config = fields.JSONField(null=True, default=None, description="skill.yaml 完整配置 (JSON)")
     source = fields.CharField(max_length=32, default="db", description="来源: db / yaml / builtin")
     status = fields.CharField(max_length=32, default="enabled", description="enabled / disabled / draft")
+    owner_user_id = fields.CharField(max_length=128, default="anonymous", index=True)
+    visibility = fields.CharField(max_length=16, default="private", index=True)
+    file_count = fields.IntField(default=0, description="MinIO 中文件总数")
+    file_fingerprint = fields.CharField(max_length=64, default="", description="所有 etag 排序 sha1")
     is_deleted = fields.BooleanField(default=False, description="软删除")
     deleted_at = fields.DatetimeField(null=True, default=None)
+    created_at = fields.DatetimeField(auto_now_add=True, description="创建时间")
+    updated_at = fields.DatetimeField(auto_now=True, description="更新时间")
 
     class Meta:
         table = "skills"
-        indexes = (("status", "is_deleted"),)
+        indexes = [
+            ("status", "is_deleted"),
+            ("owner_user_id", "visibility", "is_deleted"),
+            ("updated_at",),
+        ]
         ordering = ["-updated_at"]
 
     def __str__(self) -> str:
