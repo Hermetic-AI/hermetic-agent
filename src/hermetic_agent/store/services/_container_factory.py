@@ -7,18 +7,6 @@ from __future__ import annotations
 
 import structlog
 
-from hermetic_agent.store.repositories.agent_repo import AgentRepository
-from hermetic_agent.store.repositories.audit_log_repo import AuditLogRepository
-from hermetic_agent.store.repositories.chat_turn_repo import ChatTurnRepository
-from hermetic_agent.store.repositories.command_repo import CommandRepository
-from hermetic_agent.store.repositories.mcp_config_repo import McpConfigRepository
-from hermetic_agent.store.repositories.message_repo import MessageRepository
-from hermetic_agent.store.repositories.part_repo import PartRepository
-from hermetic_agent.store.repositories.prompt_repo import PromptRepository
-from hermetic_agent.store.repositories.scenario_repo import ScenarioRepository
-from hermetic_agent.store.repositories.session_repo import SessionRepository
-from hermetic_agent.store.repositories.skill_repo import SkillRepository
-from hermetic_agent.store.repositories.work_trace_repo import WorkTraceRepository
 from hermetic_agent.store.services.container import ServiceContainer, build_container
 
 logger = structlog.get_logger(__name__)
@@ -55,7 +43,7 @@ def _memory_repos() -> dict[str, object]:
     }
 
 
-async def _mysql_repos() -> dict[str, object]:
+async def _mysql_repos(settings) -> dict[str, object]:
     from hermetic_agent.store.models._common import init_tortoise
     from hermetic_agent.store.repositories.mysql import (
         MySQLAgentRepository,
@@ -71,11 +59,15 @@ async def _mysql_repos() -> dict[str, object]:
         MySQLSkillRepository,
         MySQLWorkTraceRepository,
     )
-    dsn = "mysql://root@127.0.0.1:3306/hermetic_agent"
-    await init_tortoise(dsn, generate_schemas=True)
+    dsn = getattr(
+        settings, "mysql_dsn", "mysql://root@127.0.0.1:3306/hermetic_agent",
+    )
+    echo = getattr(settings, "mysql_echo", False)
+    await init_tortoise(dsn, echo=echo, generate_schemas=True)
     logger.info(
         "container_backend_mysql",
         note="Tortoise.init + generate_schemas; no separate MySQLPool needed",
+        echo=echo,
     )
     return {
         "scenario_repo": MySQLScenarioRepository(),
@@ -102,19 +94,10 @@ async def build_container_from_settings(
         logger.info("container_backend_memory")
         repos = _memory_repos()
     elif backend == "mysql":
-        repos = await _mysql_repos()
+        repos = await _mysql_repos(settings)
     else:
         raise ValueError(f"Unsupported storage_backend: {backend!r}")
     return build_container(**repos)  # type: ignore[arg-type]
 
 
 __all__ = ["build_container_from_settings"]
-
-
-# Re-export to keep import path stable
-_ = (
-    AgentRepository, AuditLogRepository, ChatTurnRepository,
-    CommandRepository, McpConfigRepository, MessageRepository,
-    PartRepository, PromptRepository, ScenarioRepository,
-    SessionRepository, SkillRepository, WorkTraceRepository,
-)

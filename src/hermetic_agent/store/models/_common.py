@@ -15,7 +15,6 @@ from typing import Any
 
 from tortoise import Tortoise
 
-
 #: 注册到 Tortoise 的 model 模块路径 (``modules={"models": [...]}``).
 #: ``Tortoise.init`` 会 import 这些 module 并收集 ``tortoise.models.Model`` 子类.
 MODULES_PATH: list[str] = [
@@ -98,6 +97,7 @@ async def init_tortoise(
     db_url: str,
     *,
     generate_schemas: bool = True,
+    echo: bool = False,
 ) -> None:
     """初始化 Tortoise + (可选) 建表.
 
@@ -106,10 +106,15 @@ async def init_tortoise(
             ``sqlite://:memory:`` (测试用).
         generate_schemas: True 时自动建表 (开发 / 容器部署); False 时
             跳过 (生产用 Alembic 迁移时).
+        echo: True 时把 ``tortoise.db_client`` 日志级别降到 DEBUG, 打印所有
+            执行的 SQL (开发调试用). 默认 False 走 WARNING, 不打 SQL.
 
     Raises:
         ConfigurationError: db_url 格式错 / 模块路径找不到 model.
     """
+    if echo:
+        import logging
+        logging.getLogger("tortoise.db_client").setLevel(logging.DEBUG)
     await Tortoise.init(
         db_url=db_url,
         modules={"models": MODULES_PATH},

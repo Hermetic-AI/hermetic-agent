@@ -11,7 +11,6 @@ Service 之间的依赖通过构造函数注入, 不直接 import 其他 Service
 """
 
 from hermetic_agent.store.services._agent_resolve import ResolvedAgent
-from hermetic_agent.store.services._agent_resolve import ResolvedAgent
 from hermetic_agent.store.services._container_factory import build_container_from_settings
 from hermetic_agent.store.services.agent_service import AgentService
 from hermetic_agent.store.services.audit_log_service import AuditLogService
