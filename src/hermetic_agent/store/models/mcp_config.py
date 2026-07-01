@@ -31,12 +31,17 @@ class McpConfig(Model):
     config = fields.JSONField(null=True, default=None, description="完整配置 JSON (兜底)")
     source = fields.CharField(max_length=32, default="db", description="来源: db / json / env")
     status = fields.CharField(max_length=32, default="enabled", description="enabled / disabled / draft")
+    owner_user_id = fields.CharField(max_length=128, default="anonymous", index=True)
+    visibility = fields.CharField(max_length=16, default="private", index=True)
     is_deleted = fields.BooleanField(default=False)
     deleted_at = fields.DatetimeField(null=True, default=None)
 
     class Meta:
         table = "mcp_configs"
-        indexes = (("status", "is_deleted"),)
+        indexes = [
+            ("status", "is_deleted"),
+            ("owner_user_id", "visibility", "is_deleted"),
+        ]
         ordering = ["code"]
 
     def __str__(self) -> str:

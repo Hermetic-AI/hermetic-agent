@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from tortoise.expressions import Q
+
 from hermetic_agent.store.models.mcp_config import McpConfig
 from hermetic_agent.store.repositories.mcp_config_repo import McpConfigRepository
 
@@ -70,6 +72,50 @@ class MySQLMcpConfigRepository(McpConfigRepository):
         return await McpConfig.filter(
             is_deleted=False, status="enabled", disabled=False,
         ).order_by("-updated_at", "-id").limit(limit)
+
+    async def list_visible_to(
+        self,
+        *,
+        actor_user_id: str,
+        limit: int = 50,
+        offset: int = 0,
+        code: str | None = None,
+        status: str | None = None,
+    ) -> list[McpConfig]:
+        qs = McpConfig.filter(is_deleted=False).filter(
+            Q(owner_user_id=actor_user_id) | Q(visibility="public")
+        )
+        if code is not None:
+            qs = qs.filter(code=code)
+        if status is not None:
+            qs = qs.filter(status=status)
+        return await qs.order_by("code").offset(offset).limit(limit)
+
+    async def list_public(
+        self,
+        *,
+        limit: int = 50,
+        offset: int = 0,
+        code: str | None = None,
+    ) -> list[McpConfig]:
+        qs = McpConfig.filter(is_deleted=False, visibility="public")
+        if code is not None:
+            qs = qs.filter(code=code)
+        return await qs.order_by("code").offset(offset).limit(limit)
+
+    async def set_visibility(
+        self,
+        config_id: str,
+        *,
+        visibility: str,
+        actor_user_id: str,
+    ) -> McpConfig | None:
+        if visibility not in ("private", "public"):
+            raise ValueError("invalid visibility")
+        rc = await McpConfig.filter(
+            id=config_id, is_deleted=False, owner_user_id=actor_user_id,
+        ).update(visibility=visibility)
+        return (await self.get_by_id(config_id)) if rc else None
 
 
 __all__ = ["MySQLMcpConfigRepository"]
