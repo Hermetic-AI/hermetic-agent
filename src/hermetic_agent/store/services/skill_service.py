@@ -6,6 +6,7 @@ from typing import Any
 
 import structlog
 
+from hermetic_agent.store.dto._common import ActorContext
 from hermetic_agent.store.dto.skill import (
     CreateSkillRequest,
     SkillResponse,
@@ -41,18 +42,6 @@ class SkillService:
         if s is None:
             raise NotFoundError("skill", code)
         return s
-
-    async def list(
-        self,
-        *,
-        limit: int = 50,
-        offset: int = 0,
-        status: str | None = None,
-        code: str | None = None,
-    ) -> list[Skill]:
-        return await self._repo.list(
-            limit=limit, offset=offset, status=status, code=code
-        )
 
     async def list_active(self, *, limit: int = 100) -> list[Skill]:
         return await self._repo.list_active(limit=limit)
@@ -142,6 +131,42 @@ class SkillService:
             resource_type="skill",
             resource_id=skill_id,
             before_data={"code": s.code, "version": s.version},
+        )
+
+    async def list(
+        self,
+        *,
+        actor: ActorContext,
+        limit: int = 50,
+        offset: int = 0,
+        code: str | None = None,
+        status: str | None = None,
+    ) -> list[Skill]:
+        return await self._repo.list_visible_to(
+            actor_user_id=actor.user_id, limit=limit, offset=offset,
+            code=code, status=status,
+        )
+
+    async def list_public(
+        self,
+        *,
+        limit: int = 50,
+        offset: int = 0,
+        code: str | None = None,
+    ) -> list[Skill]:
+        return await self._repo.list_public(
+            limit=limit, offset=offset, code=code,
+        )
+
+    async def set_visibility(
+        self,
+        skill_id: str,
+        visibility: str,
+        *,
+        actor: ActorContext,
+    ) -> Skill | None:
+        return await self._repo.set_visibility(
+            skill_id, visibility=visibility, actor_user_id=actor.user_id,
         )
 
     @staticmethod

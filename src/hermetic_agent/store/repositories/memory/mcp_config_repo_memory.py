@@ -103,13 +103,21 @@ class MemoryMcpConfigRepository(MemoryRepository[McpConfig], McpConfigRepository
     ) -> McpConfig | None:
         if visibility not in ("private", "public"):
             raise ValueError("invalid visibility")
-        m = self._store.get(config_id)
+        m = self._find(config_id)
         if m is None or m.is_deleted:
             return None
         if m.owner_user_id != actor_user_id:
             return None
         m.visibility = visibility
         return m
+
+    def _find(self, config_id: str) -> McpConfig | None:
+        """按 ID 查找, 同时兼容 str / UUID key (跟 MemoryRepository.get_by_id 一致)."""
+        target = str(config_id) if config_id is not None else config_id
+        for k, m in self._store.items():
+            if str(k) == target:
+                return m
+        return None
 
 
 __all__ = ["MemoryMcpConfigRepository"]
