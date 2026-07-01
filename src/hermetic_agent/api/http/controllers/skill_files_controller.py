@@ -15,6 +15,8 @@ from sanic.request import Request
 from sanic.response import JSONResponse
 from sanic_ext import openapi as sanic_openapi
 
+from hermetic_agent.store.object.skill_files import validate_skill_code
+
 logger = structlog.get_logger(__name__)
 doc_summary = sanic_openapi.summary
 doc_tag = sanic_openapi.tag
@@ -36,10 +38,21 @@ def _get_clients(request: Request) -> dict:
     return request.app.ctx.asset_clients
 
 
+def _validate_code_or_400(code: str) -> str | JSONResponse:
+    """统一在 controller 入口校验 code; 不合法直接返 400."""
+    try:
+        return validate_skill_code(code)
+    except ValueError as e:
+        return _err("VALIDATION_FAILED", str(e), status=400)
+
+
 @skill_files_bp.get("/<code>/files")
 @doc_summary("List files in a skill")
 @doc_tag("Skill Files")
 async def list_skill_files(request: Request, code: str) -> JSONResponse:
+    code = _validate_code_or_400(code)
+    if isinstance(code, JSONResponse):
+        return code
     cl = _get_clients(request)
     files = await cl["skill_files"].list_files(code)
     return JSONResponse({
@@ -57,6 +70,9 @@ async def list_skill_files(request: Request, code: str) -> JSONResponse:
 @doc_summary("Download one skill file")
 @doc_tag("Skill Files")
 async def get_skill_file(request: Request, code: str, path: str) -> JSONResponse:
+    code = _validate_code_or_400(code)
+    if isinstance(code, JSONResponse):
+        return code
     cl = _get_clients(request)
     try:
         blob = await cl["skill_files"].download_file(code, path)
@@ -75,6 +91,9 @@ async def get_skill_file(request: Request, code: str, path: str) -> JSONResponse
 @doc_summary("Upload/update one skill file (<= 16 MB)")
 @doc_tag("Skill Files")
 async def put_skill_file(request: Request, code: str, path: str) -> JSONResponse:
+    code = _validate_code_or_400(code)
+    if isinstance(code, JSONResponse):
+        return code
     cl = _get_clients(request)
     body = request.body or b""
     if len(body) > MAX_FILE_SIZE:
@@ -102,6 +121,9 @@ async def put_skill_file(request: Request, code: str, path: str) -> JSONResponse
 @doc_summary("Delete one skill file")
 @doc_tag("Skill Files")
 async def delete_skill_file(request: Request, code: str, path: str) -> JSONResponse:
+    code = _validate_code_or_400(code)
+    if isinstance(code, JSONResponse):
+        return code
     cl = _get_clients(request)
     try:
         await cl["skill_files"].delete_file(code, path)
@@ -115,6 +137,9 @@ async def delete_skill_file(request: Request, code: str, path: str) -> JSONRespo
 @doc_summary("Batch upload skill files (<= 8 per call)")
 @doc_tag("Skill Files")
 async def batch_upload(request: Request, code: str) -> JSONResponse:
+    code = _validate_code_or_400(code)
+    if isinstance(code, JSONResponse):
+        return code
     cl = _get_clients(request)
     body = request.json or {}
     files = body.get("files", [])
@@ -145,7 +170,7 @@ async def batch_upload(request: Request, code: str) -> JSONResponse:
                 code, path, _io.BytesIO(blob), len(blob),
             )
         except Exception as e:
-            results.append({"path": path, "ok": False, "error": str(e)})
+            results.append({"path": entry.path, "ok": False, "error": str(e)})
             continue
         results.append({"path": entry.path, "ok": True,
                         "size": entry.size, "etag": entry.etag})

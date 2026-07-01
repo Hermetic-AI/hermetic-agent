@@ -5,6 +5,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 
 PATH_RE = re.compile(r"^[\w\-./]+$")
+CODE_RE = re.compile(r"^[A-Za-z0-9_-]+$")
 
 
 def validate_skill_path(path: str) -> str:
@@ -25,6 +26,23 @@ def validate_skill_path(path: str) -> str:
     parts = s.split("/")
     if any(p in ("", "..", ".") for p in parts):
         raise ValueError(f"path contains traversal segment: {path!r}")
+    return s
+
+
+def validate_skill_code(code: str) -> str:
+    """返回规范化 code; 不合法抛 ValueError.
+
+    比 ``validate_skill_path`` 更严: 只允许字母/数字/_/-, 拒绝任何路径分隔符
+    和 ``..``, 防止 ``code="../../evil"`` 越权访问其他 skill 文件.
+    """
+    if code is None:
+        raise ValueError("code is None")
+    s = code.strip()
+    if not s or not CODE_RE.match(s):
+        raise ValueError(
+            f"invalid skill code: {code!r}. "
+            "Allowed: letters, digits, _, -. No '/', no '..'."
+        )
     return s
 
 
@@ -50,7 +68,13 @@ class SkillFilesClient(ABC):
 
 
 def key_for(code: str, path: str) -> str:
-    return f"skills/{code}/{validate_skill_path(path)}"
+    return f"skills/{validate_skill_code(code)}/{validate_skill_path(path)}"
 
 
-__all__ = ["validate_skill_path", "FileEntry", "SkillFilesClient", "key_for"]
+__all__ = [
+    "validate_skill_path",
+    "validate_skill_code",
+    "FileEntry",
+    "SkillFilesClient",
+    "key_for",
+]

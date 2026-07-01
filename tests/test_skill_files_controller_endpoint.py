@@ -141,3 +141,26 @@ async def test_path_traversal_rejected(app):
         data=b"x",
     )
     assert r.status in (400, 404)
+
+
+@pytest.mark.asyncio
+async def test_code_path_traversal_rejected(app):
+    """``code=../../evil`` 必须 400, 不能越权访问其他 skill 文件."""
+    _, r = await app.asgi_client.put(
+        "/agent/skills/..%2Fevil/files/SKILL.md",
+        headers={"X-User-Id": "alice"},
+        data=b"x",
+    )
+    assert r.status == 400
+    assert r.json["code"] == "VALIDATION_FAILED"
+
+
+@pytest.mark.asyncio
+async def test_code_slash_path_rejected(app):
+    """``code=etc/passwd`` 含 ``/`` 必须 400."""
+    _, r = await app.asgi_client.get(
+        "/agent/skills/etc%2Fpasswd/files",
+        headers={"X-User-Id": "alice"},
+    )
+    assert r.status == 400
+    assert r.json["code"] == "VALIDATION_FAILED"
