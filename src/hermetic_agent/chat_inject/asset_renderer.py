@@ -11,8 +11,8 @@ L3 纯函数组件. 不做 IO. 依赖:
   - render_system_prompt 返回 ``str``: ``scenario_prompt`` + ``agent.system_prompt``
     + prompts[].content + commands[].system_prompt_addendum, 以 ``\\n\\n`` 拼接.
   - render_opencode_mcp_block 返回 ``dict[str, dict]``: opencode 期望的
-    ``mcpServers`` 块; key = MCP 名称 (m.to_opencode() 的 name, 否则 m.code),
-    value = name 之外的其余字段 (默认 ``{"url": m.url}``).
+    ``mcpServers`` 块; key = MCP 名称 (m.to_opencode() 的 name, 落到 McpConfig.code),
+    value = name 之外的其余字段 (由 McpConfig.to_opencode 决定 stdio vs http).
 """
 from __future__ import annotations
 
@@ -61,7 +61,7 @@ class AssetRenderer:
     ) -> dict[str, dict]:
         out: dict[str, dict] = {}
         for m in resolved_mcps:
-            d = m.to_opencode() if hasattr(m, "to_opencode") else {"name": m.code, "url": m.url}
+            d = m.to_opencode()
             name = d.get("name", getattr(m, "code", "mcp"))
             entry = {k: v for k, v in d.items() if k != "name"}
             out[name] = entry

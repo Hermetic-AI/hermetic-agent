@@ -47,5 +47,26 @@ class McpConfig(Model):
     def __str__(self) -> str:
         return f"McpConfig({self.code} [{self.mcp_type}])"
 
+    def to_opencode(self) -> dict:
+        """返回 opencode ``mcpServers[name]`` 块.
+
+        - ``stdio``:  ``{name, command, args, env}`` — 子进程型 MCP.
+        - 其他 (http/sse): ``{name, url, headers}`` — HTTP 型 MCP.
+
+        Args 不传时取空 list; env/headers 不传时取空 dict.
+        """
+        if self.mcp_type == "stdio":
+            return {
+                "name": self.code,
+                "command": self.command,
+                "args": list(self.args or []),
+                "env": self.env or {},
+            }
+        return {
+            "name": self.code,
+            "url": self.url,
+            "headers": self.headers or {},
+        }
+
 
 __all__ = ["McpConfig"]
