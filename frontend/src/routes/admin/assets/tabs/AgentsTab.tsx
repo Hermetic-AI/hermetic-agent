@@ -1,12 +1,19 @@
 import { useEffect, useState, useCallback } from 'react';
-import { Button } from '../../../components/common/Button';
-import { Card, CardBody, CardFooter, CardHeader } from '../../../components/common/Card';
-import { Empty } from '../../../components/common/Empty';
-import { Modal, ConfirmModal } from '../../../components/common/Modal';
-import { Skeleton } from '../../../components/common/Skeleton';
-import { Input } from '../../../components/common/Input';
-import { Badge } from '../../../components/common/Badge';
-import { MultiSelectPicker, type MultiSelectOption } from '../../../components/common/MultiSelectPicker';
+import {
+  Button,
+  Card,
+  CardBody,
+  CardFooter,
+  CardHeader,
+  Empty,
+  Modal,
+  ConfirmModal,
+  Skeleton,
+  Input,
+  Badge,
+  MultiSelectPicker,
+  type MultiSelectOption,
+} from '../../../../components/common';
 import { agentsApi } from '../../../services/agents';
 import { promptsApi } from '../../../services/prompts';
 import { commandsApi } from '../../../services/commands';

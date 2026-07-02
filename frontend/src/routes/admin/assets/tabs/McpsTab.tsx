@@ -1,11 +1,17 @@
 import { useEffect, useState } from 'react';
-import { Button } from '../../../components/common/Button';
-import { Card, CardBody, CardFooter, CardHeader } from '../../../components/common/Card';
-import { Empty } from '../../../components/common/Empty';
-import { Modal, ConfirmModal } from '../../../components/common/Modal';
-import { Skeleton } from '../../../components/common/Skeleton';
-import { Input } from '../../../components/common/Input';
-import { KeyValueEditor } from '../../../components/common/KeyValueEditor';
+import {
+  Button,
+  Card,
+  CardBody,
+  CardFooter,
+  CardHeader,
+  Empty,
+  Modal,
+  ConfirmModal,
+  Skeleton,
+  Input,
+  KeyValueEditor,
+} from '../../../../components/common';
 import { mcpConfigsApi } from '../../../services/mcp_configs';
 import type { McpConfigAsset, McpType } from '../../../types/assets';
 import '../index.css';
