@@ -98,20 +98,38 @@ export function AgentsTab() {
   const loadPickerOptions = useCallback(async () => {
     setPickerLoading(true);
     try {
-      const [promptsRes, commandsRes, mcpRes, skillsRes] = await Promise.all([
+      const results = await Promise.allSettled([
         promptsApi.list({ limit: 200 }),
         commandsApi.list({ limit: 200 }),
         mcpConfigsApi.list({ limit: 200 }),
         skillsApi.list({ limit: 200 }),
       ]);
-      setPickerOptions({
-        prompts: promptsRes.items.map((p) => ({ value: p.code, label: `${p.code} — ${p.name}` })),
-        commands: commandsRes.items.map((c) => ({ value: c.code, label: `${c.code} — ${c.name}` })),
-        mcps: mcpRes.items.map((m) => ({ value: m.code, label: `${m.code} — ${m.name}` })),
-        skills: skillsRes.skills.map((s) => ({ value: s.code, label: `${s.code} — ${s.name}` })),
-      });
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setPickerOptions((prev) => ({
+        prompts:
+          results[0].status === 'fulfilled'
+            ? results[0].value.items.map((p) => ({ value: p.code, label: `${p.code} — ${p.name}` }))
+            : prev.prompts,
+        commands:
+          results[1].status === 'fulfilled'
+            ? results[1].value.items.map((c) => ({ value: c.code, label: `${c.code} — ${c.name}` }))
+            : prev.commands,
+        mcps:
+          results[2].status === 'fulfilled'
+            ? results[2].value.items.map((m) => ({ value: m.code, label: `${m.code} — ${m.name}` }))
+            : prev.mcps,
+        skills:
+          results[3].status === 'fulfilled'
+            ? results[3].value.skills.map((s) => ({ value: s.code, label: `${s.code} — ${s.name}` }))
+            : prev.skills,
+      }));
+      const errors = results
+        .map((r, i) =>
+          r.status === 'rejected'
+            ? `resource ${i}: ${r.reason instanceof Error ? r.reason.message : String(r.reason)}`
+            : null,
+        )
+        .filter((e): e is string => e !== null);
+      if (errors.length) setError(`Some resources failed to load: ${errors.join('; ')}`);
     } finally {
       setPickerLoading(false);
     }
@@ -456,6 +474,7 @@ function AgentEditDialog({
                 onChange={(next) => onChange({ ...item, skill_codes: next })}
                 emptyMessage="No skills available — create one first"
                 placeholder="No skills selected"
+                disabled={saving}
                 testId="picker-skills"
               />
               <MultiSelectPicker
@@ -465,6 +484,7 @@ function AgentEditDialog({
                 onChange={(next) => onChange({ ...item, mcp_server_codes: next })}
                 emptyMessage="No MCP servers available"
                 placeholder="No MCP servers selected"
+                disabled={saving}
                 testId="picker-mcps"
               />
               <MultiSelectPicker
@@ -474,6 +494,7 @@ function AgentEditDialog({
                 onChange={(next) => onChange({ ...item, prompt_codes: next })}
                 emptyMessage="No prompts available"
                 placeholder="No prompts selected"
+                disabled={saving}
                 testId="picker-prompts"
               />
               <MultiSelectPicker
@@ -483,6 +504,7 @@ function AgentEditDialog({
                 onChange={(next) => onChange({ ...item, command_codes: next })}
                 emptyMessage="No commands available"
                 placeholder="No commands selected"
+                disabled={saving}
                 testId="picker-commands"
               />
             </div>

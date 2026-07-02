@@ -32,6 +32,7 @@ export function MultiSelectPicker({
   options.forEach((opt) => {
     valueLabelByKey[opt.value] = opt.label;
   });
+  const orphanValues = value.filter((v) => !(v in valueLabelByKey));
 
   function toggle(optionValue: string) {
     if (disabled) return;
@@ -100,7 +101,31 @@ export function MultiSelectPicker({
           ))}
         </div>
       )}
-      {selectedOptions.length === 0 && options.length > 0 && (
+      {orphanValues.length > 0 && (
+        <div className="multi-select-picker-chips multi-select-picker-orphans">
+          {orphanValues.map((v) => (
+            <span
+              key={v}
+              className="multi-select-chip multi-select-chip-orphan"
+              title={`${v} (not in registry — will be dropped on save)`}
+            >
+              <span className="multi-select-chip-label">
+                {v} <em>(missing)</em>
+              </span>
+              <button
+                type="button"
+                className="multi-select-chip-remove"
+                onClick={() => removeOne(v)}
+                disabled={disabled}
+                aria-label={`Remove orphan ${v}`}
+              >
+                ×
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+      {selectedOptions.length === 0 && orphanValues.length === 0 && options.length > 0 && (
         <p className="multi-select-picker-hint">{placeholder}</p>
       )}
       <span className="multi-select-picker-sr-only" aria-hidden>
