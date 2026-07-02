@@ -5,6 +5,7 @@ import { Empty } from '../../../components/common/Empty';
 import { Modal, ConfirmModal } from '../../../components/common/Modal';
 import { Skeleton } from '../../../components/common/Skeleton';
 import { Input } from '../../../components/common/Input';
+import { KeyValueEditor } from '../../../components/common/KeyValueEditor';
 import { mcpConfigsApi } from '../../../services/mcp_configs';
 import type { McpConfigAsset, McpType } from '../../../types/assets';
 import '../index.css';
@@ -360,57 +361,5 @@ function McpEditDialog({ item, isNew, saving, error, onChange, onSave, onClose }
         {error && <p className="asset-form-error">{error}</p>}
       </div>
     </Modal>
-  );
-}
-
-interface KeyValueEditorProps {
-  label: string;
-  value: Record<string, string>;
-  onChange: (next: Record<string, string>) => void;
-}
-
-function KeyValueEditor({ label, value, onChange }: KeyValueEditorProps) {
-  const entries = Object.entries(value);
-  return (
-    <div>
-      <span style={{ display: 'block', fontSize: 13, fontWeight: 500, marginBottom: 4 }}>{label}</span>
-      <div className="asset-kv-list">
-        {entries.length === 0 && <p className="asset-form-help">No entries. Click "Add" to create one.</p>}
-        {entries.map(([k, v], idx) => (
-          <div key={`${k}-${idx}`} className="asset-kv-row">
-            <input
-              value={k}
-              onChange={(e) => {
-                const next: Record<string, string> = {};
-                entries.forEach(([ek, ev], i) => {
-                  next[i === idx ? e.target.value : ek] = ev;
-                });
-                onChange(next);
-              }}
-              placeholder="key"
-            />
-            <input
-              value={v}
-              onChange={(e) => onChange({ ...value, [k]: e.target.value })}
-              placeholder="value"
-            />
-            <button
-              type="button"
-              className="asset-kv-remove"
-              onClick={() => {
-                const next = { ...value };
-                delete next[k];
-                onChange(next);
-              }}
-            >×</button>
-          </div>
-        ))}
-        <button
-          type="button"
-          className="asset-kv-add"
-          onClick={() => onChange({ ...value, '': '' })}
-        >+ Add entry</button>
-      </div>
-    </div>
   );
 }

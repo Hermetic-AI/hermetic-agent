@@ -5,13 +5,16 @@ import { Empty } from '../../../components/common/Empty';
 import { Modal, ConfirmModal } from '../../../components/common/Modal';
 import { Skeleton } from '../../../components/common/Skeleton';
 import { Input } from '../../../components/common/Input';
+import { KeyValueEditor } from '../../../components/common/KeyValueEditor';
 import { skillsApi } from '../../../services/skills';
 import { skillFilesApi, type SkillFileEntry } from '../../../services/skill_files';
 import type { SkillAsset } from '../../../types/assets';
 import '../index.css';
 import './SkillsTab.css';
 
-type SkillForm = Omit<SkillAsset, 'id' | 'created_at' | 'updated_at' | 'owner_user_id' | 'visibility' | 'version' | 'file_count' | 'file_fingerprint'>;
+type SkillForm = Omit<SkillAsset, 'id' | 'created_at' | 'updated_at' | 'owner_user_id' | 'visibility' | 'version' | 'file_count' | 'file_fingerprint' | 'mcp_tools'> & {
+  mcp_tools: Record<string, string>;
+};
 
 const NEW_SKILL: SkillForm = {
   code: '',
@@ -20,7 +23,7 @@ const NEW_SKILL: SkillForm = {
   status: 'draft',
   triggers: [],
   prompt_template: '',
-  mcp_tools: [],
+  mcp_tools: {},
 };
 
 function asArray(value: string): string[] {
@@ -29,6 +32,15 @@ function asArray(value: string): string[] {
 
 function fromList(list: string[] | null | undefined): string {
   return (list ?? []).join('\n');
+}
+
+function asRecord(value: unknown): Record<string, string> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+  const out: Record<string, string> = {};
+  for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+    if (typeof v === 'string') out[k] = v;
+  }
+  return out;
 }
 
 export function SkillsTab() {
@@ -68,7 +80,7 @@ export function SkillsTab() {
       status: item.status,
       triggers: item.triggers ?? [],
       prompt_template: item.prompt_template ?? '',
-      mcp_tools: (item.mcp_tools as string[] | undefined) ?? [],
+      mcp_tools: asRecord(item.mcp_tools),
     });
     setEditingCode(item.code);
     setError(null);
@@ -90,7 +102,7 @@ export function SkillsTab() {
         status: editing.status,
         triggers: editing.triggers && editing.triggers.length > 0 ? editing.triggers : null,
         prompt_template: editing.prompt_template || null,
-        mcp_tools: editing.mcp_tools && (editing.mcp_tools as string[]).length > 0 ? editing.mcp_tools : null,
+        mcp_tools: Object.keys(editing.mcp_tools).length > 0 ? editing.mcp_tools : null,
       };
       if (editingCode) {
         await skillsApi.update(editingCode, payload);
@@ -289,16 +301,13 @@ function SkillEditDialog({ item, isNew, saving, error, onChange, onSave, onClose
               placeholder="You are a helpful assistant..."
             />
           </label>
-          <label>
-            <span style={{ display: 'block', fontSize: 13, fontWeight: 500, marginBottom: 4 }}>MCP tools (one per line, optional)</span>
-            <textarea
-              className="asset-form-textarea"
-              style={{ minHeight: 80 }}
-              value={fromList(item.mcp_tools as string[] | null | undefined)}
-              onChange={(e) => onChange({ ...item, mcp_tools: asArray(e.target.value) })}
-              placeholder="read_file"
-            />
-          </label>
+          <KeyValueEditor
+            label="MCP tools (optional)"
+            value={item.mcp_tools ?? {}}
+            onChange={(next) => onChange({ ...item, mcp_tools: next })}
+            keyPlaceholder="tool_name"
+            valuePlaceholder="mcp_server_code or config"
+          />
           <label>
             <span style={{ display: 'block', fontSize: 13, fontWeight: 500, marginBottom: 4 }}>Status</span>
             <select
