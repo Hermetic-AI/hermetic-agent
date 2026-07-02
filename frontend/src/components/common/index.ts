@@ -7,3 +7,5 @@ export { Empty } from './Empty';
 export { Modal, ConfirmModal } from './Modal';
 export { KeyValueEditor } from './KeyValueEditor';
 export type { KeyValueEditorProps } from './KeyValueEditor';
+export { MultiSelectPicker } from './MultiSelectPicker';
+export type { MultiSelectOption } from './MultiSelectPicker';
