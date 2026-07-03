@@ -1,4 +1,4 @@
-"""sandbox.runtime 单元测试 (不依赖真 docker, mock subprocess)."""
+﻿"""sandbox.runtime 单元测试 (不依赖真 docker, mock subprocess)."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from openagent.sandbox.runtime import (
+from hermetic_agent.sandbox.runtime import (
     AgentState,
     ContainerState,
     DockerNotFound,
@@ -25,7 +25,7 @@ from openagent.sandbox.runtime import (
 
 def _make_runtime(docker_bin: str = "docker") -> SandboxRuntime:
     """构造 runtime, mock shutil.which 返回 True (假装有 docker)."""
-    with patch("openagent.sandbox.runtime.shutil.which", return_value="/usr/bin/docker"):
+    with patch("hermetic_agent.sandbox.runtime.shutil.which", return_value="/usr/bin/docker"):
         return SandboxRuntime(docker_bin=docker_bin)
 
 
@@ -52,13 +52,13 @@ def _make_spec(**overrides) -> SandboxSpec:
 
 
 def test_init_no_docker_raises():
-    with patch("openagent.sandbox.runtime.shutil.which", return_value=None):
+    with patch("hermetic_agent.sandbox.runtime.shutil.which", return_value=None):
         with pytest.raises(DockerNotFound):
             SandboxRuntime()
 
 
 def test_init_with_docker_ok():
-    with patch("openagent.sandbox.runtime.shutil.which", return_value="/usr/bin/docker"):
+    with patch("hermetic_agent.sandbox.runtime.shutil.which", return_value="/usr/bin/docker"):
         rt = SandboxRuntime()
         assert rt._docker_bin == "docker"
 

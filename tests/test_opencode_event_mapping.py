@@ -1,6 +1,6 @@
-"""tests/test_opencode_event_mapping.py — P7: opencode 原生 event 映射.
+﻿"""tests/test_opencode_event_mapping.py — P7: opencode 原生 event 映射.
 
-覆盖 ``openagent.streaming.map_opencode_event`` 的 4 个新分支:
+覆盖 ``hermetic_agent.streaming.map_opencode_event`` 的 4 个新分支:
 - ``question.asked``  -> StreamEvent.question_asked
 - ``question.replied`` -> StreamEvent.question_replied
 - ``question.rejected`` -> StreamEvent.question_rejected
@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from openagent.providers.streaming import OPENCODE_STREAM_END, StreamEvent, map_opencode_event
+from hermetic_agent.providers.streaming import OPENCODE_STREAM_END, StreamEvent, map_opencode_event
 
 
 def _pydantic_like_event(etype: str, props):

@@ -1,13 +1,13 @@
-import { defineConfig, loadEnv } from 'vite';
+﻿import { defineConfig, loadEnv } from 'vite';
 import type { ProxyOptions } from 'vite';
 import react from '@vitejs/plugin-react';
 
-// Vite config for OpenAgent frontend.
+// Vite config for hermetic_agent frontend.
 // In dev, requests to the path prefix configured in src/config (default `/api`)
-// are proxied to the FastAPI-compatible Sanic backend on http://localhost:18000.
+// are proxied to the FastAPI-compatible Sanic backend on http://localhost:28000.
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
-  const backendTarget = env.VITE_BACKEND_URL || 'http://localhost:18000';
+  const backendTarget = env.VITE_BACKEND_URL || 'http://localhost:28000';
   // Strip any trailing slash so we can safely concatenate paths.
   const target = backendTarget.replace(/\/+$/, '');
   const proxyPrefix = '/api';
@@ -35,10 +35,16 @@ export default defineConfig(({ mode }) => {
     },
   };
 
+  const apiProxy: ProxyOptions = {
+    target,
+    changeOrigin: true,
+    ws: false,
+  };
+
   return {
     plugins: [react()],
     server: {
-      port: 13000,
+      port: 23000,
       open: true,
       // 长流 SSE 需要更大的 hmr / file-watch buffer
       hmr: {
@@ -47,6 +53,9 @@ export default defineConfig(({ mode }) => {
       },
       proxy: {
         [proxyPrefix]: streamProxy,
+        '/agent': apiProxy,
+        '/ready': apiProxy,
+        '/health': apiProxy,
       },
     },
     build: {

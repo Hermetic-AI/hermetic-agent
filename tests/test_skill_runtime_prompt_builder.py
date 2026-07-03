@@ -1,4 +1,4 @@
-"""tests/test_skill_runtime_prompt_builder.py — PromptBuilder 单元测试."""
+﻿"""tests/test_skill_runtime_prompt_builder.py — PromptBuilder 单元测试."""
 
 from __future__ import annotations
 
@@ -8,9 +8,9 @@ from types import SimpleNamespace
 
 import pytest
 
-from openagent.skills.runtime.fragments import FragmentLoader, FragmentLoadReport
-from openagent.skills.runtime.prompt_builder import PromptBuilder
-from openagent.skills.registry import Skill, SkillRegistry
+from hermetic_agent.skills.runtime.fragments import FragmentLoader, FragmentLoadReport
+from hermetic_agent.skills.runtime.prompt_builder import PromptBuilder
+from hermetic_agent.skills.registry import Skill, SkillRegistry
 
 
 @dataclass

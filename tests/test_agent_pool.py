@@ -1,7 +1,7 @@
-"""Tests for AgentPoolManager"""
+﻿"""Tests for AgentPoolManager"""
 
 import pytest
-from openagent.core.agent_pool import AgentPoolManager, AgentStatus
+from hermetic_agent.core.agent_pool import AgentPoolManager, AgentStatus
 
 
 class TestAgentPoolManager:

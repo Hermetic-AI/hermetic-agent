@@ -1,15 +1,15 @@
-"""test_log_platform_log_context — ContextVar 隔离 + bind/clear."""
+﻿"""test_log_platform_log_context — ContextVar 隔离 + bind/clear."""
 from __future__ import annotations
 
 from datetime import datetime
 
 import pytest
 
-from openagent.audit.log import (
+from hermetic_agent.audit.log import (
     busi_logger as _busi, object_log_writer as _olw, request_logger as _req,
     seq_no as _seq, setup as _setup, sys_logger as _sys,
 )
-from openagent.audit.log.log_context import (
+from hermetic_agent.audit.log.log_context import (
     REQUEST_ID,
     REQUEST_TIME,
     bind_request_context,

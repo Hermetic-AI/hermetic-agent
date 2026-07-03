@@ -1,11 +1,11 @@
-// useChatSession — persists the active chat session id to localStorage
+﻿// useChatSession — persists the active chat session id to localStorage
 // and exposes helpers to start a new one or restore from history.
 
 import { useCallback, useEffect, useState } from 'react';
 import { sessionService, ApiError } from '../services';
 import type { SessionInfo, ChatMessage } from '../types';
 
-const STORAGE_KEY = 'openagent.session_id';
+const STORAGE_KEY = 'hermetic_agent.session_id';
 
 function readStoredId(): string | null {
   try {
@@ -53,12 +53,23 @@ export function useChatSession(): UseChatSessionResult {
       setInfo(null);
       return;
     }
-    const ctrl = new AbortController();
+    // NB: no abort signal — see HealthContext.tsx for the StrictMode
+    // double-invocation rationale.  React 18 silently no-ops state updates
+    // on unmounted components, so we don't need an `alive` flag.
     sessionService
-      .get(sessionId, ctrl.signal)
+      .get(sessionId)
       .then((res) => setInfo(res))
-      .catch(() => setInfo(null));
-    return () => ctrl.abort();
+      .catch((err) => {
+        setInfo(null);
+        // Stale session (e.g. created before MySQL switch, or on a different
+        // hub instance) returns 404 — clear the stored id so subsequent
+        // refreshes don't keep retrying it.  Transient errors (network / 5xx)
+        // are left alone so the next /health tick retries naturally.
+        if (err instanceof ApiError && err.status === 404) {
+          writeStoredId(null);
+          setSessionIdState(null);
+        }
+      });
   }, [sessionId]);
 
   const startNew = useCallback(

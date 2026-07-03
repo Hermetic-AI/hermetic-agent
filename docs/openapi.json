@@ -1,7 +1,7 @@
-{
+﻿{
   "openapi": "3.0.3",
   "info": {
-    "title": "OpenAgent Agent Scheduler Hub API",
+    "title": "hermetic_agent Agent Scheduler Hub API",
     "version": "0.1.0",
     "description": "OpenCode / Claude Code 双 SDK Agent 调度平台.\n\n**事件流式端点**: SSE (Content-Type: text/event-stream). 事件格式:\n`data: {\"type\": \"...\", \"data\": {...}}\\n\\n`.\n\n**Scenario 路由**: 客户端在 body.scenario 或 X-Scenario header 指定 scenario;\n否则由 ScenarioRouter 按 keyword 推断 (URL > Header > Body > Keyword > Intent > Default).\n6 个内置 scenario: `_generic` / `_default` / `flight_booking` / `expense_audit` / `customer_service` / `code_review`."
   },

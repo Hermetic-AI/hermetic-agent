@@ -1,4 +1,4 @@
-# OpenCode Agent Scheduler Hub (fh-openagent)
+﻿# hermetic-agent
 
 Enterprise-grade AI Agent scheduling platform based on the OpenCode engine. It manages agent pools, session lifecycles, and complex task orchestration (scenarios/skills).
 
@@ -24,7 +24,7 @@ Enterprise-grade AI Agent scheduling platform based on the OpenCode engine. It m
 
 ### Unified Chat Entry Point
 **Dialogue chat entry must be globally unified.** Do NOT add any per-scenario chat endpoints.
-There are only two chat endpoints, located in `src/openagent/api/controllers/chat_controller.py`:
+There are only two chat endpoints, located in `src/hermetic_agent/api/controllers/chat_controller.py`:
 - `POST /agent/chat`: Synchronous chat, returns JSON.
 - `POST /agent/chat/stream`: Streaming SSE chat.
 
@@ -43,7 +43,7 @@ There are only two chat endpoints, located in `src/openagent/api/controllers/cha
 
 ## Key Directories
 
-- `src/openagent/`: Core backend source code.
+- `src/hermetic_agent/`: Core backend source code.
     - `api/`: REST API layer (controllers, routes, schemas).
     - `core/`: Fundamental logic (pool, session, scheduler).
     - `providers/`: Dual-SDK adapter layer (`opencode_adapter.py`, `claude_code_adapter.py`).
@@ -77,9 +77,9 @@ Recommended tool: `uv` (or `pip`)
 3. **Run the server:**
    ```bash
    # Via CLI command
-   agent-scheduler
+    hermetic-agent
    # Or via module
-   python -m openagent.main
+   python -m hermetic_agent.main
    ```
 4. **API Documentation:**
    Accessible at `http://localhost:8000/docs` (when running).
@@ -116,7 +116,7 @@ Recommended tool: `uv` (or `pip`)
   ```bash
   pytest
   ```
-- **Imports:** Absolute imports from `openagent`.
+- **Imports:** Absolute imports from `hermetic_agent`.
 - **Async:** Heavily asynchronous; use `async/await`.
 
 ### SSE Event Types
@@ -126,9 +126,9 @@ The system supports the following 12 event types for streaming:
 ## Build and Deployment
 
 - **Docker:**
-    - Backend: `Dockerfile.openagent`
-    - Frontend: `Dockerfile.frontend`
-    - Sandbox: `Dockerfile.opencode-sandbox`
+    - Backend: `docker/hermetic-agent/Dockerfile`
+    - Frontend: `docker/frontend/Dockerfile`
+    - Sandbox: `docker/opencode/Dockerfile`
 - **Orchestration:** Use `docker-compose.yml` for full stack deployment.
 - **Build command:**
   ```bash

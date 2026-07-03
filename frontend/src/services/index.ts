@@ -1,5 +1,5 @@
 // Barrel export for the service layer.
-export { http, ApiError } from './http';
+export { http, ApiError, registerTokenGetter, resolveAuthToken } from './http';
 export { parseSSE } from './sse';
 export { chatService, buildStreamUrl, buildStreamHeaders, joinUrl } from './chat';
 export type {
@@ -16,22 +16,6 @@ export type {
   SessionMessagesResponse,
   DeleteSessionResponse,
 } from './session';
-export { turnService } from './turn';
-export type { SendResumeStreamOptions } from './turn';
-export { scenarioService } from './scenarios';
-export { skillsService } from './skills';
-export { toolsService } from './tools';
 export { poolService } from './pool';
-export { adminService } from './admin';
-export type {
-  OpencodePolicy,
-  OpencodeEnv,
-  OpencodeStatus,
-  ReloadResult,
-} from './admin';
 export { systemService } from './system';
-// P7: opencode 原生 question / todo
-export { questionService } from './question';
-export type { QuestionReplyRequest, QuestionListResponse } from './question';
-export { todoService } from './todo';
-export type { TodoListResponse } from './todo';
+export { agentsApi } from './agents';

@@ -1,216 +1,116 @@
-/* Chat 场景下的 markdown 样式 — 跟现有 bubble 风格统一. */
+/* MarkdownText — chat markdown content */
 
 .markdown-body {
-  font-size: 14px;
-  line-height: 1.7;
+  font-size: var(--text-base);
+  line-height: 1.65;
   color: var(--color-text-primary);
-  word-wrap: break-word;
-  overflow-wrap: break-word;
 }
 
-.markdown-body > *:first-child {
-  margin-top: 0;
-}
-
-.markdown-body > *:last-child {
-  margin-bottom: 0;
-}
-
-/* 段落 */
 .markdown-body p {
-  margin: 0 0 10px;
+  margin: 0 0 var(--spacing-3);
 }
 
 .markdown-body p:last-child {
   margin-bottom: 0;
 }
 
-/* 标题 */
 .markdown-body h1,
 .markdown-body h2,
 .markdown-body h3,
-.markdown-body h4,
-.markdown-body h5,
-.markdown-body h6 {
-  margin: 16px 0 8px;
+.markdown-body h4 {
+  margin: var(--spacing-4) 0 var(--spacing-2);
   font-weight: 600;
-  line-height: 1.4;
+  letter-spacing: -0.01em;
   color: var(--color-text-primary);
 }
 
-.markdown-body h1 { font-size: 20px; }
-.markdown-body h2 { font-size: 17px; }
-.markdown-body h3 { font-size: 15px; }
-.markdown-body h4,
-.markdown-body h5,
-.markdown-body h6 { font-size: 14px; }
+.markdown-body h1 { font-size: var(--text-2xl); }
+.markdown-body h2 { font-size: var(--text-xl); }
+.markdown-body h3 { font-size: var(--text-lg); }
+.markdown-body h4 { font-size: var(--text-md); }
 
-.markdown-body h1:first-child,
-.markdown-body h2:first-child,
-.markdown-body h3:first-child {
-  margin-top: 0;
-}
-
-/* 粗体 / 斜体 / 删除线 (GFM) */
-.markdown-body strong {
-  font-weight: 600;
-  color: var(--color-text-primary);
-}
-
-.markdown-body em {
-  font-style: italic;
-}
-
-.markdown-body del {
-  color: var(--color-text-muted);
-}
-
-/* 行内代码 */
-.markdown-body code {
-  font-family: 'SF Mono', 'JetBrains Mono', Consolas, 'Courier New', monospace;
-  font-size: 0.88em;
-  padding: 2px 6px;
-  background: rgba(0, 81, 161, 0.08);
-  color: #0051A1;
-  border-radius: 4px;
-  border: 1px solid rgba(0, 81, 161, 0.1);
-}
-
-/* 代码块 (```lang\n...\n```) */
-.markdown-body pre {
-  margin: 10px 0;
-  padding: 12px 14px;
-  background: #1e1e1e;
-  color: #d4d4d4;
-  border-radius: var(--radius-md);
-  overflow-x: auto;
-  font-family: 'SF Mono', 'JetBrains Mono', Consolas, 'Courier New', monospace;
-  font-size: 12.5px;
-  line-height: 1.55;
-}
-
-.markdown-body pre code {
-  font-family: inherit;
-  font-size: inherit;
-  padding: 0;
-  background: transparent;
-  color: inherit;
-  border: none;
-  border-radius: 0;
-  white-space: pre;
-}
-
-/* 列表 */
 .markdown-body ul,
 .markdown-body ol {
-  margin: 8px 0;
-  padding-left: 24px;
+  margin: 0 0 var(--spacing-3);
+  padding-left: var(--spacing-6);
 }
 
 .markdown-body li {
-  margin: 4px 0;
+  margin-bottom: var(--spacing-1);
 }
 
-.markdown-body li > p {
-  margin: 4px 0;
+.markdown-body code {
+  font-family: ui-monospace, 'SF Mono', Menlo, Monaco, Consolas, monospace;
+  font-size: 0.9em;
+  background: var(--color-bg-tertiary);
+  padding: 1px 5px;
+  border-radius: var(--radius-xs);
+  color: var(--color-text-primary);
 }
 
-.markdown-body li > ul,
-.markdown-body li > ol {
-  margin: 4px 0;
+.markdown-body pre {
+  background: var(--color-bg-secondary);
+  border: var(--border-thin) solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--spacing-3);
+  margin: 0 0 var(--spacing-3);
+  overflow-x: auto;
+  font-size: var(--text-sm);
 }
 
-/* 任务列表 (GFM: - [x] / - [ ]) */
-.markdown-body input[type='checkbox'] {
-  margin-right: 6px;
-  vertical-align: middle;
+.markdown-body pre code {
+  background: none;
+  padding: 0;
+  border-radius: 0;
+  font-size: inherit;
 }
 
-/* 引用 */
 .markdown-body blockquote {
-  margin: 10px 0;
-  padding: 6px 12px;
-  background: rgba(0, 81, 161, 0.04);
-  border-left: 3px solid var(--color-primary);
-  color: var(--color-text-secondary, #555);
+  border-left: 3px solid var(--color-border-strong);
+  padding-left: var(--spacing-3);
+  margin: 0 0 var(--spacing-3);
+  color: var(--color-text-secondary);
 }
 
-.markdown-body blockquote > :first-child {
-  margin-top: 0;
-}
-
-.markdown-body blockquote > :last-child {
-  margin-bottom: 0;
-}
-
-/* 链接 */
 .markdown-body a {
-  color: var(--color-primary, #0051A1);
-  text-decoration: none;
-  border-bottom: 1px solid rgba(0, 81, 161, 0.3);
-  transition: border-color var(--transition-fast, 0.15s ease);
+  color: var(--color-text-link);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-thickness: 1px;
 }
 
 .markdown-body a:hover {
-  border-bottom-color: var(--color-primary, #0051A1);
+  text-decoration-thickness: 2px;
 }
 
-/* 表格 (GFM) */
 .markdown-body table {
   border-collapse: collapse;
-  margin: 10px 0;
+  margin: 0 0 var(--spacing-3);
   width: 100%;
-  font-size: 13px;
-  border: 1px solid var(--color-border, #E5E5EA);
-  border-radius: var(--radius-sm, 4px);
-  overflow: hidden;
-}
-
-.markdown-body thead {
-  background: rgba(0, 81, 161, 0.05);
+  font-size: var(--text-sm);
 }
 
 .markdown-body th,
 .markdown-body td {
-  padding: 8px 12px;
-  border: 1px solid var(--color-border, #E5E5EA);
+  border: var(--border-thin) solid var(--color-border);
+  padding: var(--spacing-2) var(--spacing-3);
   text-align: left;
 }
 
 .markdown-body th {
+  background: var(--color-bg-secondary);
   font-weight: 600;
-  color: var(--color-text-primary);
 }
 
-.markdown-body tbody tr:nth-child(even) {
-  background: rgba(0, 0, 0, 0.015);
-}
-
-/* 水平线 */
 .markdown-body hr {
-  margin: 16px 0;
   border: none;
-  border-top: 1px solid var(--color-border, #E5E5EA);
+  border-top: var(--border-thin) solid var(--color-border);
+  margin: var(--spacing-4) 0;
 }
 
-/* 文字高亮 (GFM: ==text==) */
-.markdown-body mark {
-  background: #FEF3C7;
-  color: #92400E;
-  padding: 1px 3px;
-  border-radius: 3px;
-}
-
-/* 流式光标 */
 .markdown-cursor {
   display: inline-block;
   margin-left: 2px;
-  color: var(--color-primary, #0051A1);
-  animation: markdownCursorBlink 1s steps(1) infinite;
-  font-weight: 100;
-}
-
-@keyframes markdownCursorBlink {
-  0%, 50% { opacity: 1; }
-  51%, 100% { opacity: 0; }
+  color: var(--color-text-secondary);
+  animation: spinner-rotate 1s steps(2) infinite;
 }

@@ -1,4 +1,4 @@
-"""Unit tests for ``OpenCodeEventHub``.
+﻿"""Unit tests for ``OpenCodeEventHub``.
 
 These tests use a fake ``AsyncStream`` to avoid needing a real opencode
 server.  They verify the hub's lifecycle, fanout, and concurrency
@@ -12,7 +12,7 @@ from typing import Any, AsyncIterator
 
 import pytest
 
-from openagent.providers.opencode.event_hub import OpenCodeEventHub
+from hermetic_agent.providers.opencode.event_hub import OpenCodeEventHub
 
 
 class _FakeStream:

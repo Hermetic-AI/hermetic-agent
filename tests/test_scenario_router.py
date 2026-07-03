@@ -1,21 +1,21 @@
-"""ScenarioRouter 单测 — 6 优先级路由."""
+﻿"""ScenarioRouter 单测 — 6 优先级路由."""
 
 from __future__ import annotations
 
 import pytest
 
-from openagent.scenarios.config import (
+from hermetic_agent.scenarios.config import (
     ExecutionConfig,
     RoutingConfig,
     ScenarioConfig,
     WorkspaceConfig,
 )
-from openagent.scenarios.errors import (
+from hermetic_agent.scenarios.errors import (
     RoutingFailedError,
     ScenarioDisabledError,
 )
-from openagent.scenarios.registry import ScenarioRegistry
-from openagent.scenarios.router import ScenarioRouter
+from hermetic_agent.scenarios.registry import ScenarioRegistry
+from hermetic_agent.scenarios.router import ScenarioRouter
 
 
 def _cfg(name: str, *, keywords: list[str] | None = None, priority: int = 100, enabled: bool = True) -> ScenarioConfig:

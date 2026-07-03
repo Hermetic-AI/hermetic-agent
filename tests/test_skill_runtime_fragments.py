@@ -1,4 +1,4 @@
-"""tests/test_skill_runtime_fragments.py — FragmentLoader 单元测试."""
+﻿"""tests/test_skill_runtime_fragments.py — FragmentLoader 单元测试."""
 
 from __future__ import annotations
 
@@ -8,13 +8,13 @@ from types import SimpleNamespace
 
 import pytest
 
-from openagent.skills.runtime.errors import (
+from hermetic_agent.skills.runtime.errors import (
     FragmentNotFoundError,
     SkillBudgetExceeded,
     SkillNotFoundError,
 )
-from openagent.skills.runtime.fragments import FragmentLoader
-from openagent.skills.registry import Skill, SkillRegistry
+from hermetic_agent.skills.runtime.fragments import FragmentLoader
+from hermetic_agent.skills.registry import Skill, SkillRegistry
 
 
 # ----- fixtures -----------------------------------------------------------

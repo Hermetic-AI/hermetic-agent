@@ -1,6 +1,6 @@
-# OpenAgent API Reference
+﻿# hermetic_agent API Reference
 
-> **OpenAgent Agent Scheduler Hub** — OpenCode / Claude Code 双 SDK Agent 调度平台
+> **hermetic_agent Agent Scheduler Hub** — OpenCode / Claude Code 双 SDK Agent 调度平台
 >
 > **完整 OpenAPI 规范**: [openapi.json](openapi.json) (26 paths, 8 tags, 12 错误码)
 >
@@ -12,7 +12,7 @@
 
 ```bash
 # 启动 server
-python -m openagent.main
+python -m hermetic_agent.main
 
 # 健康检查
 curl http://localhost:8000/health
@@ -221,3 +221,28 @@ python scripts/export_openapi.py
 ```
 
 会启 server 3s 抓 `/openapi/spec.json`, 失败时回落到 `docs/openapi.json` 内手写 26 paths (覆盖所有真实路由 + Scenario/Turn + 12 错误码)。
+
+### 6.4 Asset registry (admin)
+
+curl examples (anonymous only sees public; `X-User-Id` header for owner ops).
+
+```bash
+# List my prompts (+ public)
+curl -H "X-User-Id: alice" http://localhost:28000/agent/prompts/
+
+# Create a prompt
+curl -X POST -H "X-User-Id: alice" -H "Content-Type: application/json" \
+  -d '{"code":"hi","name":"Hi","content":"say hi"}' \
+  http://localhost:28000/agent/prompts/
+
+# Publish
+curl -X POST -H "X-User-Id: alice" -H "Content-Type: application/json" \
+  -d '{"visibility":"public"}' \
+  http://localhost:28000/agent/prompts/hi/publish
+
+# Same for commands, agents, mcp-configs
+# Skill files upload
+echo "hello" > SKILL.md
+curl -X PUT -H "X-User-Id: alice" --data-binary @SKILL.md \
+  http://localhost:28000/agent/skills/sample/files/SKILL.md
+```

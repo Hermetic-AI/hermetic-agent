@@ -1,4 +1,4 @@
-"""tests/test_skill_runtime_manifest.py — SkillManifest 单元测试."""
+﻿"""tests/test_skill_runtime_manifest.py — SkillManifest 单元测试."""
 
 from __future__ import annotations
 
@@ -6,8 +6,8 @@ from pathlib import Path
 
 import pytest
 
-from openagent.skills.runtime.errors import ManifestLoadError
-from openagent.skills.runtime.manifest import SkillManifest, StateSpec
+from hermetic_agent.skills.runtime.errors import ManifestLoadError
+from hermetic_agent.skills.runtime.manifest import SkillManifest, StateSpec
 
 
 SAMPLE_YAML = """

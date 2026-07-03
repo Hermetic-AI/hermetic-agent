@@ -1,4 +1,4 @@
-"""audit 模块单测."""
+﻿"""audit 模块单测."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ import sys
 
 import pytest
 
-from openagent.policy.audit import (
+from hermetic_agent.policy.audit import (
     AuditEvent,
     AuditLogger,
     InMemoryAuditLogger,
@@ -67,7 +67,7 @@ def test_audit_redacts_nested_dict() -> None:
         "password": "hunter2",
         "config": {"api_key": "sk-xxx", "host": "example.com"},
     }
-    from openagent.policy.audit import _redact_obj
+    from hermetic_agent.policy.audit import _redact_obj
     redacted = _redact_obj(event)
     assert redacted["username"] == "alice"
     assert redacted["password"] == "<redacted>"
@@ -77,7 +77,7 @@ def test_audit_redacts_nested_dict() -> None:
 
 def test_audit_redacts_list_of_strings() -> None:
     paths = ["/work/proj/.env", "/work/proj/README.md"]
-    from openagent.policy.audit import _redact_obj
+    from hermetic_agent.policy.audit import _redact_obj
     redacted = _redact_obj(paths)
     assert redacted[0] == "<redacted:env-file>"
     assert redacted[1] == "/work/proj/README.md"

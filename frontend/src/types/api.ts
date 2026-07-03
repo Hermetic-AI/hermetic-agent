@@ -1,6 +1,6 @@
-// Generic API helpers and shared response types.
+﻿// Generic API helpers and shared response types.
 //
-// The backend (`openagent/api/routes.py`) uses a flat response shape:
+// The backend (`hermetic_agent/api/routes.py`) uses a flat response shape:
 //   { success: boolean, ...payload }
 // Errors come back as:
 //   { success: false, error: string }

@@ -1,0 +1,67 @@
+﻿# ============================================================
+# Example scenario — 演示 hermetic-agent 的 scenario YAML 规范
+# 通用兜底, 不绑定任何具体业务
+# ============================================================
+name: example_echo
+version: "1.0.0"
+description: "示例 scenario: 演示如何通过 scenario YAML 引用一个 SKILL"
+enabled: true
+tags: [example, demo, echo]
+owner: hermetic_agent-core
+tier: bronze
+
+routing:
+  trigger_keywords: [echo, 回声]
+  priority: 50000
+
+execution:
+  system_prompt: |
+    你是 hermetic_agent 示例助手. 收到用户 echo 请求时, 调 echo 工具,
+    Hub 会自动拼 ECHO_RESULT card 给你. 看到 card 后问用户是否继续.
+  skills: [example-echo-skill]
+  tools: [ask_user]
+  orchestration: single
+
+security:
+  tool_level: safe
+  allowed_tools: [Read]
+  denied_tools: [Write, Edit, Bash, WebFetch, WebSearch]
+  allowed_commands: []
+  denied_commands: [rm -rf, sudo, dd, mkfs]
+  network: off
+  max_turns: 5
+  max_budget_usd: 0.1
+  require_approval_for_writes: true
+
+workspace:
+  strategy: project_relative
+  workspace_dirs: [${PROJECT_DIR}]
+  readonly_dirs: [${WORK_SHARED}/docs]
+  deny_dirs: [/etc, "~/.ssh", "~/.aws", "${HOME}"]
+  deny_path_patterns: ["**/.env", "**/.env.*", "**/id_rsa", "**/*.pem", "**/*.key"]
+  launcher:
+    prefer_engine: opencode
+    fallback_engine: claude_code
+
+a2ui:
+  enabled: true
+  protocol: auip
+  card_schemas: [CHAT_FALLBACK, FLIGHT_RESULT, CABIN_LIST, PASSENGER_FORM, ORDER_CONFIRM]
+progressive_skill:
+  strategy: on_demand
+  budget_tokens: 1000
+  budget_policy: error
+  initial_skills: []
+  load_on_state:
+    S01: [example-echo-skill]
+resource_dirs:
+  skills: ${WORK_SHARED}/skills/example-echo-skill
+resources:
+  agent: null
+  model: default
+  timeout: 30
+metadata:
+  cost_center: O-0001
+  ab_group: control
+  sla_tier: bronze
+  is_example: true

@@ -3,16 +3,16 @@ requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "agent-scheduler-hub"
+name = "hermetic-agent"
 version = "0.1.0"
-description = "Private agent scheduler hub based on OpenCode"
+description = "General-purpose Agent scheduling framework built on opencode SDK"
 readme = "README.md"
-license = { text = "MIT" }
+license = { text = "Apache-2.0" }
 requires-python = ">=3.10"
 authors = [
-    { name = "OpenAgent Team" },
+    { name = "hermetic-agent Authors" },
 ]
-keywords = ["agent", "opencode", "scheduler", "mcp", "travel"]
+keywords = ["agent", "opencode", "scheduler", "mcp", "framework"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
@@ -39,7 +39,8 @@ dependencies = [
     "redis>=5.0.0",
     "cryptography>=41.0.0",
     "nacos-sdk-python>=3.0.0",
-]
+    "minio>=7.2.0",
+] 
 
 [project.optional-dependencies]
 claude = [
@@ -55,7 +56,11 @@ dev = [
 ]
 
 [project.scripts]
-agent-scheduler = "openagent.main:main"
+hermetic-agent = "hermetic_agent.main:main"
+hermetic-skill = "hermetic_agent.skill_cli:main"
+
+[project.urls]
+Homepage = "https://github.com/lyzsniper/hermetic-agent"
 
 [tool.setuptools.packages.find]
 where = ["src"]

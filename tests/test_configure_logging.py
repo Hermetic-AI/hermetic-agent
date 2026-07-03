@@ -1,4 +1,4 @@
-"""盯住 _configure_logging 的 3 个连环坑:
+﻿"""盯住 _configure_logging 的 3 个连环坑:
 
   1. stdlib root logger 必须装 handler, 否则 ``LoggerFactory()`` 写出的
      日志被静默丢弃;
@@ -19,9 +19,9 @@ import logging
 
 import structlog
 
-from openagent.api.app.app import _configure_logging
-from openagent.config.settings import Settings
-from openagent.providers.llm_payload import build_opencode_payload, log_opencode_request
+from hermetic_agent.api.app.app import _configure_logging
+from hermetic_agent.config.settings import Settings
+from hermetic_agent.providers.llm_payload import build_opencode_payload, log_opencode_request
 
 
 def _payload() -> dict:
@@ -63,7 +63,7 @@ def test_configure_logging_resets_structlog_cache() -> None:
     ConsoleRenderer)。
     """
     # 1) 触发 structlog 缓存默认 config
-    logger = structlog.get_logger("openagent.test_cache_poison")
+    logger = structlog.get_logger("hermetic_agent.test_cache_poison")
     logger.info("priming", x=1)
 
     # 2) 跑 _configure_logging(json), 装上我们的 handler + 抹掉 cache

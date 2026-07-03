@@ -1,4 +1,4 @@
-"""tests/test_read_skill_tool.py — read_skill tool 单元测试 (P0-2).
+﻿"""tests/test_read_skill_tool.py — read_skill tool 单元测试 (P0-2).
 
 Anthropic Skills 协议要求 LLM 能"按需加载"子 skill 片段. 本测试
 覆盖 read_skill handler 的 4 类行为:
@@ -15,7 +15,7 @@ from pathlib import Path
 
 import pytest
 
-from openagent.skills.registry import Skill, SkillRegistry
+from hermetic_agent.skills.registry import Skill, SkillRegistry
 
 
 def _make_skill(
@@ -161,7 +161,7 @@ async def test_read_skill_unknown_fragment_returns_error(tmp_path: Path) -> None
 @pytest.mark.asyncio
 async def test_read_skill_registered_in_mcp_registry(tmp_path: Path) -> None:
     """验证 read_skill 工具被 MCPRegistry 正确注册 (schema 完整, handler 可调)."""
-    from openagent.mcp.registry import MCPRegistry
+    from hermetic_agent.mcp.registry import MCPRegistry
 
     reg = SkillRegistry()
     reg.register(_make_skill(tmp_path, "flight-query", fragments={"summary": "OK"}))

@@ -1,4 +1,4 @@
-"""test_log_platform_structlog_processor — structlog processor 钩子.
+﻿"""test_log_platform_structlog_processor — structlog processor 钩子.
 
 覆盖:
 - ``IS_LOG=False`` 时不写
@@ -13,16 +13,16 @@ import json
 import pytest
 import structlog
 
-from openagent.audit.log import (
+from hermetic_agent.audit.log import (
     busi_logger as _busi, object_log_writer as _olw, request_logger as _req,
     seq_no as _seq, setup as _setup, sys_logger as _sys,
 )
-from openagent.audit.log.log_context import (
+from hermetic_agent.audit.log.log_context import (
     bind_request_context,
     clear_request_context,
 )
-from openagent.audit.log.object_log_writer import ObjectLogWriter
-from openagent.audit.log.structlog_processor import platform_log_processor
+from hermetic_agent.audit.log.object_log_writer import ObjectLogWriter
+from hermetic_agent.audit.log.structlog_processor import platform_log_processor
 
 
 @pytest.fixture(autouse=True)
@@ -72,7 +72,7 @@ def test_processor_emits_busi_log():
         items = ObjectLogWriter.get_instance().drain()
         assert len(items) == 1
         parsed = json.loads(items[0])
-        assert parsed["type"] == "BUSI_LOG_OPENAGENT"
+        assert parsed["type"] == "BUSI_LOG_HERMETIC_AGENT"
         assert parsed["reqSeqNo"] == "T001"
         assert parsed["level"] == "INFO"
         assert "chat_request" in parsed["logInfo"]

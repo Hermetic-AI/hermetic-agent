@@ -5,13 +5,12 @@ import './MainLayout.css';
 
 interface MainLayoutProps {
   children: ReactNode;
+  /** Current top-level nav id (only 'chat' for the generic UI). */
   activeNav: string;
   onNavChange: (id: string) => void;
-  scenario?: string;
-  onScenarioChange?: (scenario: string | undefined) => void;
-  /** 顶栏显示的当前用户标识 */
+  /** User label shown in the top bar. */
   userLabel?: string;
-  /** 顶栏登出按钮回调 */
+  /** Logout callback. */
   onLogout?: () => void;
 }
 
@@ -19,8 +18,6 @@ export function MainLayout({
   children,
   activeNav,
   onNavChange,
-  scenario,
-  onScenarioChange,
   userLabel,
   onLogout,
 }: MainLayoutProps) {
@@ -31,21 +28,19 @@ export function MainLayout({
         activeId={activeNav}
         onNavChange={onNavChange}
         onOpenSettings={() => setSettingsOpen(true)}
-        scenario={scenario}
-        onScenarioChange={onScenarioChange}
       />
       <main className="main-content">
         {(userLabel || onLogout) && (
           <div className="layout-topbar">
-            {userLabel && <span className="layout-user-label">👤 {userLabel}</span>}
+            {userLabel && <span className="layout-user-label">{userLabel}</span>}
             {onLogout && (
               <button
                 type="button"
                 className="layout-logout-btn"
                 onClick={onLogout}
-                title="登出, 清掉本地 token"
+                title="Sign out"
               >
-                登出
+                Sign out
               </button>
             )}
           </div>

@@ -1,4 +1,4 @@
-"""ScenarioMiddleware 单测 — 拦截 + 路由 + 注入 + ctx 挂载."""
+﻿"""ScenarioMiddleware 单测 — 拦截 + 路由 + 注入 + ctx 挂载."""
 
 from __future__ import annotations
 
@@ -8,21 +8,21 @@ from pathlib import Path
 import pytest
 from sanic import Sanic
 
-from openagent.scenarios.config import (
+from hermetic_agent.scenarios.config import (
     ExecutionConfig,
     ProgressiveSkillConfig,
     RoutingConfig,
     ScenarioConfig,
     WorkspaceConfig,
 )
-from openagent.scenarios.errors import (
+from hermetic_agent.scenarios.errors import (
     ScenarioError,
     ScenarioNotFoundError,
 )
-from openagent.scenarios.injector import ScenarioInjector
-from openagent.scenarios.middleware import ScenarioMiddleware
-from openagent.scenarios.registry import ScenarioRegistry
-from openagent.scenarios.router import ScenarioRouter
+from hermetic_agent.scenarios.injector import ScenarioInjector
+from hermetic_agent.scenarios.middleware import ScenarioMiddleware
+from hermetic_agent.scenarios.registry import ScenarioRegistry
+from hermetic_agent.scenarios.router import ScenarioRouter
 
 
 # ---------------------------------------------------------------------------

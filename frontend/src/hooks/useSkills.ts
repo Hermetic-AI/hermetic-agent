@@ -1,45 +1,47 @@
-// useSkills — fetches the current skills list from the backend.
+// useSkills — fetches the list of skill assets from `/agent/skills-db/`.
+//
+// Mirrors useAgents (tick-refetch, no abort, alive guard).  Used by the
+// chat shell to populate the skill asset picker.  Talks through the Vite
+// dev-server proxy via `skillsApi.list()`.
 
-import { useCallback, useEffect, useState } from 'react';
-import { skillsService, ApiError } from '../services';
-import type { Skill } from '../types';
+import { useEffect, useState } from 'react';
+import { skillsApi } from '../services/skills';
+import type { SkillAsset } from '../types/assets';
 
 export interface UseSkillsResult {
-  skills: Skill[];
+  skills: SkillAsset[];
   loading: boolean;
   error: string | null;
   refresh: () => void;
 }
 
 export function useSkills(): UseSkillsResult {
-  const [skills, setSkills] = useState<Skill[]>([]);
+  const [skills, setSkills] = useState<SkillAsset[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [tick, setTick] = useState(0);
 
   useEffect(() => {
-    const ctrl = new AbortController();
+    let alive = true;
     setLoading(true);
-    skillsService
-      .list(ctrl.signal)
+    skillsApi
+      .list({ limit: 100 })
       .then((res) => {
+        if (!alive) return;
         setSkills(res.skills ?? []);
         setError(null);
       })
       .catch((e) => {
-        if (e instanceof ApiError) {
-          setError(e.message);
-        } else if (e instanceof Error) {
-          setError(e.message);
-        } else {
-          setError('Failed to load skills');
-        }
-        setSkills([]);
+        if (!alive) return;
+        setError(e instanceof Error ? e.message : 'Failed to load skills');
       })
-      .finally(() => setLoading(false));
-    return () => ctrl.abort();
+      .finally(() => {
+        if (alive) setLoading(false);
+      });
+    return () => {
+      alive = false;
+    };
   }, [tick]);
 
-  const refresh = useCallback(() => setTick((t) => t + 1), []);
-  return { skills, loading, error, refresh };
+  return { skills, loading, error, refresh: () => setTick((t) => t + 1) };
 }

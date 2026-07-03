@@ -1,15 +1,15 @@
-"""test_log_platform_seq_no — INSTANCE_ID + get_date_seq_no."""
+﻿"""test_log_platform_seq_no — INSTANCE_ID + get_date_seq_no."""
 from __future__ import annotations
 
 import os
 
 import pytest
 
-from openagent.audit.log import (
+from hermetic_agent.audit.log import (
     busi_logger as _busi, object_log_writer as _olw, request_logger as _req,
     seq_no as _seq, setup as _setup, sys_logger as _sys,
 )
-from openagent.audit.log.seq_no import (
+from hermetic_agent.audit.log.seq_no import (
     get_date_seq_no,
     get_instance_id,
     init_instance_id,

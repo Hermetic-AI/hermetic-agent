@@ -94,24 +94,24 @@ export function HealthProvider({
   }, []);
 
   useEffect(() => {
-    let alive = true;
-    const ctrl = new AbortController();
     let intervalId: number | null = null;
 
     async function check() {
-      if (!alive) return;
       if (paused) return;
       if (inFlightRef.current) return;
       inFlightRef.current = true;
 
-      const localCtrl = new AbortController();
-      const onParentAbort = () => localCtrl.abort();
-      ctrl.signal.addEventListener('abort', onParentAbort);
-
       try {
         // 1. Cheap liveness probe — always called on each tick.
-        await systemService.health(localCtrl.signal);
-        if (!alive || localCtrl.signal.aborted) return;
+        // NB: we deliberately do NOT pass an abort signal here.  React 18
+        // StrictMode double-invokes effects in dev; if we abort on cleanup
+        // the first invocation's request is cancelled and shows up in the
+        // Network panel as `(failed)` with no status.  Health checks are
+        // idempotent and cheap — let the request complete in the background
+        // and just discard the result if the component is gone.
+        // React 18 silently no-ops state updates on unmounted components,
+        // so we don't need an `alive` flag to gate setState() calls.
+        await systemService.health();
 
         // 2. /ready is cached unless stale, never-fetched, or last ready call
         //    failed (lastStatusRef != 'healthy' && != 'degraded-with-ready').
@@ -127,15 +127,13 @@ export function HealthProvider({
         // 3. /ready is expensive (hits storage/bridge/registries); call only
         //    when we have to.
         try {
-          const r = await systemService.ready(localCtrl.signal);
-          if (!alive || localCtrl.signal.aborted) return;
+          const r = await systemService.ready();
           setReady(r);
           lastReadyAtRef.current = Date.now();
           lastStatusRef.current = r.status === 'ready' ? 'healthy' : 'degraded';
           setState(lastStatusRef.current);
           setDetail(r.status === 'ready' ? null : r.reason ?? 'Backend reports not_ready');
         } catch (inner) {
-          if (!alive) return;
           setReady(null);
           lastStatusRef.current = 'degraded';
           setState('degraded');
@@ -143,7 +141,6 @@ export function HealthProvider({
           // Don't bump lastReadyAtRef — let the next tick retry.
         }
       } catch (e) {
-        if (!alive) return;
         lastStatusRef.current = 'unreachable';
         setState('unreachable');
         setReady(null);
@@ -155,7 +152,6 @@ export function HealthProvider({
               : 'Network error',
         );
       } finally {
-        ctrl.signal.removeEventListener('abort', onParentAbort);
         inFlightRef.current = false;
       }
     }
@@ -166,8 +162,6 @@ export function HealthProvider({
     }
 
     return () => {
-      alive = false;
-      ctrl.abort();
       if (intervalId !== null) window.clearInterval(intervalId);
     };
   }, [intervalMs, readyInterval, paused, tick]);

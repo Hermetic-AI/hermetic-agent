@@ -1,4 +1,4 @@
-"""path_check 模块单测."""
+﻿"""path_check 模块单测."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from openagent.policy.path_check import (
+from hermetic_agent.policy.path_check import (
     BLOCKED_PATTERNS,
     check_path,
     is_blocked,

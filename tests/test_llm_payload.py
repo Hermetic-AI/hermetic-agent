@@ -1,4 +1,4 @@
-"""tests/test_llm_payload.py — LLM 请求体序列化与日志工具单测.
+﻿"""tests/test_llm_payload.py — LLM 请求体序列化与日志工具单测.
 
 覆盖 4 类:
   * mask_sensitive_text: 屏蔽 MCP_TOKEN / Bearer / token:xxx; None / 无敏感 → 原样
@@ -13,8 +13,8 @@ import json
 
 import structlog
 
-from openagent.config.settings import Settings
-from openagent.providers.llm_payload import (
+from hermetic_agent.config.settings import Settings
+from hermetic_agent.providers.llm_payload import (
     _is_enabled,
     build_claude_payload,
     build_opencode_payload,

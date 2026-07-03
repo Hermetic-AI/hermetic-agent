@@ -1,5 +1,7 @@
-// 业务工具函数集 — 合规判定, 日期, 字符串等.
+// lib — utility helpers shared across the app.
+// Generic UI utilities only; no business logic.
 
-export * from './compliance';
-export * from './scenarios';
-export * from './userSnapshot';
+export * from './eventNames';
+export * from './events';
+export * from './eventBus';
+export * from './activeAssetsStore';

@@ -1,12 +1,12 @@
-"""engine 模块单测: EffectivePolicy / merge / PolicyEngine."""
+﻿"""engine 模块单测: EffectivePolicy / merge / PolicyEngine."""
 
 from __future__ import annotations
 
 import pytest
 
-from openagent.policy.audit import InMemoryAuditLogger
-from openagent.policy.engine import EffectivePolicy, PolicyEngine, merge
-from openagent.policy.errors import (
+from hermetic_agent.policy.audit import InMemoryAuditLogger
+from hermetic_agent.policy.engine import EffectivePolicy, PolicyEngine, merge
+from hermetic_agent.policy.errors import (
     BudgetExceeded,
     CommandNotAllowed,
     NetworkNotAllowed,

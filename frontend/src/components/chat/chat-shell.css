@@ -1,0 +1,200 @@
+/* Chat shell — active-asset chips, executed-command badges, permission pill,
+ * and trigger-hint row that sit between the chat toolbar and the input.
+ *
+ * Workbuddy-inspired dark-pill aesthetic: each chip is a small pill on a
+ * slightly lighter hover, white text, tiny × close button. Permission mode
+ * uses a side pill with three shaded variants.
+ */
+
+.chat-shell {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-2);
+  padding: var(--spacing-2) var(--spacing-4) 0;
+  max-width: 720px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+/* ---- Chip row (active assets) ---- */
+
+.chat-shell-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.chat-shell-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  font-size: var(--text-sm);
+  line-height: 1.2;
+  color: var(--color-text-primary);
+  background: var(--color-bg-tertiary);
+  border: var(--border-thin) solid var(--color-border);
+  border-radius: 999px;
+  transition: background var(--transition-fast), border-color var(--transition-fast);
+  cursor: default;
+  user-select: none;
+  max-width: 240px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.chat-shell-chip:hover {
+  background: var(--color-bg-secondary);
+  border-color: var(--color-border-strong);
+}
+
+.chat-shell-chip-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.chat-shell-chip-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  background: var(--color-bg-primary);
+  border-radius: var(--radius-xs);
+  flex-shrink: 0;
+}
+
+.chat-shell-chip-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  margin-left: 2px;
+  margin-right: -4px;
+  padding: 0;
+  font-size: 12px;
+  line-height: 1;
+  color: var(--color-text-tertiary, var(--color-text-muted));
+  background: transparent;
+  border: none;
+  border-radius: 50%;
+  cursor: pointer;
+  transition: color var(--transition-fast), background var(--transition-fast);
+  flex-shrink: 0;
+}
+
+.chat-shell-chip-remove:hover {
+  color: var(--color-danger);
+  background: var(--color-danger-bg);
+}
+
+/* Per-type icon marker — set via data-icon attr or child text. */
+.chat-shell-chip-icon[data-icon="prompt"]::before { content: "\2728"; }
+.chat-shell-chip-icon[data-icon="command"]::before { content: "/"; }
+.chat-shell-chip-icon[data-icon="skill"]::before { content: "\2605"; }
+.chat-shell-chip-icon[data-icon="mcp"]::before { content: "\1F50C"; }
+.chat-shell-chip-icon[data-icon="agent"]::before { content: "\1F916"; }
+
+/* ---- Executed command badge ---- */
+
+.chat-shell-executed {
+  display: inline-block;
+  font-size: var(--text-xs);
+  font-style: italic;
+  color: var(--color-text-tertiary, var(--color-text-muted));
+  padding: 2px 8px;
+  background: transparent;
+  border: var(--border-thin) dashed var(--color-border);
+  border-radius: var(--radius-sm);
+}
+
+/* ---- Permission pill (right side) ---- */
+
+.chat-shell-permission {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-1);
+  align-self: flex-end;
+  padding: 2px 8px;
+  font-size: var(--text-xs);
+  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+  border-radius: 999px;
+  border: var(--border-thin) solid var(--color-border);
+  background: var(--color-bg-tertiary);
+  color: var(--color-text-secondary);
+  user-select: none;
+}
+
+.chat-shell-permission--restricted {
+  background: var(--color-bg-tertiary);
+  color: var(--color-text-secondary);
+  border-color: var(--color-border);
+}
+
+.chat-shell-permission--standard {
+  background: var(--color-info-bg, #eff6ff);
+  color: var(--color-info, #1e40af);
+  border-color: transparent;
+}
+
+.chat-shell-permission--full {
+  background: var(--color-warning-bg, #fffbeb);
+  color: var(--color-warning, #92400e);
+  border-color: transparent;
+}
+
+.chat-shell-permission-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  align-self: flex-end;
+  background: var(--color-bg-tertiary);
+  border: var(--border-thin) solid var(--color-border);
+  border-radius: 999px;
+  padding: 2px;
+}
+
+.chat-shell-permission-toggle button {
+  border: none;
+  background: transparent;
+  color: var(--color-text-secondary);
+  font-size: var(--text-xs);
+  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+  padding: 2px 8px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+
+.chat-shell-permission-toggle button:hover {
+  color: var(--color-text-primary);
+}
+
+.chat-shell-permission-toggle button.is-active {
+  background: var(--color-bg-primary);
+  color: var(--color-text-primary);
+  box-shadow: 0 0 0 var(--border-thin) var(--color-border-strong);
+}
+
+/* ---- Trigger hint row (above the input) ---- */
+
+.chat-shell-trigger-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-2);
+  padding: 0 var(--spacing-1);
+}
+
+.chat-shell-trigger-hint {
+  font-size: var(--text-xs);
+  color: var(--color-text-tertiary, var(--color-text-muted));
+  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+  letter-spacing: 0.01em;
+}

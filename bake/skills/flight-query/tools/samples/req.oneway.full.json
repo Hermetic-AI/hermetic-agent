@@ -1,1 +1,0 @@
-{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"queryFlightBasic","arguments":{"departureCity":"北京","arrivalCity":"上海","departureDate":"2026-06-05"}}}

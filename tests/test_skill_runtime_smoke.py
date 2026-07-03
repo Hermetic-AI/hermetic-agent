@@ -1,4 +1,4 @@
-"""tests/test_skill_runtime_smoke.py — 5 个端到端关键场景的烟囱测试.
+﻿"""tests/test_skill_runtime_smoke.py — 5 个端到端关键场景的烟囱测试.
 
 5 个最关键场景:
 1. SkillManifest 从 YAML 加载, StateGuard 校验工具
@@ -16,22 +16,22 @@ from types import SimpleNamespace
 
 import pytest
 
-from openagent.skills.runtime import (
+from hermetic_agent.skills.runtime import (
     FragmentLoader,
     PromptBuilder,
     SkillManifest,
     StateGuard,
     StateSpec,
 )
-from openagent.skills.runtime.errors import (
+from hermetic_agent.skills.runtime.errors import (
     FragmentNotFoundError,
     SkillBudgetExceeded,
     SkillNotFoundError,
     StateGuardViolation,
 )
-from openagent.skills.runtime.fragments import FragmentLoadReport
-from openagent.skills.runtime.prompt_builder import PromptBuilder as _PB
-from openagent.skills.registry import Skill, SkillRegistry
+from hermetic_agent.skills.runtime.fragments import FragmentLoadReport
+from hermetic_agent.skills.runtime.prompt_builder import PromptBuilder as _PB
+from hermetic_agent.skills.registry import Skill, SkillRegistry
 
 
 # ---------------------------------------------------------------------------

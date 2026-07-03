@@ -1,0 +1,43 @@
+# skill.yaml — SKILL 清单 (基座 SkillRegistry 读这个)
+# 业务 SKILL 应当声明:
+#   - name / version / description: 必填, 给前端展示 + LLM 决定是否加载
+#   - mcp_tools: 这个 SKILL 用到的 MCP 工具 (由 opencode MCP config 实际加载)
+#   - required_envs: SKILL 运行需要的环境变量, Hub 在每个 chat 之前写入 opencode 容器
+#
+# 业务 SKILL 不要在此文件放任何业务字段 (API base URL / 业务 ID 等),
+# 这些通过 required_envs 走 env 注入, 业务代码里 os.environ.get() 拿.
+name: example-echo-skill
+version: 1.0.0
+
+# 业务 SKILL 用的 MCP 工具.
+# 基座不识别具体 tool, 仅做"声明 + 透传到 opencode"的协议级作用.
+# opencode 端的 MCP config 必须能解析这些 tool (由 docker/opencode/scripts/render_config.py 渲染).
+mcp_tools:
+  echo:
+    tools: [echo]
+
+# 业务 SKILL 需要的 env. Hub 在 chat 之前写到 opencode 容器 env.runtime.
+# 值格式:
+#   - source: env   →  从进程 env 读 (Hub 收到 request 时, 由 X-* header 注入)
+#   - source: file   →  从文件读 (适合 secret 文件场景)
+#   - source: literal →  不推荐, 仅 dev 调试用
+# 严禁在此写明文 secret (token / password / key 全部走 env 或 file).
+required_envs: {}
+
+# SKILL 自带的 CardRenderer / MessageRewriter 实现路径.
+# 基座启动时扫描这两个目录, 调 register_*() 注册到 CardRendererRegistry /
+# MessageRewriterRegistry. 详见 docs/core-skill-boundary.md §4.3 / §4.4.
+card_renderers_module: card_renderers
+message_rewriters_module: message_rewriters
+
+# SKILL 状态机描述 (可选). 供基座 SkillManifest 加载.
+states:
+  - id: S01
+    name: AwaitEcho
+    description: 等用户输入要 echo 的文本
+  - id: S02
+    name: ShowResult
+    description: 已经发出 ECHO_RESULT card, 等用户确认
+  - id: F01
+    name: Done
+    description: 用户确认完成

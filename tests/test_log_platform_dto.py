@@ -1,12 +1,12 @@
-"""test_log_platform_dto — DTO 字段构造 + 默认值."""
+﻿"""test_log_platform_dto — DTO 字段构造 + 默认值."""
 from __future__ import annotations
 
 from datetime import datetime
 
 import pytest
 
-from openagent.audit.log.dto import BusiLog, LogType, RequestLog, SysLog
-from openagent.audit.log import (
+from hermetic_agent.audit.log.dto import BusiLog, LogType, RequestLog, SysLog
+from hermetic_agent.audit.log import (
     busi_logger as _busi, object_log_writer as _olw, request_logger as _req,
     seq_no as _seq, setup as _setup, sys_logger as _sys,
 )
@@ -64,7 +64,7 @@ def test_sys_log_defaults():
 def test_busi_log_constructed_fields():
     now = datetime.now()
     log = BusiLog(
-        type="BUSI_LOG_OPENAGENT",
+        type="BUSI_LOG_hermetic_agent",
         instanceId="hub-A",
         reqSeqNo="T260610182405B00001",
         logTime=now,
@@ -72,7 +72,7 @@ def test_busi_log_constructed_fields():
         logInfo='{"event":"x"}',
         logId=260610182405000001,
     )
-    assert log.type == "BUSI_LOG_OPENAGENT"
+    assert log.type == "BUSI_LOG_hermetic_agent"
     assert log.reqSeqNo == "T260610182405B00001"
     assert log.logTime == now
     assert log.level == "ERROR"

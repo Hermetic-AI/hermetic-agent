@@ -1,4 +1,4 @@
-"""tests/test_question_controller.py — P7: /agent/questions/* 端点.
+﻿"""tests/test_question_controller.py — P7: /agent/questions/* 端点.
 
 每个测试用独立 ``Sanic(f"test-question-{uuid}")`` 实例避免 Sanic
 app name 冲突, 单独注册 question_bp, 桥接 / adapter 用 mock。
@@ -13,8 +13,8 @@ import httpx
 import pytest
 from sanic import Sanic
 
-from openagent.api.http.controllers.question_controller import question_bp
-from openagent.config.settings import Settings
+from hermetic_agent.api.http.controllers.question_controller import question_bp
+from hermetic_agent.config.settings import Settings
 
 
 class _FakeAdapter:

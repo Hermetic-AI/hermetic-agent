@@ -1,4 +1,4 @@
-"""tests/test_auip_skill_compiler.py — compile_skill_md 单元测试.
+﻿"""tests/test_auip_skill_compiler.py — compile_skill_md 单元测试.
 
 P5 简化: 只解析 frontmatter + §2.1 状态表 + §3.1 工具白名单,
 其他 prose 整体作为 prompt_template 返回.
@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from openagent.auip.skill_compiler import compile_skill_md
+from hermetic_agent.auip.skill_compiler import compile_skill_md
 
 
 def _write_skill_md(tmp_path: Path, body: str, frontmatter: str = "", name: str = "SKILL.md") -> Path:

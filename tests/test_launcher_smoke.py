@@ -1,4 +1,4 @@
-"""Smoke tests for EngineLauncher — 5 most critical scenarios.
+﻿"""Smoke tests for EngineLauncher — 5 most critical scenarios.
 
 Keep this file tiny and dependency-free: it documents the 5 must-pass
 behaviours (refuse / accept / opencode / claude / stop) and acts as a
@@ -13,8 +13,8 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from openagent.providers.base import AgentConfig
-from openagent.providers.launcher import (
+from hermetic_agent.providers.base import AgentConfig
+from hermetic_agent.providers.launcher import (
     ClaudeCodeHandle,
     EngineHandle,
     EngineLauncher,
@@ -37,7 +37,7 @@ def test_smoke_accept_real_workspace(tmp_path: Path, monkeypatch: pytest.MonkeyP
     ws = tmp_path / "proj"
     ws.mkdir()
 
-    monkeypatch.setattr("openagent.providers.launcher.Popen", lambda *a, **kw: MagicMock())
+    monkeypatch.setattr("hermetic_agent.providers.launcher.Popen", lambda *a, **kw: MagicMock())
 
     launcher = EngineLauncher(port_allocator=lambda: 4097, config_dir=str(tmp_path / "c"))
     agent = AgentConfig(name="x", base_url="http://x", sdk_type="opencode")
@@ -69,7 +69,7 @@ def test_smoke_opencode_args_and_config(
         m.poll = MagicMock(return_value=None)
         return m
 
-    monkeypatch.setattr("openagent.providers.launcher.Popen", fake_popen)
+    monkeypatch.setattr("hermetic_agent.providers.launcher.Popen", fake_popen)
 
     launcher = EngineLauncher(port_allocator=lambda: 4098, config_dir=str(cfg_dir))
     agent = AgentConfig(name="y", base_url="http://y", sdk_type="opencode")

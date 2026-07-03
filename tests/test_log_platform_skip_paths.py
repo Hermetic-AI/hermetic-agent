@@ -1,13 +1,13 @@
-"""test_log_platform_skip_paths — 跳过规则."""
+﻿"""test_log_platform_skip_paths — 跳过规则."""
 from __future__ import annotations
 
 import pytest
 
-from openagent.audit.log import (
+from hermetic_agent.audit.log import (
     busi_logger as _busi, object_log_writer as _olw, request_logger as _req,
     seq_no as _seq, setup as _setup, sys_logger as _sys,
 )
-from openagent.audit.log.skip_paths import build_skip_predicate
+from hermetic_agent.audit.log.skip_paths import build_skip_predicate
 
 
 @pytest.fixture(autouse=True)

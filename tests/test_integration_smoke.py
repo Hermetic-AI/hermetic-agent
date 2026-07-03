@@ -1,4 +1,4 @@
-"""tests/test_integration_smoke.py — P7 跨层集成冒烟测试.
+﻿"""tests/test_integration_smoke.py — P7 跨层集成冒烟测试.
 
 验证 P0-P6 整套串联工作正常:
 1. 6 个 scenario YAML 全部成功加载
@@ -18,32 +18,32 @@ from pathlib import Path
 
 import pytest
 
-from openagent.auip import CardType, TurnEventType
-from openagent.auip.events import assert_seq_increasing
-from openagent.core.suspendable_scheduler import (
+from hermetic_agent.auip import TurnEventType, register_card_type
+from hermetic_agent.auip.events import assert_seq_increasing
+from hermetic_agent.core.suspendable_scheduler import (
     SuspendableScheduler,
     UserInput,
 )
-from openagent.core.turn_store import InMemoryTurnStore
-from openagent.scenarios import (
+from hermetic_agent.core.turn_store import InMemoryTurnStore
+from hermetic_agent.scenarios import (
     ScenarioInjector,
     ScenarioRegistry,
     ScenarioRouter,
 )
-from openagent.scenarios.errors import RoutingFailedError
-from openagent.scenarios.injector import InMemoryAuditLogger
-from openagent.skills.runtime import (
+from hermetic_agent.scenarios.errors import RoutingFailedError
+from hermetic_agent.scenarios.injector import InMemoryAuditLogger
+from hermetic_agent.skills.runtime import (
     FragmentLoader,
     PromptBuilder,
     SkillManifest,
     StateGuard,
     StateSpec,
 )
-from openagent.skills.runtime.errors import (
+from hermetic_agent.skills.runtime.errors import (
     SkillBudgetExceeded,
     StateGuardViolation,
 )
-from openagent.skills.registry import Skill, SkillRegistry
+from hermetic_agent.skills.registry import Skill, SkillRegistry
 
 WORK_ROOT = Path("work")
 
@@ -338,7 +338,7 @@ async def test_full_suspend_resume_cycle(scenarios):
     assert_seq_increasing(events1)
     # Card 含 OD_INPUT
     card_evt = next(e for e in events1 if e.type == TurnEventType.CARD)
-    assert card_evt.data["card"]["card_type"] == CardType.OD_INPUT.value
+    assert card_evt.data["card"]["card_type"] == "OD_INPUT"
 
     # Phase 2: resume
     suspend_evt = next(e for e in events1 if e.type == TurnEventType.SUSPEND)
@@ -516,4 +516,4 @@ async def test_end_to_end_scenario_to_suspend(scenarios, workspace_dir):
     # 必有 CARD 推送 (OD_INPUT)
     card_evts = [e for e in events if e.type == TurnEventType.CARD]
     assert len(card_evts) == 1
-    assert card_evts[0].data["card"]["card_type"] == CardType.OD_INPUT.value
+    assert card_evts[0].data["card"]["card_type"] == "OD_INPUT"

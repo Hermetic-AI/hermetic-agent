@@ -1,10 +1,10 @@
-"""tests/test_auip_events.py — TurnEvent 单元测试."""
+﻿"""tests/test_auip_events.py — TurnEvent 单元测试."""
 
 from __future__ import annotations
 
 import pytest
 
-from openagent.auip.events import (
+from hermetic_agent.auip.events import (
     TurnEvent,
     TurnEventType,
     assert_seq_increasing,

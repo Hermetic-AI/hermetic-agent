@@ -1,4 +1,4 @@
-  server:
+﻿  server:
   host: 0.0.0.0
   port: 8000
   workers: 1
@@ -38,20 +38,19 @@ logging:
 
 storage:
   backend: mysql
-  mysql_dsn: mysql://root:1014@192.168.3.16:13306/openagent
+  mysql_dsn: mysql://root:1014@192.168.3.16:13306/hermetic_agent
   mysql_pool_min_size: 5
   mysql_pool_max_size: 20
   mysql_echo: false
 
 skill_runtime:
   skill_paths:
-    - /app/src/openagent/.skills
+    - /app/src/hermetic_agent/.skills
   fragment_budget_tokens: 4000
   fragment_budget_policy: error
 
 mcp:
   tools_config: []
-  flight_mcp_token_env: FLIGHT_API_KEY
 
 agent:
   auto_register_default_agents: true
@@ -59,7 +58,7 @@ agent:
 
 sandbox:
   docker_bin: docker
-  network: openagent-sandbox-net
+  network: hermetic_agent-sandbox-net
   mem_limit: 2g
   cpu_limit: 2.0
   pids_limit: 128
@@ -127,23 +126,18 @@ chat:
   opencode_client_keepalive_expiry: 120.0
   agent_pool_health_check_http_timeout: 5.0
 
-feihe_auth:
-  base_url: https://traveldev.feiheair.com
-  request_timeout: 10.0
-  origin_url: https://crmdev.feiheair.com
-
 app_metadata:
-  title: Agent Scheduler Hub
+  title: hermetic-agent
   version: 0.1.0
-  contact_email: dev@openagent.local
-  license_name: MIT
+  contact_email: dev@hermetic-agent.local
+  license_name: Apache-2.0
 
 nacos:
   enabled: true
   server_addr: nacos:8848
   namespace: 6375a990-9df8-4783-a7fe-fb3a3effba93
   group: DEFAULT_GROUP
-  config_data_id: openagent
+  config_data_id: hermetic_agent
   config_group: DEFAULT_GROUP
   config_format: yaml
   ai_enabled: true
@@ -151,5 +145,5 @@ nacos:
   ai_agent_sync: true
   ai_skill_sync: true
   ai_prompt_sync: true
-  service_name: openagent-hub
+  service_name: hermetic-agent
   service_port: 8000

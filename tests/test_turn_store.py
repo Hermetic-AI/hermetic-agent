@@ -1,4 +1,4 @@
-"""tests/test_turn_store.py — InMemoryTurnStore 单元测试."""
+﻿"""tests/test_turn_store.py — InMemoryTurnStore 单元测试."""
 
 from __future__ import annotations
 
@@ -6,8 +6,8 @@ import time
 
 import pytest
 
-from openagent.auip.events import TurnEvent, TurnEventType
-from openagent.core.turn_store import (
+from hermetic_agent.auip.events import TurnEvent, TurnEventType
+from hermetic_agent.core.turn_store import (
     TURN_STATUS_DONE,
     TURN_STATUS_ERROR,
     TURN_STATUS_RUNNING,

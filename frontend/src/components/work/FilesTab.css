@@ -1,0 +1,86 @@
+/* FilesTab — file diff list */
+
+.files-tab {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+.files-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--color-text-muted, #888);
+  font-style: italic;
+  padding: var(--spacing-4, 16px);
+}
+
+.files-list {
+  list-style: none;
+  margin: 0;
+  padding: var(--spacing-2, 8px);
+  overflow-y: auto;
+  max-height: 40%;
+  border-bottom: 1px solid var(--color-border, #222);
+}
+
+.files-item {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-2, 8px);
+  width: 100%;
+  padding: var(--spacing-2, 8px);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  color: var(--color-text, #ddd);
+  text-align: left;
+  cursor: pointer;
+  font-size: var(--text-xs, 11px);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  transition: all 0.15s ease;
+}
+
+.files-item:hover {
+  background: var(--color-bg-hover, #1a1a1a);
+}
+
+.files-item.is-active {
+  background: var(--color-accent-bg, #312e81);
+  border-color: var(--color-accent, #4f46e5);
+}
+
+.files-kind {
+  font-size: 9px;
+  text-transform: uppercase;
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: var(--color-accent-bg, #312e81);
+  color: var(--color-accent, #c4b5fd);
+  font-weight: 700;
+}
+
+.files-kind-file {
+  background: rgba(34, 197, 94, 0.2);
+  color: var(--color-success, #86efac);
+}
+
+.files-kind-url {
+  background: rgba(59, 130, 246, 0.2);
+  color: #93c5fd;
+}
+
+.files-path {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.files-preview {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}

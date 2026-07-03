@@ -1,1 +1,0 @@
-{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"queryFlightBasic","arguments":{"departureCity":"上海","arrivalCity":"深圳","departureDate":"2026-06-05","cheapest":true}}}

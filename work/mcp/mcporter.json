@@ -1,35 +1,17 @@
 {
+  "_comment": "Example MCP server config — 业务方按需修改. 字段格式遵循 opencode MCP v1 协议.",
   "mcpServers": {
-    "feihe-travel": {
-      "description": "Feihe domestic flight search and booking MCP",
+    "example-mcp": {
+      "description": "Example MCP server. 业务方按需修改.",
       "type": "http",
-      "url": "https://traveldev.feiheair.com/api/mcp",
+      "url": "https://your-mcp-endpoint.example.com/api/mcp",
       "headers": {
         "Accept": "application/json,text/event-stream",
-        "token": "$env:FLIGHT_API_KEY"
+        "Authorization": "Bearer $env:MCP_TOKEN"
       },
       "allowedTools": [
-        "checkProductAccess",
-        "getDateInfo",
-        "listUpcomingHolidays",
-        "getHolidayDate",
-        "queryFlightBasic",
-        "filterFlightList",
-        "chooseFlight",
-        "getFlightPolicyInfo",
-        "chooseCabin",
-        "chooseAlternativeCabin",
-        "listTripApplications",
-        "getTripApplicationDetail",
-        "listCostCenters",
-        "bindCostCenter",
-        "getDefaultContact",
-        "fillPassenger",
-        "validateBookingInfo",
-        "recordPolicyUserDecision",
-        "buildOrderPreview",
-        "getOrderDetail",
-        "resetBookingSession"
+        "example_tool_a",
+        "example_tool_b"
       ],
       "lifecycle": "keep-alive"
     }

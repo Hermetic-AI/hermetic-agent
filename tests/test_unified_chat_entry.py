@@ -1,4 +1,4 @@
-"""test_unified_chat_entry.py — 校验 统一对话入口 约束 (CI 必跑).
+﻿"""test_unified_chat_entry.py — 校验 统一对话入口 约束 (CI 必跑).
 
 实现方式: 用 AST 扫描所有 controller 源文件, 禁止
 ``@<bp>.post("/<...>/chat")`` 与 ``/chat/stream`` 形式.
@@ -39,11 +39,11 @@ def test_check_unified_chat_entry_passes():
 
 def _build_app():
     """直接 build 一个有 unique name 的 Sanic app, 复用 create_app 的 init 流程."""
-    from openagent.api.app.app import create_app
-    from openagent.config.settings import Settings
-    # 关键: Sanic 全局按 name 注册, 但 create_app 用 "agent-scheduler-hub".
+    from hermetic_agent.api.app.app import create_app
+    from hermetic_agent.config.settings import Settings
+    # 关键: Sanic 全局按 name 注册, 但 create_app 用 "hermetic-agent".
     # 第一次调用是 OK 的, 之后会被 fixture 缓存. 我们直接 build 一次拿 router.
-    import openagent.api.app.app as app_mod
+    import hermetic_agent.api.app.app as app_mod
     if not getattr(app_mod, "_test_app_cache", None):
         app_mod._test_app_cache = create_app(Settings())
     return app_mod._test_app_cache
@@ -85,7 +85,7 @@ def _find_per_scenario_chat_in_source():
         r'@[^.]+\.post\(\s*["\']?/<[^>]+>/chat(?:/stream)?["\']?\s*\)'
     )
     violations = []
-    for path in Path("src/openagent/api/controllers/").glob("*.py"):
+    for path in Path("src/hermetic_agent/api/controllers/").glob("*.py"):
         if path.name in ("__init__.py",):
             continue
         if "__pycache__" in str(path):

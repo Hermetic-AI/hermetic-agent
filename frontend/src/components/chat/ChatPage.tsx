@@ -1,25 +1,58 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { ChatMessage } from '../../types';
-import { useChatStream, useChatSession, useHealth } from '../../hooks';
+import {
+  useChatStream,
+  useChatSession,
+  useHealth,
+  useAgents,
+  usePrompts,
+  useCommands,
+  useSkills,
+  useMcpConfigs,
+} from '../../hooks';
 import { MessageList, ChatInput, ChatBubble, WelcomeMessage } from '../chat';
-import { questionService } from '../../services';
-import { config } from '../../config';
-import { friendlyScenarioName, friendlyScenarioDescription } from '../../lib';
+import type { AssetUseRequest } from '../../lib';
+import {
+  useActiveAssets,
+  emit,
+  ASSET_INVOKE_EVENT,
+  COMMAND_EXECUTED_EVENT,
+  ACCESS_LEVEL_CHANGED_EVENT,
+  CRAFT_AGENT_REQUESTED_EVENT,
+} from '../../lib';
+import type { AssetInvokeRequest, AccessLevel, CommandExecutedEvent } from '../../lib';
+import type {
+  PromptAsset,
+  CommandAsset,
+  SkillAsset,
+  McpConfigAsset,
+  AgentAsset,
+} from '../../types/assets';
+import { promptsApi } from '../../services/prompts';
+import { commandsApi } from '../../services/commands';
+import { skillsApi } from '../../services/skills';
+import { mcpConfigsApi } from '../../services/mcp_configs';
+import { logger } from '../../utils/logger';
 import './ChatPage.css';
+import './chat-shell.css';
 
 interface ChatPageProps {
   onQuickReply?: (message: string) => void;
-  /** Pending prompt injected from another page (e.g. "Ask AI" on Search/Orders). */
+  /** Pending prompt injected from another page. */
   pendingPrompt?: string | null;
   /** Cleared once the prompt has been consumed. */
   onPendingPromptConsumed?: () => void;
-  /** Scenario routing hint (X-Scenario + body.scenario). */
-  scenario?: string;
-  /** Optional override of the displayed scenario name in welcome. */
-  scenarioLabel?: string;
   /**
-   * 用户点了「新建对话」按钮. 父组件 App.tsx 收到后清掉 localStorage
-   * 并 bump chatKey,触发整 ChatPage remount.  这里不直接做事,纯粹通知.
+   * "Use this asset in chat" request dispatched from an asset tab card.
+   * ChatPage resolves the asset and prefills the chat input with the
+   * relevant text (slash command, prompt content, etc.).
+   */
+  pendingUse?: AssetUseRequest | null;
+  /** Cleared once the pending-use has been consumed. */
+  onPendingUseConsumed?: () => void;
+  /**
+   * User clicked "New chat".  Parent App.tsx clears localStorage and bumps
+   * chatKey to remount this whole tree.
    */
   onNewChat?: () => void;
 }
@@ -28,21 +61,61 @@ export function ChatPage({
   onQuickReply,
   pendingPrompt,
   onPendingPromptConsumed,
-  scenario,
-  scenarioLabel,
+  pendingUse,
+  onPendingUseConsumed,
   onNewChat,
 }: ChatPageProps) {
   const session = useChatSession();
   const { state: healthState, ready } = useHealth();
+  const { agents, loading: agentsLoading, error: agentsError } = useAgents();
+  const prompts = usePrompts();
+  const commands = useCommands();
+  const skills = useSkills();
+  const mcps = useMcpConfigs();
   const agentName = pickAgentName(ready);
+  const active = useActiveAssets(session.sessionId);
+
+  // If the stored agent code isn't in the list (e.g. deleted), drop it.
+  useEffect(() => {
+    if (!active.agentCode) return;
+    if (agentsLoading) return;
+    if (agents.length === 0) return;
+    if (!agents.some((a) => a.code === active.agentCode)) {
+      active.setAgentCode(null);
+    }
+  }, [agents, agentsLoading, active]);
+
+  // Per-turn extras for the chat body — derived from the active asset sets.
+  const extraMcpServers = useMemo(() => {
+    const out: Record<string, Record<string, unknown>> = {};
+    for (const code of active.activeMcps) {
+      const m = mcps.mcps.find((x) => x.code === code);
+      if (m) out[code] = m as unknown as Record<string, unknown>;
+    }
+    return out;
+  }, [active.activeMcps, mcps.mcps]);
+
+  const extraSystemMessages = useMemo(() => {
+    const out: string[] = [];
+    for (const code of active.activePrompts) {
+      const p = prompts.prompts.find((x) => x.code === code);
+      if (p?.content) out.push(p.content);
+    }
+    for (const code of active.activeSkills) {
+      const s = skills.skills.find((x) => x.code === code);
+      if (s?.prompt_template) out.push(s.prompt_template);
+    }
+    return out;
+  }, [active.activePrompts, active.activeSkills, prompts.prompts, skills.skills]);
+
   const chat = useChatStream({
     sessionId: session.sessionId ?? undefined,
     onSessionChange: (id) => session.setSessionId(id),
-    // 后端 in-memory store 丢失 (容器重启/部署) 时, 主动清掉 localStorage
-    // 里的 session_id, 下次发送自动建新 session.
     onSessionExpired: () => session.setSessionId(null),
     agentName,
-    scenario,
+    agentCode: active.agentCode ?? undefined,
+    extraMcpServers,
+    extraSystemMessages,
   });
 
   // Pull existing history once when we know the session id.
@@ -68,141 +141,212 @@ export function ChatPage({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session.sessionId]);
 
-  const isBusy =
-    chat.status === 'sending' ||
-    chat.status === 'streaming' ||
-    chat.status === 'resuming';
+  const isBusy = chat.status === 'sending' || chat.status === 'streaming';
 
-  // Inject prompt from outside (e.g. Search/Orders "Ask AI" button).
+  // Inject prompt from outside.
   useEffect(() => {
     if (!pendingPrompt) return;
-    if (isBusy || chat.isSuspended) return;
+    if (isBusy) return;
     chat.send(pendingPrompt);
     onPendingPromptConsumed?.();
     onQuickReply?.(pendingPrompt);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pendingPrompt, isBusy, chat.isSuspended]);
+  }, [pendingPrompt, isBusy]);
+
+  // Resolve a "use this asset in chat" request from an asset tab.
+  // Fetches the asset, derives an appropriate prefill text, and stages
+  // it for the next ChatInput mount.
+  const [pendingPrefill, setPendingPrefill] = useState<string | null>(null);
+  useEffect(() => {
+    if (!pendingUse) return;
+    let cancelled = false;
+    const fetchAndPrefill = async () => {
+      try {
+        let prefill = '';
+        if (pendingUse.type === 'prompt') {
+          const p = await promptsApi.get(pendingUse.code);
+          prefill = p.content;
+        } else if (pendingUse.type === 'command') {
+          const c = await commandsApi.get(pendingUse.code);
+          prefill = c.slash_command;
+        } else if (pendingUse.type === 'skill') {
+          const s = await skillsApi.get(pendingUse.code);
+          prefill = s.prompt_template ?? `[skill ${s.code}]`;
+        } else if (pendingUse.type === 'mcp') {
+          const m = await mcpConfigsApi.get(pendingUse.code);
+          prefill = `[mcp ${m.code} (${m.mcp_type})] ${m.url ?? m.command ?? ''}`.trim();
+        }
+        if (cancelled) return;
+        setPendingPrefill(prefill);
+      } catch {
+        // ignore — placeholder prefill stays empty; the user can still type
+      } finally {
+        if (!cancelled) onPendingUseConsumed?.();
+      }
+    };
+    void fetchAndPrefill();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingUse]);
+
+  const handleAgentChange = useCallback(
+    (code: string | null) => {
+      active.setAgentCode(code);
+    },
+    [active],
+  );
+
+  const handleAssetInvoked = useCallback(
+    (req: AssetInvokeRequest) => {
+      // Always emit so any other subscriber (analytics, side panels) hears it.
+      emit(ASSET_INVOKE_EVENT, req);
+      // The store auto-appends via its own listener; we still call the
+      // local setters to keep the chip strip in sync when ChatInput is
+      // mounted in isolation (e.g. before the store listener is wired).
+      switch (req.type) {
+        case 'agent':
+          active.setAgentCode(req.code);
+          break;
+        case 'mcp':
+          active.addMcp(req.code);
+          break;
+        case 'prompt':
+          active.addPrompt(req.code);
+          break;
+        case 'skill':
+          active.addSkill(req.code);
+          break;
+        case 'command':
+          // /commands go through COMMAND_EXECUTED_EVENT (handled below).
+          break;
+      }
+    },
+    [active],
+  );
+
+  const handleCommandExecuted = useCallback(
+    (code: string, slash: string, summary: string) => {
+      const evt: CommandExecutedEvent = {
+        code,
+        slash_command: slash,
+        summary,
+        at: new Date().toISOString(),
+      };
+      emit(COMMAND_EXECUTED_EVENT, evt);
+    },
+    [],
+  );
 
   const handleSend = useCallback(
     (content: string) => {
       chat.send(content);
+      // One-turn prompts/skills have been sent — clear them so they don't
+      // stick around for the next turn.
+      active.consumeOneTurn();
     },
-    [chat],
+    [chat, active],
   );
 
   const handleQuickReply = useCallback(
     (value: string) => {
       chat.send(value);
+      active.consumeOneTurn();
     },
-    [chat],
+    [chat, active],
   );
 
   const handleAbort = useCallback(() => {
     chat.abort();
   }, [chat]);
 
-  const handleCardSubmit = useCallback(
-    (userInput: Record<string, unknown>, actionId?: string, cardId?: string) => {
-      chat.resumeTurn(userInput, actionId, cardId);
+  const handleAccessLevel = useCallback(
+    (level: AccessLevel) => {
+      active.setAccessLevel(level);
+      emit(ACCESS_LEVEL_CHANGED_EVENT, { level, at: new Date().toISOString() });
     },
-    [chat],
+    [active],
   );
 
-  const handleCancelTurn = useCallback(() => {
-    void chat.cancelTurn();
-  }, [chat]);
+  const handleCraft = useCallback(() => {
+    emit(CRAFT_AGENT_REQUESTED_EVENT, { at: new Date().toISOString() });
+    logger.info('Craft agent from this conversation — coming soon');
+  }, []);
 
-  // P7: opencode 原生 question 提交 — 走 questionService.reply (不走 turnService.resume)
-  const handleQuestionReply = useCallback(
-    async (requestId: string, answers: string[][], sessionId: string) => {
-      try {
-        await questionService.reply(requestId, { session_id: sessionId, answers });
-      } catch (e) {
-        // 错误由 user-facing ChatPage error 兜底, 这里只 log
-        console.error('questionService.reply failed', e);
-        chat.reset();
-      }
-    },
-    [chat],
-  );
-
-  // P7: opencode 原生 question 忽略 — 走 questionService.reject
-  const handleQuestionReject = useCallback(
-    async (requestId: string, sessionId: string) => {
-      try {
-        await questionService.reject(requestId, sessionId);
-      } catch (e) {
-        console.error('questionService.reject failed', e);
-      }
+  const handleClearExecuted = useCallback(
+    (code: string) => {
+      // No store-side clear in the current spec; local-only UI affordance.
+      // We mutate the local cache by re-emitting with a sentinel so the
+      // store filters out by code on the next emit.  For now the chip is
+      // read-only — this is wired so future store support drops in cleanly.
+      void code;
     },
     [],
   );
-
-  // Aggregate the most recent state from any assistant message.
-  // 优先从 events[] 时间线里抽 state 事件 (新数据源), 兜底用老字段.
-  const allStateEvents = chat.messages.flatMap((m) => {
-    const fromEvents = (m.events ?? [])
-      .filter((e): e is Extract<typeof e, { type: 'state' }> => e.type === 'state')
-      .map((e) => ({ state: e.state, note: e.note, at: e.at }));
-    return fromEvents.length > 0 ? fromEvents : (m.stateEvents ?? []);
-  });
-  const latestState = allStateEvents[allStateEvents.length - 1] ?? null;
-  const currentState = chat.currentState ?? latestState?.state ?? null;
-  const stateEvents = allStateEvents.filter(
-    (s) => s.state === currentState || s.state !== chat.currentState,
-  );
-  const scenarioView = chat.scenario;
 
   return (
     <div className="chat-page">
       <HealthBanner
         state={healthState}
         sessionLabel={labelFor(session.info)}
-        scenarioLabel={scenarioLabel}
-        tokenConfigured={Boolean(config.mcpToken)}
       />
       {onNewChat && (
-        <ChatToolbar scenarioLabel={scenarioLabel} onNewChat={onNewChat} />
+        <ChatToolbar
+          onNewChat={onNewChat}
+          agents={agents}
+          agentsLoading={agentsLoading}
+          agentsError={agentsError}
+          selectedAgentCode={active.agentCode}
+          onAgentChange={handleAgentChange}
+        />
       )}
+      <ChatShell
+        agentCode={active.agentCode}
+        agents={agents}
+        setAgentCode={active.setAgentCode}
+        activeMcps={active.activeMcps}
+        addMcp={active.addMcp}
+        removeMcp={active.removeMcp}
+        activePrompts={active.activePrompts}
+        activeSkills={active.activeSkills}
+        executedCommands={active.executedCommands}
+        accessLevel={active.accessLevel}
+        setAccessLevel={handleAccessLevel}
+        prompts={prompts.prompts}
+        commands={commands.commands}
+        skills={skills.skills}
+        mcps={mcps.mcps}
+        onCraft={handleCraft}
+        onClearExecuted={handleClearExecuted}
+      />
       {chat.messages.length === 0 ? (
         <div className="chat-page-empty">
           <WelcomeMessage
             onQuickReply={handleQuickReply}
             backendReady={healthState === 'healthy'}
-            scenarioLabel={scenarioLabel}
           />
         </div>
       ) : (
-        <MessageList
-          loading={isBusy}
-          scenario={scenarioView}
-          currentState={currentState}
-          stateEvents={stateEvents}
-          turnId={chat.serverTurnId}
-          isSuspended={chat.isSuspended}
-          onCancelTurn={handleCancelTurn}
-        >
+        <MessageList loading={isBusy}>
           {chat.messages.map((msg: ChatMessage) => (
             <ChatBubble
               key={msg.id}
               message={msg}
               onQuickReply={handleQuickReply}
               onAbort={handleAbort}
-              onCardSubmit={handleCardSubmit}
-              onQuestionReply={handleQuestionReply}
-              onQuestionReject={handleQuestionReject}
             />
           ))}
         </MessageList>
       )}
       {chat.error && chat.messages.length > 0 && (
         <div className="chat-page-error" role="alert">
-          {chat.error}
+          <span>{chat.error}</span>
           <button
             type="button"
             className="chat-page-error-dismiss"
             onClick={() => chat.reset()}
-            aria-label="关闭错误"
+            aria-label="Dismiss error"
           >
             ×
           </button>
@@ -210,34 +354,227 @@ export function ChatPage({
       )}
       <ChatInput
         onSend={handleSend}
-        disabled={isBusy || chat.isSuspended}
+        disabled={isBusy}
         placeholder={
-          chat.isSuspended
-            ? '请在上方卡片中填写信息以继续…'
-            : scenarioLabel
-              ? `向 ${scenarioLabel} 提问…`
-              : '输入消息…'
+          isBusy
+            ? 'Generating...'
+            : pendingPrefill
+              ? 'Asset loaded — edit and press Enter to send'
+              : 'Message AI...'
         }
+        initialValue={pendingPrefill ?? ''}
+        prompts={prompts.prompts}
+        commands={commands.commands}
+        skills={skills.skills}
+        mcps={mcps.mcps}
+        onAssetInvoked={handleAssetInvoked}
+        onCommandExecuted={handleCommandExecuted}
       />
     </div>
   );
 }
 
+// --- ChatShell ---------------------------------------------------------------
+
+interface ChatShellProps {
+  agentCode: string | null;
+  agents: AgentAsset[];
+  setAgentCode: (code: string | null) => void;
+  activeMcps: string[];
+  addMcp: (code: string) => void;
+  removeMcp: (code: string) => void;
+  activePrompts: string[];
+  activeSkills: string[];
+  executedCommands: CommandExecutedEvent[];
+  accessLevel: AccessLevel;
+  setAccessLevel: (level: AccessLevel) => void;
+  prompts: PromptAsset[];
+  commands: CommandAsset[];
+  skills: SkillAsset[];
+  mcps: McpConfigAsset[];
+  onCraft: () => void;
+  onClearExecuted: (code: string) => void;
+}
+
+function ChatShell(props: ChatShellProps) {
+  const {
+    agentCode,
+    agents,
+    setAgentCode,
+    activeMcps,
+    removeMcp,
+    activePrompts,
+    activeSkills,
+    executedCommands,
+    accessLevel,
+    setAccessLevel,
+    prompts,
+    skills,
+    mcps,
+    onCraft,
+    onClearExecuted,
+  } = props;
+
+  const agent = agentCode ? agents.find((a) => a.code === agentCode) : null;
+  const mcpById = new Map(mcps.map((m) => [m.code, m]));
+  const promptById = new Map(prompts.map((p) => [p.code, p]));
+  const skillById = new Map(skills.map((s) => [s.code, s]));
+
+  const totalChips =
+    (agentCode ? 1 : 0) +
+    activeMcps.length +
+    activePrompts.length +
+    activeSkills.length +
+    executedCommands.length;
+
+  return (
+    <div className="chat-shell">
+      <div className="chat-shell-chips">
+        {agentCode && (
+          <Chip
+            kind="agent"
+            label={agent ? `${agent.name}` : agentCode}
+            onRemove={() => setAgentCode(null)}
+          />
+        )}
+        {activeMcps.map((code) => (
+          <Chip
+            key={`mcp:${code}`}
+            kind="mcp"
+            label={mcpById.get(code)?.name ?? code}
+            onRemove={() => removeMcp(code)}
+          />
+        ))}
+        {activePrompts.map((code) => (
+          <Chip
+            key={`prompt:${code}`}
+            kind="prompt"
+            label={promptById.get(code)?.name ?? code}
+            onRemove={() => undefined}
+            oneShot
+          />
+        ))}
+        {activeSkills.map((code) => (
+          <Chip
+            key={`skill:${code}`}
+            kind="skill"
+            label={skillById.get(code)?.name ?? code}
+            onRemove={() => undefined}
+            oneShot
+          />
+        ))}
+        {executedCommands.map((c) => (
+          <span
+            key={`executed:${c.code}`}
+            className="chat-shell-executed"
+            title={`${c.slash_command} — ${c.summary}`}
+          >
+            已执行 {c.slash_command}
+            <button
+              type="button"
+              className="chat-shell-chip-remove"
+              onClick={() => onClearExecuted(c.code)}
+              aria-label={`Clear executed ${c.slash_command}`}
+            >
+              ×
+            </button>
+          </span>
+        ))}
+        {totalChips === 0 && (
+          <span className="chat-shell-trigger-hint">
+            Type @ to attach an asset · / to run a command
+          </span>
+        )}
+      </div>
+      <div className="chat-shell-permission">
+        <PermissionPill level={accessLevel} onChange={setAccessLevel} />
+        <button
+          type="button"
+          className="chat-shell-chip-remove"
+          onClick={onCraft}
+          aria-label="Craft agent from this conversation"
+          title="Craft agent from this conversation"
+          style={{ marginRight: 0, width: 'auto', padding: '0 6px' }}
+        >
+          ✦ Craft
+        </button>
+      </div>
+    </div>
+  );
+}
+
+interface ChipProps {
+  kind: 'agent' | 'mcp' | 'prompt' | 'skill' | 'command';
+  label: string;
+  onRemove: () => void;
+  oneShot?: boolean;
+}
+
+function Chip({ kind, label, onRemove, oneShot }: ChipProps) {
+  return (
+    <span className="chat-shell-chip" title={label}>
+      <span className="chat-shell-chip-icon" data-icon={kind} aria-hidden="true" />
+      <span className="chat-shell-chip-label">{label}</span>
+      {oneShot && <span className="chat-shell-chip-icon" title="One-shot (cleared on send)">1×</span>}
+      <button
+        type="button"
+        className="chat-shell-chip-remove"
+        onClick={onRemove}
+        aria-label={`Remove ${label}`}
+      >
+        ×
+      </button>
+    </span>
+  );
+}
+
+interface PermissionPillProps {
+  level: AccessLevel;
+  onChange: (level: AccessLevel) => void;
+}
+
+function PermissionPill({ level, onChange }: PermissionPillProps) {
+  const options: Array<{ value: AccessLevel; label: string; title: string }> = [
+    { value: 'restricted', label: '受限', title: '无工具权限' },
+    { value: 'standard', label: '标准', title: '只读 + 网络搜索' },
+    { value: 'full', label: '完全访问权限', title: '允许所有工具 (workbuddy 模式)' },
+  ];
+  return (
+    <div
+      className={`chat-shell-permission-toggle chat-shell-permission--${level}`}
+      role="radiogroup"
+      aria-label="Tool permission level"
+    >
+      {options.map((o) => (
+        <button
+          key={o.value}
+          type="button"
+          role="radio"
+          aria-checked={level === o.value}
+          className={level === o.value ? 'is-active' : ''}
+          onClick={() => onChange(o.value)}
+          title={o.title}
+        >
+          {o.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+// --- Existing helpers (unchanged) -------------------------------------------
+
 function pickAgentName(ready: ReturnType<typeof useHealth>['ready']): string | undefined {
   if (!ready?.agents) return undefined;
-  // 后端 ``/ready`` 返回 ``agents: string[]`` (list of registered names).
-  // 之前按 dict 处理 (Object.keys) 会得到 ``["0"]`` 然后把 "0" 当 agent_name
-  // 发给后端, 报 ``KeyError: "Agent '0' not registered"`` —— 已修.
   if (Array.isArray(ready.agents)) {
     return ready.agents.find((n): n is string => typeof n === 'string' && n.length > 0);
   }
-  // 兜底: 旧版本若返 dict (eg. {"opencode-core": {...}}) 也兼容
   const names = Object.keys(ready.agents);
   return names.find((n) => n && typeof n === 'string');
 }
 
 function labelFor(info: { agent_name?: string; session_id?: string } | null): string {
-  if (!info) return '未建立会话';
+  if (!info) return 'No session';
   const shortId = (info.session_id ?? '').slice(0, 8);
   return `${info.agent_name ?? 'agent'} · ${shortId || '...'}`;
 }
@@ -245,105 +582,88 @@ function labelFor(info: { agent_name?: string; session_id?: string } | null): st
 function HealthBanner({
   state,
   sessionLabel,
-  scenarioLabel,
-  tokenConfigured,
 }: {
   state: ReturnType<typeof useHealth>['state'];
   sessionLabel: string;
-  scenarioLabel?: string;
-  tokenConfigured: boolean;
 }) {
   let text = '';
-  let cls = 'chat-health-banner';
   switch (state) {
     case 'healthy':
-      text = `已连接 · ${sessionLabel}`;
-      cls += ' is-healthy';
+      text = `Connected · ${sessionLabel}`;
       break;
     case 'degraded':
-      text = '后端就绪检查未通过，部分功能可能不可用';
-      cls += ' is-degraded';
+      text = 'Backend is degraded — some features may be unavailable';
       break;
     case 'unreachable':
-      text = '无法连接后端，请确认服务已启动';
-      cls += ' is-unreachable';
+      text = 'Cannot reach backend — check the server';
       break;
     case 'unknown':
     default:
-      text = '正在连接后端…';
-      break;
+      text = 'Connecting to backend...';
   }
-  const friendlyName = scenarioLabel ? friendlyScenarioName(scenarioLabel) : null;
-  const friendlyDesc = scenarioLabel ? friendlyScenarioDescription(scenarioLabel) : null;
   return (
-    <div className={cls}>
-      <div className="chat-health-banner-left">
-        <span>{text}</span>
-        {friendlyName && (
-          <span
-            className="chat-scenario-chip"
-            title={friendlyDesc ?? ''}
-          >
-            <span className="chat-scenario-chip-dot" />
-            {friendlyName}
-          </span>
-        )}
-      </div>
-      {!tokenConfigured && (
-        <span className="chat-health-banner-warn" title="未配置 VITE_MCP_TOKEN，部分 MCP 工具可能 401">
-          ⚠ 未配置 MCP Token
-        </span>
-      )}
+    <div className={`chat-health-banner chat-health-${state}`}>
+      <span className="chat-health-dot" />
+      <span className="chat-health-text">{text}</span>
     </div>
   );
 }
 
 function ChatToolbar({
-  scenarioLabel,
   onNewChat,
+  agents,
+  agentsLoading,
+  agentsError,
+  selectedAgentCode,
+  onAgentChange,
 }: {
-  scenarioLabel?: string;
   onNewChat: () => void;
+  agents: Array<{ code: string; name: string; description?: string | null }>;
+  agentsLoading: boolean;
+  agentsError: string | null;
+  selectedAgentCode: string | null;
+  onAgentChange: (code: string | null) => void;
 }) {
-  const friendlyName = scenarioLabel ? friendlyScenarioName(scenarioLabel) : '自动路由';
   return (
     <div className="chat-toolbar">
-      <div className="chat-toolbar-title">
-        <span className="chat-toolbar-icon" aria-hidden="true">
-          <ChatBubbleIcon />
-        </span>
-        <span className="chat-toolbar-label">智能助手</span>
-        <span className="chat-toolbar-divider">·</span>
-        <span className="chat-toolbar-scenario" title={friendlyName}>
-          {friendlyName}
-        </span>
-      </div>
-      <div className="chat-toolbar-actions">
-        <button
-          type="button"
-          className="chat-toolbar-new-btn"
-          onClick={onNewChat}
-          title="清空当前对话, 开一个新会话 (场景保持不变)"
+      <div className="chat-toolbar-title">Chat</div>
+      <label className="chat-toolbar-agent" title="Select which agent profile to inject into the chat">
+        <span className="chat-toolbar-agent-label">Agent</span>
+        <select
+          className="chat-toolbar-agent-select"
+          value={selectedAgentCode ?? ''}
+          onChange={(e) => onAgentChange(e.target.value || null)}
+          disabled={agentsLoading}
         >
-          <PlusIcon />
-          <span>新建对话</span>
-        </button>
-      </div>
+          <option value="">(none — use scenario defaults)</option>
+          {agents.map((a) => (
+            <option key={a.code} value={a.code}>
+              {a.name} ({a.code})
+            </option>
+          ))}
+        </select>
+        {agentsError && (
+          <span className="chat-toolbar-agent-error" title={agentsError}>
+            ⚠
+          </span>
+        )}
+      </label>
+      <button
+        type="button"
+        className="chat-toolbar-new-btn"
+        onClick={onNewChat}
+        title="Clear the current conversation and start a new session"
+      >
+        <PlusIcon />
+        <span>New chat</span>
+      </button>
     </div>
-  );
-}
-
-function ChatBubbleIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-    </svg>
   );
 }
 
 function PlusIcon() {
   return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       <line x1="12" y1="5" x2="12" y2="19" />
       <line x1="5" y1="12" x2="19" y2="12" />
     </svg>

@@ -1,4 +1,4 @@
-# AGENTS.md — 集成编排方案 Coding Agent 协作守则
+﻿# AGENTS.md — 集成编排方案 Coding Agent 协作守则
 
 > **本文件是给所有 Coding Agent 的统一上下文**。每个 agent 在写代码前**必读**。
 > 设计源文档：`docs/design/integrated-orchestration-plan.md`
@@ -7,7 +7,7 @@
 
 ## 1. 总体约束
 
-- **零修改既有实现**：不要改 `src/openagent/core/scheduler.py`、`providers/*.py`、`skills/registry.py`、`mcp/registry.py` 等已有文件的**签名**。如需扩展，**加方法**或**新建模块**。
+- **零修改既有实现**：不要改 `src/hermetic_agent/core/scheduler.py`、`providers/*.py`、`skills/registry.py`、`mcp/registry.py` 等已有文件的**签名**。如需扩展，**加方法**或**新建模块**。
 - **5 层代码分层**（依赖严格向下，CI 强校验）：
   - L1: `api/` （controllers, middleware）
   - L2: `scenarios/` （registry, router, injector, config, loader, scheduler_adapter）
@@ -26,14 +26,14 @@
 
 ```python
 # ✅ 正确：导入已有类
-from openagent.providers.base import ChatMessage, AgentConfig, SessionInfo
-from openagent.providers.agent_bridge import AgentBridge
-from openagent.skills.registry import SkillRegistry, Skill
-from openagent.mcp.registry import MCPRegistry, MCPTool
-from openagent.store.base import StorageBackend, Session, Message, Part
+from hermetic_agent.providers.base import ChatMessage, AgentConfig, SessionInfo
+from hermetic_agent.providers.agent_bridge import AgentBridge
+from hermetic_agent.skills.registry import SkillRegistry, Skill
+from hermetic_agent.mcp.registry import MCPRegistry, MCPTool
+from hermetic_agent.store.base import StorageBackend, Session, Message, Part
 
 # ✅ 正确：导入 settings
-from openagent.config.settings import Settings, get_settings
+from hermetic_agent.config.settings import Settings, get_settings
 
 # ❌ 禁止：改这些类的签名
 # ❌ 禁止：往这些类里塞新方法（请新建自己的 wrapper/扩展类）
@@ -45,13 +45,13 @@ from openagent.config.settings import Settings, get_settings
 
 | 你的工作 | 文件 | 备注 |
 |---|---|---|
-| L5 Policy | `src/openagent/policy/{engine,path_check,command_check,network_check,audit}.py` | 各自 ≤ 200 行 |
-| L2 Scenario | `src/openagent/scenarios/{config,registry,router,loader,injector,scheduler_adapter,errors}.py` | 各自 ≤ 250 行 |
-| L3 Skill Runtime | `src/openagent/skill_runtime/{manifest,state_guard,prompt_builder,fragments,errors}.py` | 各自 ≤ 250 行 |
-| L3 AUIP | `src/openagent/auip/{events,cards,skill_compiler}.py` | 各自 ≤ 200 行 |
-| L3 Core | `src/openagent/core/{suspendable_scheduler,turn_store}.py` | 各自 ≤ 300 行 |
-| L4 Launcher | `src/openagent/providers/launcher.py` | ≤ 200 行 |
-| L1 中间件 | `src/openagent/scenarios/middleware.py` | ≤ 200 行 |
+| L5 Policy | `src/hermetic_agent/policy/{engine,path_check,command_check,network_check,audit}.py` | 各自 ≤ 200 行 |
+| L2 Scenario | `src/hermetic_agent/scenarios/{config,registry,router,loader,injector,scheduler_adapter,errors}.py` | 各自 ≤ 250 行 |
+| L3 Skill Runtime | `src/hermetic_agent/skill_runtime/{manifest,state_guard,prompt_builder,fragments,errors}.py` | 各自 ≤ 250 行 |
+| L3 AUIP | `src/hermetic_agent/auip/{events,cards,skill_compiler}.py` | 各自 ≤ 200 行 |
+| L3 Core | `src/hermetic_agent/core/{suspendable_scheduler,turn_store}.py` | 各自 ≤ 300 行 |
+| L4 Launcher | `src/hermetic_agent/providers/launcher.py` | ≤ 200 行 |
+| L1 中间件 | `src/hermetic_agent/scenarios/middleware.py` | ≤ 200 行 |
 | 测试 | `tests/test_{policy,scenario,launcher,skill_runtime,auip}_*.py` | ≥ 80% 覆盖 |
 
 ---
@@ -82,7 +82,7 @@ from openagent.config.settings import Settings, get_settings
 - **所有用户可见错误**必须用设计文档 §10 的 12 个 code 之一
 - **detail 字段**给出：哪个文件/字段/规则/怎么改
 - **异常类层级**：
-  - `OpenAgentError` (基类)
+  - `HermeticAgentError` (基类)
   - `ScenarioError` → `ScenarioLoadError` / `ScenarioResourceError` / `ScenarioValidationError`
   - `PolicyError` → `PolicyViolation`
   - `SkillRuntimeError` → `SkillBudgetExceeded` / `FragmentNotFoundError` / `SkillNotFoundError`
@@ -103,10 +103,10 @@ from openagent.config.settings import Settings, get_settings
 
 每个 agent 写完代码后，**必须**跑：
 ```bash
-cd "C:\WorkSpace\Coding\OpenAgent"
-python -c "from openagent.policy.engine import PolicyEngine; from openagent.scenarios import ScenarioRegistry; ..."
+cd "C:\WorkSpace\Coding\hermetic_agent"
+python -c "from hermetic_agent.policy.engine import PolicyEngine; from hermetic_agent.scenarios import ScenarioRegistry; ..."
 pytest tests/test_<你的模块>.py -v
-ruff check src/openagent/<你的模块>/
+ruff check src/hermetic_agent/<你的模块>/
 ```
 
 如果失败，**自己修**，不要留给用户。
@@ -115,7 +115,7 @@ ruff check src/openagent/<你的模块>/
 
 ## 🚨 统一对话入口 (绝对约束)
 
-**严禁新增 per-scenario 对话端点。** 所有 chat 入口只允许这 2 个, 都在 `src/openagent/api/controllers/chat_controller.py`:
+**严禁新增 per-scenario 对话端点。** 所有 chat 入口只允许这 2 个, 都在 `src/hermetic_agent/api/controllers/chat_controller.py`:
 
 - `POST /agent/chat` — 同步
 - `POST /agent/chat/stream` — SSE 流式
