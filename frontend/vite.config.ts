@@ -35,10 +35,16 @@ export default defineConfig(({ mode }) => {
     },
   };
 
+  const apiProxy: ProxyOptions = {
+    target,
+    changeOrigin: true,
+    ws: false,
+  };
+
   return {
     plugins: [react()],
     server: {
-      port: 13000,
+      port: 23000,
       open: true,
       // 长流 SSE 需要更大的 hmr / file-watch buffer
       hmr: {
@@ -47,6 +53,9 @@ export default defineConfig(({ mode }) => {
       },
       proxy: {
         [proxyPrefix]: streamProxy,
+        '/agent': apiProxy,
+        '/ready': apiProxy,
+        '/health': apiProxy,
       },
     },
     build: {

@@ -165,6 +165,8 @@ services:
         condition: service_healthy
       minio-init:
         condition: service_completed_successfully
+      mysql:
+        condition: service_healthy
     networks: [sandbox-net]
     volumes:
       - ./work:/app/work:ro
@@ -286,12 +288,42 @@ services:
       start_period: 5s
       retries: 3
 
+  # ============================================================
+  # 4. MySQL 8 (asset + session 持久化)
+  # ============================================================
+  mysql:
+    image: mysql:8.0
+    container_name: hermetic-agent-mysql
+    pull_policy: ${PULL_POLICY:-missing}
+    restart: unless-stopped
+    environment:
+      - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD:-1014}
+      - MYSQL_DATABASE=${MYSQL_DATABASE:-hermetic_agent}
+      - MYSQL_ROOT_HOST=%  # dev only: allow root from any host
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_0900_ai_ci
+      - --default-authentication-plugin=caching_sha2_password
+    ports:
+      - "${MYSQL_PORT:-13306}:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+    networks: [sandbox-net]
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-u", "root", "-p${MYSQL_ROOT_PASSWORD:-1014}"]
+      interval: 10s
+      timeout: 5s
+      start_period: 30s
+      retries: 10
+
 volumes:
   opencode-1-runtime:
     # 命名 volume: 容器 recreate 时保留 runtime overlay (admin API 写的
     # env.runtime / policy.runtime.json).  清理: docker compose down -v
   minio-data:
     # 命名 volume: MinIO 对象存储持久化.  清理: docker compose down -v
+  mysql-data:
+    # 命名 volume: MySQL 数据持久化.  清理: docker compose down -v
 
 networks:
   sandbox-net:
