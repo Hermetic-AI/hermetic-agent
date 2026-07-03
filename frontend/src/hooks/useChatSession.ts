@@ -53,12 +53,23 @@ export function useChatSession(): UseChatSessionResult {
       setInfo(null);
       return;
     }
-    const ctrl = new AbortController();
+    // NB: no abort signal — see HealthContext.tsx for the StrictMode
+    // double-invocation rationale.  React 18 silently no-ops state updates
+    // on unmounted components, so we don't need an `alive` flag.
     sessionService
-      .get(sessionId, ctrl.signal)
+      .get(sessionId)
       .then((res) => setInfo(res))
-      .catch(() => setInfo(null));
-    return () => ctrl.abort();
+      .catch((err) => {
+        setInfo(null);
+        // Stale session (e.g. created before MySQL switch, or on a different
+        // hub instance) returns 404 — clear the stored id so subsequent
+        // refreshes don't keep retrying it.  Transient errors (network / 5xx)
+        // are left alone so the next /health tick retries naturally.
+        if (err instanceof ApiError && err.status === 404) {
+          writeStoredId(null);
+          setSessionIdState(null);
+        }
+      });
   }, [sessionId]);
 
   const startNew = useCallback(

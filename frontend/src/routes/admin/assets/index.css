@@ -114,6 +114,32 @@
   gap: 6px;
 }
 
+.asset-view-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+  color: #3a3a3c;
+  margin-bottom: 12px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #e5e5ea;
+}
+
+.asset-view-content {
+  background: #1c1c1e;
+  color: #f2f2f7;
+  padding: 12px;
+  border-radius: 8px;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  max-height: 360px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  margin: 0;
+}
+
 .asset-card-meta-label {
   font-weight: 500;
   min-width: 80px;

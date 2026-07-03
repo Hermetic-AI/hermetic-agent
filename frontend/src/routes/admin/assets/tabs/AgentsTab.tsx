@@ -14,12 +14,12 @@ import {
   MultiSelectPicker,
   type MultiSelectOption,
 } from '../../../../components/common';
-import { agentsApi } from '../../../services/agents';
-import { promptsApi } from '../../../services/prompts';
-import { commandsApi } from '../../../services/commands';
-import { mcpConfigsApi } from '../../../services/mcp_configs';
-import { skillsApi } from '../../../services/skills';
-import type { AgentAsset } from '../../../types/assets';
+import { agentsApi } from '../../../../services/agents';
+import { promptsApi } from '../../../../services/prompts';
+import { commandsApi } from '../../../../services/commands';
+import { mcpConfigsApi } from '../../../../services/mcp_configs';
+import { skillsApi } from '../../../../services/skills';
+import type { AgentAsset } from '../../../../types/assets';
 import '../index.css';
 import './AgentsTab.css';
 
@@ -114,19 +114,19 @@ export function AgentsTab() {
       setPickerOptions((prev) => ({
         prompts:
           results[0].status === 'fulfilled'
-            ? results[0].value.items.map((p) => ({ value: p.code, label: `${p.code} â€” ${p.name}` }))
+            ? results[0].value.items.map((p) => ({ value: p.code, label: `${p.code} â€?${p.name}` }))
             : prev.prompts,
         commands:
           results[1].status === 'fulfilled'
-            ? results[1].value.items.map((c) => ({ value: c.code, label: `${c.code} â€” ${c.name}` }))
+            ? results[1].value.items.map((c) => ({ value: c.code, label: `${c.code} â€?${c.name}` }))
             : prev.commands,
         mcps:
           results[2].status === 'fulfilled'
-            ? results[2].value.items.map((m) => ({ value: m.code, label: `${m.code} â€” ${m.name}` }))
+            ? results[2].value.items.map((m) => ({ value: m.code, label: `${m.code} â€?${m.name}` }))
             : prev.mcps,
         skills:
           results[3].status === 'fulfilled'
-            ? results[3].value.skills.map((s) => ({ value: s.code, label: `${s.code} â€” ${s.name}` }))
+            ? results[3].value.skills.map((s) => ({ value: s.code, label: `${s.code} â€?${s.name}` }))
             : prev.skills,
       }));
       const errors = results
@@ -479,7 +479,7 @@ function AgentEditDialog({
                 options={pickers.skills}
                 value={item.skill_codes}
                 onChange={(next) => onChange({ ...item, skill_codes: next })}
-                emptyMessage="No skills available â€” create one first"
+                emptyMessage="No skills available â€?create one first"
                 placeholder="No skills selected"
                 disabled={saving}
                 testId="picker-skills"

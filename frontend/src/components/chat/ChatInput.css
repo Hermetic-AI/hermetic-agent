@@ -74,3 +74,93 @@
   color: var(--color-text-muted);
   margin-top: var(--spacing-2);
 }
+
+/* --- Trigger popover (@ / popovers anchored above the input) --- */
+
+.chat-input-container {
+  position: relative;
+}
+
+.chat-shell-popover {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(100% + 8px);
+  z-index: 20;
+  max-height: 320px;
+  overflow-y: auto;
+  background: var(--color-bg-primary, #fff);
+  border: var(--border-thin) solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  padding: var(--spacing-1, 4px);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-1, 4px);
+}
+
+.chat-shell-popover-arrow {
+  position: absolute;
+  left: 24px;
+  bottom: -6px;
+  width: 12px;
+  height: 12px;
+  background: var(--color-bg-primary, #fff);
+  border-right: var(--border-thin) solid var(--color-border);
+  border-bottom: var(--border-thin) solid var(--color-border);
+  transform: rotate(45deg);
+}
+
+.chat-shell-popover-section {
+  display: flex;
+  flex-direction: column;
+}
+
+.chat-shell-popover-section-title {
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: var(--spacing-1, 4px) var(--spacing-2, 8px);
+}
+
+.chat-shell-popover-item {
+  display: flex;
+  align-items: baseline;
+  gap: var(--spacing-2, 8px);
+  width: 100%;
+  text-align: left;
+  padding: var(--spacing-1, 4px) var(--spacing-2, 8px);
+  border: none;
+  background: transparent;
+  border-radius: var(--radius-sm, 4px);
+  color: var(--color-text-primary);
+  cursor: pointer;
+  font-size: var(--text-sm);
+}
+
+.chat-shell-popover-item.is-selected,
+.chat-shell-popover-item:hover {
+  background: var(--color-bg-tertiary, #f4f4f5);
+}
+
+.chat-shell-popover-item-label {
+  font-family: var(--font-mono, monospace);
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  flex-shrink: 0;
+}
+
+.chat-shell-popover-item-name {
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.chat-shell-popover-empty {
+  padding: var(--spacing-2, 8px);
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+  text-align: center;
+}

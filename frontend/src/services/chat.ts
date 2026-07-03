@@ -15,6 +15,13 @@ export interface ChatRequest {
   message: string;
   session_id?: string;
   agent_name?: string;
+  /**
+   * Agent asset code (from `/agent/agents/`).  Triggers server-side
+   * `inject_agent_into_chat` which resolves the agent and prepends its
+   * system_prompt / prompts / commands / MCP to the upstream LLM call.
+   * Distinct from `agent_name` (which selects the opencode sandbox instance).
+   */
+  agent_code?: string;
   model?: string;
   system_prompt?: string;
   timeout?: number;
@@ -58,7 +65,10 @@ export const chatService = {
    * Prefer the streaming variant for any user-facing interaction.
    */
   async send(payload: ChatRequest, signal?: AbortSignal): Promise<ChatResponse> {
-    return http.post<ChatResponse>(CHAT_PATH, payload, { signal });
+    return http.post<ChatResponse>(CHAT_PATH, payload, {
+      signal,
+      headers: payload.agent_code ? { 'X-Agent-Code': payload.agent_code } : undefined,
+    });
   },
 
   /**
@@ -70,7 +80,7 @@ export const chatService = {
     try {
       res = await fetch(buildStreamUrl(), {
         method: 'POST',
-        headers: buildHeaders({ accept: 'text/event-stream' }),
+        headers: buildHeaders({ accept: 'text/event-stream' }, payload.agent_code),
         body: JSON.stringify(payload),
         signal: opts.signal,
         credentials: 'omit',
@@ -131,8 +141,8 @@ export const chatService = {
 
 // --- Header / URL helpers (extracted so callers can reuse them) ---
 
-export function buildStreamHeaders(_payload: ChatRequest): Record<string, string> {
-  return buildHeaders({ accept: 'text/event-stream' });
+export function buildStreamHeaders(payload: ChatRequest): Record<string, string> {
+  return buildHeaders({ accept: 'text/event-stream' }, payload.agent_code);
 }
 
 export function buildStreamUrl(): string {
@@ -152,7 +162,7 @@ export function joinUrl(base: string, path: string): string {
   return `${b}${p}`;
 }
 
-function buildHeaders(extra: { accept: string }): Record<string, string> {
+function buildHeaders(extra: { accept: string }, agentCode?: string): Record<string, string> {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     Accept: extra.accept,
@@ -164,6 +174,11 @@ function buildHeaders(extra: { accept: string }): Record<string, string> {
     headers.Authorization = `Bearer ${runtimeToken}`;
   } else if (config.mcpToken) {
     headers['X-MCP-Token'] = config.mcpToken;
+  }
+  if (agentCode) {
+    // Hint header for `chat_inject/injector_adapter._resolve_agent_code`.
+    // Body `agent_code` is also sent as a belt-and-braces fallback.
+    headers['X-Agent-Code'] = agentCode;
   }
   return headers;
 }

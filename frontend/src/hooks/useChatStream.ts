@@ -47,8 +47,28 @@ export interface UseChatStreamOptions {
   systemPrompt?: string;
   /** Model hint forwarded to the backend. */
   model?: string;
-  /** Agent instance to target. */
+  /** Agent instance (opencode sandbox) to target. */
   agentName?: string;
+  /**
+   * Agent asset code (from `/agent/agents/`) to inject.  When set, the
+   * server resolves the agent and prepends its system_prompt / prompts /
+   * commands / MCP block to the LLM call.  Sent both as `agent_code` in
+   * the body and as `X-Agent-Code` header.
+   */
+  agentCode?: string;
+  /**
+   * Extra MCP servers to inject into this turn's opencode mcpServers block.
+   * Sent as `extra_opencode_mcp` (snake_case) in the JSON body — the
+   * backend `ChatRequest` schema already accepts this field.
+   */
+  extraMcpServers?: Record<string, Record<string, unknown>>;
+  /**
+   * Extra system messages prepended to this turn only.  Sent as
+   * `extra_system_messages` (snake_case) in the JSON body.  Backend
+   * ignores unknown fields today (Pydantic `extra='ignore'` default),
+   * so this is a forward-compatible payload.
+   */
+  extraSystemMessages?: string[];
 }
 
 export interface UseChatStreamResult {
@@ -148,6 +168,10 @@ export function useChatStream(options: UseChatStreamOptions = {}): UseChatStream
         typeof opts.agentName === 'string' && opts.agentName.trim().length > 0
           ? opts.agentName.trim()
           : undefined;
+      const safeAgentCode =
+        typeof opts.agentCode === 'string' && opts.agentCode.trim().length > 0
+          ? opts.agentCode.trim()
+          : undefined;
 
       chatService
         .sendStream(
@@ -155,8 +179,15 @@ export function useChatStream(options: UseChatStreamOptions = {}): UseChatStream
             message: trimmed,
             ...(reqSessionId ? { session_id: reqSessionId } : {}),
             ...(safeAgentName ? { agent_name: safeAgentName } : {}),
+            ...(safeAgentCode ? { agent_code: safeAgentCode } : {}),
             ...(opts.model ? { model: opts.model } : {}),
             ...(opts.systemPrompt ? { system_prompt: opts.systemPrompt } : {}),
+            ...(opts.extraMcpServers && Object.keys(opts.extraMcpServers).length > 0
+              ? { extra_opencode_mcp: opts.extraMcpServers }
+              : {}),
+            ...(opts.extraSystemMessages && opts.extraSystemMessages.length > 0
+              ? { extra_system_messages: opts.extraSystemMessages }
+              : {}),
           },
           {
             signal: ctrl.signal,

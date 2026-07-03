@@ -11,8 +11,9 @@ import {
   Skeleton,
   Input,
 } from '../../../../components/common';
-import { commandsApi } from '../../../services/commands';
-import type { CommandAsset } from '../../../types/assets';
+import { commandsApi } from '../../../../services/commands';
+import type { CommandAsset } from '../../../../types/assets';
+import { ASSET_USE_EVENT, type AssetUseRequest } from '../../../../lib';
 import '../index.css';
 import './CommandsTab.css';
 
@@ -32,6 +33,7 @@ export function CommandsTab() {
   const [editing, setEditing] = useState<typeof NEW_COMMAND | null>(null);
   const [editingCode, setEditingCode] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<CommandAsset | null>(null);
+  const [viewing, setViewing] = useState<CommandAsset | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -116,6 +118,22 @@ export function CommandsTab() {
     }
   }
 
+  function dispatchUseInChat(code: string) {
+    const detail: AssetUseRequest = { type: 'command', code };
+    window.dispatchEvent(new CustomEvent(ASSET_USE_EVENT, { detail }));
+  }
+
+  function copyToClipboard(text: string, message: string) {
+    if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+      void navigator.clipboard.writeText(text).then(
+        () => setError(message),
+        () => setError('Clipboard write failed'),
+      );
+    } else {
+      setError('Clipboard API unavailable');
+    }
+  }
+
   return (
     <div className="assets-tab">
       <div className="assets-tab-header">
@@ -131,39 +149,88 @@ export function CommandsTab() {
            action={{ label: 'Create first', onClick: openNew }}
          />
        ) : (
-         <div className="assets-tab-grid">
-           {items.map((item) => (
-             <Card key={item.code}>
-               <CardHeader>
-                 <strong>{item.name}</strong>
-                 <code style={{ fontSize: 12, color: '#6c6c70' }}>{item.slash_command}</code>
-               </CardHeader>
-               <CardBody>
-                 <div className="asset-card-meta">
-                   <div className="asset-card-meta-item">
-                     <span className="asset-card-meta-label">Code:</span>
-                     <span>{item.code}</span>
-                   </div>
-                   <div className="asset-card-meta-item">
-                     <span className="asset-card-meta-label">Status:</span>
-                     <span className={`asset-status-badge asset-status-${item.status}`}>{item.status}</span>
-                   </div>
-                   <div className="asset-card-meta-item">
-                     <span className="asset-card-meta-label">Enabled:</span>
-                     <span>{item.enabled ? 'Yes' : 'No'}</span>
-                   </div>
-                 </div>
-               </CardBody>
-               <CardFooter>
-                 <div className="asset-card-row">
-                   <Button size="small" onClick={() => openEdit(item)}>Edit</Button>
-                   <Button size="small" variant="danger" onClick={() => setDeleting(item)}>Delete</Button>
-                 </div>
-               </CardFooter>
-             </Card>
-           ))}
-         </div>
-       )}
+          <div className="assets-tab-grid">
+            {items.map((item) => (
+              <Card key={item.code}>
+                <CardHeader>
+                  <strong>{item.name}</strong>
+                  <code style={{ fontSize: 12, color: '#6c6c70' }}>{item.slash_command}</code>
+                </CardHeader>
+                <CardBody>
+                  <div className="asset-card-meta">
+                    <div className="asset-card-meta-item">
+                      <span className="asset-card-meta-label">Code:</span>
+                      <span>{item.code}</span>
+                    </div>
+                    <div className="asset-card-meta-item">
+                      <span className="asset-card-meta-label">Status:</span>
+                      <span className={`asset-status-badge asset-status-${item.status}`}>{item.status}</span>
+                    </div>
+                    <div className="asset-card-meta-item">
+                      <span className="asset-card-meta-label">Enabled:</span>
+                      <span>{item.enabled ? 'Yes' : 'No'}</span>
+                    </div>
+                  </div>
+                </CardBody>
+                <CardFooter>
+                  <div className="asset-card-row">
+                    <Button size="small" onClick={() => setViewing(item)}>View</Button>
+                    <Button
+                      size="small"
+                      variant="secondary"
+                      onClick={() => dispatchUseInChat(item.code)}
+                    >
+                      Use in chat
+                    </Button>
+                    <Button size="small" onClick={() => openEdit(item)}>Edit</Button>
+                    <Button size="small" variant="danger" onClick={() => setDeleting(item)}>Delete</Button>
+                  </div>
+                </CardFooter>
+              </Card>
+            ))}
+          </div>
+        )}
+        {viewing && (
+          <Modal
+            open
+            onClose={() => setViewing(null)}
+            title={`${viewing.name} (${viewing.code})`}
+            size="large"
+            footer={
+              <>
+                <Button
+                  variant="secondary"
+                  onClick={() => copyToClipboard(viewing.slash_command, 'Slash command copied')}
+                >
+                  Copy slash
+                </Button>
+                <Button
+                  variant="secondary"
+                  onClick={() => copyToClipboard(viewing.system_prompt_addendum, 'Addendum copied')}
+                >
+                  Copy addendum
+                </Button>
+                <Button
+                  variant="primary"
+                  onClick={() => {
+                    dispatchUseInChat(viewing.code);
+                    setViewing(null);
+                  }}
+                >
+                  Use in chat
+                </Button>
+              </>
+            }
+          >
+            <div className="asset-view-meta">
+              <div><strong>Slash:</strong> <code>{viewing.slash_command}</code></div>
+              <div><strong>Status:</strong> {viewing.status}</div>
+              <div><strong>Enabled:</strong> {viewing.enabled ? 'Yes' : 'No'}</div>
+              {viewing.description && <div><strong>Description:</strong> {viewing.description}</div>}
+            </div>
+            <pre className="asset-view-content">{viewing.system_prompt_addendum}</pre>
+          </Modal>
+        )}
       {editing && (
         <CommandEditDialog
           item={editing}

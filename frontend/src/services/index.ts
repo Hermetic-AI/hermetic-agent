@@ -18,3 +18,4 @@ export type {
 } from './session';
 export { poolService } from './pool';
 export { systemService } from './system';
+export { agentsApi } from './agents';

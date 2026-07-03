@@ -74,7 +74,9 @@ export type StreamEventType =
   | 'tool_use'
   | 'tool_result'
   | 'done'
-  | 'error';
+  | 'error'
+  | 'assets_loaded'
+  | 'command_executed';
 
 export interface StreamEventPayloadMap {
   session: { session_id: string; [k: string]: unknown };
@@ -97,6 +99,22 @@ export interface StreamEventPayloadMap {
   };
   done: { stop_reason?: string; [k: string]: unknown };
   error: { message: string; code?: string; [k: string]: unknown };
+  assets_loaded: {
+    agent_code: string | null;
+    prompts: string[];
+    commands: string[];
+    skills: string[];
+    mcps: string[];
+    at: string;
+    [k: string]: unknown;
+  };
+  command_executed: {
+    code: string;
+    slash_command: string;
+    summary: string;
+    at: string;
+    [k: string]: unknown;
+  };
 }
 
 export type StreamEvent<T extends StreamEventType = StreamEventType> = T extends StreamEventType

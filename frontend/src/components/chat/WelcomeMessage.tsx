@@ -26,9 +26,7 @@ export function WelcomeMessage({
         </div>
         <h1 className="welcome-hero-title">How can I help today?</h1>
         <p className="welcome-hero-subtitle">
-          {backendReady
-            ? 'Ask anything, or pick a starter prompt below.'
-            : 'Cannot reach the backend service. Check VITE_MCP_TOKEN and confirm the server is running.'}
+          Ask anything, or pick a starter prompt below.
         </p>
 
         {backendReady && (

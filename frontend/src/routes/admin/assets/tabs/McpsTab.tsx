@@ -12,8 +12,9 @@ import {
   Input,
   KeyValueEditor,
 } from '../../../../components/common';
-import { mcpConfigsApi } from '../../../services/mcp_configs';
-import type { McpConfigAsset, McpType } from '../../../types/assets';
+import { mcpConfigsApi } from '../../../../services/mcp_configs';
+import type { McpConfigAsset, McpType } from '../../../../types/assets';
+import { ASSET_USE_EVENT, type AssetUseRequest } from '../../../../lib';
 import '../index.css';
 import './McpsTab.css';
 
@@ -49,6 +50,7 @@ export function McpsTab() {
   const [editing, setEditing] = useState<McpForm | null>(null);
   const [editingCode, setEditingCode] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<McpConfigAsset | null>(null);
+  const [viewing, setViewing] = useState<McpConfigAsset | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -131,6 +133,30 @@ export function McpsTab() {
     }
   }
 
+  function dispatchUseInChat(code: string) {
+    const detail: AssetUseRequest = { type: 'mcp', code };
+    window.dispatchEvent(new CustomEvent(ASSET_USE_EVENT, { detail }));
+  }
+
+  function copyToClipboard(text: string, message: string) {
+    if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+      void navigator.clipboard.writeText(text).then(
+        () => setError(message),
+        () => setError('Clipboard write failed'),
+      );
+    } else {
+      setError('Clipboard API unavailable');
+    }
+  }
+
+  function renderMcpBlock(item: McpConfigAsset): string {
+    if (item.mcp_type === 'stdio') {
+      const args = (item.args ?? []).join(' ');
+      return `${item.command ?? ''} ${args}`.trim();
+    }
+    return item.url ?? '';
+  }
+
   return (
     <div className="assets-tab">
       <div className="assets-tab-header">
@@ -146,47 +172,126 @@ export function McpsTab() {
            action={{ label: 'Create first', onClick: openNew }}
          />
        ) : (
-         <div className="assets-tab-grid">
-           {items.map((item) => (
-             <Card key={item.code}>
-               <CardHeader>
-                 <strong>{item.name}</strong>
-                 <span className={`asset-status-badge asset-status-${item.status}`}>{item.status}</span>
-               </CardHeader>
-               <CardBody>
-                 <div className="asset-card-meta">
-                   <div className="asset-card-meta-item">
-                     <span className="asset-card-meta-label">Code:</span>
-                     <span>{item.code}</span>
-                   </div>
-                   <div className="asset-card-meta-item">
-                     <span className="asset-card-meta-label">Type:</span>
-                     <span>{item.mcp_type}</span>
-                   </div>
-                   {item.url && (
-                     <div className="asset-card-meta-item">
-                       <span className="asset-card-meta-label">URL:</span>
-                       <span>{item.url}</span>
-                     </div>
-                   )}
-                   {item.command && (
-                     <div className="asset-card-meta-item">
-                       <span className="asset-card-meta-label">Command:</span>
-                       <span>{item.command}</span>
-                     </div>
-                   )}
-                 </div>
-               </CardBody>
-               <CardFooter>
-                 <div className="asset-card-row">
-                   <Button size="small" onClick={() => openEdit(item)}>Edit</Button>
-                   <Button size="small" variant="danger" onClick={() => setDeleting(item)}>Delete</Button>
-                 </div>
-               </CardFooter>
-             </Card>
-           ))}
-         </div>
-       )}
+          <div className="assets-tab-grid">
+            {items.map((item) => (
+              <Card key={item.code}>
+                <CardHeader>
+                  <strong>{item.name}</strong>
+                  <span className={`asset-status-badge asset-status-${item.status}`}>{item.status}</span>
+                </CardHeader>
+                <CardBody>
+                  <div className="asset-card-meta">
+                    <div className="asset-card-meta-item">
+                      <span className="asset-card-meta-label">Code:</span>
+                      <span>{item.code}</span>
+                    </div>
+                    <div className="asset-card-meta-item">
+                      <span className="asset-card-meta-label">Type:</span>
+                      <span>{item.mcp_type}</span>
+                    </div>
+                    {item.url && (
+                      <div className="asset-card-meta-item">
+                        <span className="asset-card-meta-label">URL:</span>
+                        <span>{item.url}</span>
+                      </div>
+                    )}
+                    {item.command && (
+                      <div className="asset-card-meta-item">
+                        <span className="asset-card-meta-label">Command:</span>
+                        <span>{item.command}</span>
+                      </div>
+                    )}
+                  </div>
+                </CardBody>
+                <CardFooter>
+                  <div className="asset-card-row">
+                    <Button size="small" onClick={() => setViewing(item)}>View</Button>
+                    <Button
+                      size="small"
+                      variant="secondary"
+                      onClick={() => dispatchUseInChat(item.code)}
+                    >
+                      Use in chat
+                    </Button>
+                    <Button size="small" onClick={() => openEdit(item)}>Edit</Button>
+                    <Button size="small" variant="danger" onClick={() => setDeleting(item)}>Delete</Button>
+                  </div>
+                </CardFooter>
+              </Card>
+            ))}
+          </div>
+        )}
+        {viewing && (
+          <Modal
+            open
+            onClose={() => setViewing(null)}
+            title={`${viewing.name} (${viewing.code})`}
+            size="large"
+            footer={
+              <>
+                <Button
+                  variant="secondary"
+                  onClick={() => copyToClipboard(viewing.code, 'Code copied')}
+                >
+                  Copy code
+                </Button>
+                <Button
+                  variant="secondary"
+                  onClick={() => copyToClipboard(renderMcpBlock(viewing), 'Endpoint copied')}
+                >
+                  Copy endpoint
+                </Button>
+                <Button
+                  variant="primary"
+                  onClick={() => {
+                    dispatchUseInChat(viewing.code);
+                    setViewing(null);
+                  }}
+                >
+                  Use in chat
+                </Button>
+              </>
+            }
+          >
+            <div className="asset-view-meta">
+              <div><strong>Type:</strong> {viewing.mcp_type}</div>
+              <div><strong>Status:</strong> {viewing.status}</div>
+              <div><strong>Disabled:</strong> {viewing.disabled ? 'Yes' : 'No'}</div>
+              {viewing.url && <div><strong>URL:</strong> {viewing.url}</div>}
+              {viewing.command && <div><strong>Command:</strong> {viewing.command}</div>}
+              {viewing.cwd && <div><strong>CWD:</strong> {viewing.cwd}</div>}
+              {viewing.allowed_tools && viewing.allowed_tools.length > 0 && (
+                <div><strong>Allowed tools:</strong> {viewing.allowed_tools.join(', ')}</div>
+              )}
+            </div>
+            {viewing.headers && Object.keys(viewing.headers).length > 0 && (
+              <>
+                <h4 style={{ fontSize: 13, margin: '12px 0 4px' }}>Headers</h4>
+                <pre className="asset-view-content">
+                  {Object.entries(viewing.headers)
+                    .map(([k, v]) => `${k}: ${v}`)
+                    .join('\n')}
+                </pre>
+              </>
+            )}
+            {viewing.env && Object.keys(viewing.env).length > 0 && (
+              <>
+                <h4 style={{ fontSize: 13, margin: '12px 0 4px' }}>Env</h4>
+                <pre className="asset-view-content">
+                  {Object.entries(viewing.env)
+                    .map(([k, v]) => `${k}=${v}`)
+                    .join('\n')}
+                </pre>
+              </>
+            )}
+            {viewing.args && viewing.args.length > 0 && (
+              <>
+                <h4 style={{ fontSize: 13, margin: '12px 0 4px' }}>Args</h4>
+                <pre className="asset-view-content">{viewing.args.join('\n')}</pre>
+              </>
+            )}
+          </Modal>
+        )}
       {editing && (
         <McpEditDialog
           item={editing}

@@ -12,9 +12,10 @@ import {
   Input,
   KeyValueEditor,
 } from '../../../../components/common';
-import { skillsApi } from '../../../services/skills';
-import { skillFilesApi, type SkillFileEntry } from '../../../services/skill_files';
-import type { SkillAsset } from '../../../types/assets';
+import { skillsApi } from '../../../../services/skills';
+import { skillFilesApi, type SkillFileEntry } from '../../../../services/skill_files';
+import type { SkillAsset } from '../../../../types/assets';
+import { ASSET_USE_EVENT, type AssetUseRequest } from '../../../../lib';
 import '../index.css';
 import './SkillsTab.css';
 
@@ -55,6 +56,7 @@ export function SkillsTab() {
   const [editing, setEditing] = useState<SkillForm | null>(null);
   const [editingCode, setEditingCode] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<SkillAsset | null>(null);
+  const [viewing, setViewing] = useState<SkillAsset | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -139,6 +141,22 @@ export function SkillsTab() {
     }
   }
 
+  function dispatchUseInChat(code: string) {
+    const detail: AssetUseRequest = { type: 'skill', code };
+    window.dispatchEvent(new CustomEvent(ASSET_USE_EVENT, { detail }));
+  }
+
+  function copyToClipboard(text: string, message: string) {
+    if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+      void navigator.clipboard.writeText(text).then(
+        () => setError(message),
+        () => setError('Clipboard write failed'),
+      );
+    } else {
+      setError('Clipboard API unavailable');
+    }
+  }
+
   return (
     <div className="assets-tab">
       <div className="assets-tab-header">
@@ -154,43 +172,100 @@ export function SkillsTab() {
            action={{ label: 'Create first', onClick: openNew }}
          />
        ) : (
-         <div className="assets-tab-grid">
-           {items.map((item) => (
-             <Card key={item.code}>
-               <CardHeader>
-                 <strong>{item.name}</strong>
-                 <span className={`asset-status-badge asset-status-${item.status}`}>{item.status}</span>
-               </CardHeader>
-               <CardBody>
-                 <div className="asset-card-meta">
-                   <div className="asset-card-meta-item">
-                     <span className="asset-card-meta-label">Code:</span>
-                     <span>{item.code}</span>
-                   </div>
-                   {item.description && (
-                     <div className="asset-card-meta-item">
-                       <span className="asset-card-meta-label">Desc:</span>
-                       <span>{item.description}</span>
-                     </div>
-                   )}
-                   {item.triggers && item.triggers.length > 0 && (
-                     <div className="asset-card-meta-item">
-                       <span className="asset-card-meta-label">Triggers:</span>
-                       <span>{item.triggers.join(', ')}</span>
-                     </div>
-                   )}
-                 </div>
-               </CardBody>
-               <CardFooter>
-                 <div className="asset-card-row">
-                   <Button size="small" onClick={() => openEdit(item)}>Edit</Button>
-                   <Button size="small" variant="danger" onClick={() => setDeleting(item)}>Delete</Button>
-                 </div>
-               </CardFooter>
-             </Card>
-           ))}
-         </div>
-       )}
+          <div className="assets-tab-grid">
+            {items.map((item) => (
+              <Card key={item.code}>
+                <CardHeader>
+                  <strong>{item.name}</strong>
+                  <span className={`asset-status-badge asset-status-${item.status}`}>{item.status}</span>
+                </CardHeader>
+                <CardBody>
+                  <div className="asset-card-meta">
+                    <div className="asset-card-meta-item">
+                      <span className="asset-card-meta-label">Code:</span>
+                      <span>{item.code}</span>
+                    </div>
+                    {item.description && (
+                      <div className="asset-card-meta-item">
+                        <span className="asset-card-meta-label">Desc:</span>
+                        <span>{item.description}</span>
+                      </div>
+                    )}
+                    {item.triggers && item.triggers.length > 0 && (
+                      <div className="asset-card-meta-item">
+                        <span className="asset-card-meta-label">Triggers:</span>
+                        <span>{item.triggers.join(', ')}</span>
+                      </div>
+                    )}
+                  </div>
+                </CardBody>
+                <CardFooter>
+                  <div className="asset-card-row">
+                    <Button size="small" onClick={() => setViewing(item)}>View</Button>
+                    <Button
+                      size="small"
+                      variant="secondary"
+                      onClick={() => dispatchUseInChat(item.code)}
+                    >
+                      Use in chat
+                    </Button>
+                    <Button size="small" onClick={() => openEdit(item)}>Edit</Button>
+                    <Button size="small" variant="danger" onClick={() => setDeleting(item)}>Delete</Button>
+                  </div>
+                </CardFooter>
+              </Card>
+            ))}
+          </div>
+        )}
+        {viewing && (
+          <Modal
+            open
+            onClose={() => setViewing(null)}
+            title={`${viewing.name} (${viewing.code})`}
+            size="large"
+            footer={
+              <>
+                <Button
+                  variant="secondary"
+                  onClick={() => copyToClipboard(viewing.code, 'Code copied')}
+                >
+                  Copy code
+                </Button>
+                {viewing.prompt_template && (
+                  <Button
+                    variant="secondary"
+                    onClick={() => copyToClipboard(viewing.prompt_template ?? '', 'Template copied')}
+                  >
+                    Copy template
+                  </Button>
+                )}
+                <Button
+                  variant="primary"
+                  onClick={() => {
+                    dispatchUseInChat(viewing.code);
+                    setViewing(null);
+                  }}
+                >
+                  Use in chat
+                </Button>
+              </>
+            }
+          >
+            <div className="asset-view-meta">
+              <div><strong>Status:</strong> {viewing.status}</div>
+              {viewing.description && <div><strong>Description:</strong> {viewing.description}</div>}
+              {viewing.triggers && viewing.triggers.length > 0 && (
+                <div><strong>Triggers:</strong> {viewing.triggers.join(', ')}</div>
+              )}
+            </div>
+            {viewing.prompt_template && (
+              <>
+                <h4 style={{ fontSize: 13, margin: '12px 0 4px' }}>Prompt template</h4>
+                <pre className="asset-view-content">{viewing.prompt_template}</pre>
+              </>
+            )}
+          </Modal>
+        )}
       {editing && (
         <SkillEditDialog
           item={editing}

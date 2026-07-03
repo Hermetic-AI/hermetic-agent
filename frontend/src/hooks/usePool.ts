@@ -16,10 +16,11 @@ export function usePool(): UsePoolResult {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const ctrl = new AbortController();
+    // NB: no abort signal — see HealthContext.tsx for the StrictMode
+    // double-invocation rationale.
     setLoading(true);
     poolService
-      .stats(ctrl.signal)
+      .stats()
       .then((res) => {
         setStats(res);
         setError(null);
@@ -28,7 +29,6 @@ export function usePool(): UsePoolResult {
         setError(e instanceof Error ? e.message : 'Failed to load pool stats');
       })
       .finally(() => setLoading(false));
-    return () => ctrl.abort();
   }, []);
 
   return { stats, loading, error };
