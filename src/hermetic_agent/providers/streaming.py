@@ -108,6 +108,9 @@ StreamEventType = Literal[
     "card", "state", "suspend", "resume", "done", "error",
     # P7: opencode 原生 question / todo 事件 (透传, 前端按 opencode UI 渲染)
     "question_asked", "question_replied", "question_rejected", "todo_updated",
+    # Chat-shell 事件: 解析后的 agent / asset 列表 (给前端 chip 行), 以及
+    # 客户端执行 /command 后的回执 (给前端 inline badge).
+    "assets_loaded", "command_executed",
 ]
 
 
@@ -334,6 +337,47 @@ class StreamEvent:
         return cls(
             type="todo_updated",
             data={"session_id": session_id, "todos": todos, **kwargs},
+        )
+
+    @classmethod
+    def assets_loaded(
+        cls,
+        *,
+        agent_code: str | None = None,
+        prompts: list[str] | None = None,
+        commands: list[str] | None = None,
+        skills: list[str] | None = None,
+        mcps: list[str] | None = None,
+        **kwargs,
+    ) -> "StreamEvent":
+        """Emit when the chat_inject layer has resolved an agent and the
+        resolved assets should be shown in the chat shell (chips)."""
+        return cls(
+            type="assets_loaded",
+            data={
+                "agent_code": agent_code,
+                "prompts": list(prompts or []),
+                "commands": list(commands or []),
+                "skills": list(skills or []),
+                "mcps": list(mcps or []),
+                **kwargs,
+            },
+        )
+
+    @classmethod
+    def command_executed(
+        cls,
+        *,
+        code: str,
+        slash_command: str,
+        summary: str = "",
+        **kwargs,
+    ) -> "StreamEvent":
+        """Emit when a /command asset was executed client-side (or in-session).
+        The summary is a short truncated version of system_prompt_addendum."""
+        return cls(
+            type="command_executed",
+            data={"code": code, "slash_command": slash_command, "summary": summary, **kwargs},
         )
 
 

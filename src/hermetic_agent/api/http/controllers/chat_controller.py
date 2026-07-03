@@ -150,6 +150,30 @@ def _build_scenario_dict(ctx_scenario: Any, routing_ctx: Any) -> dict | None:
     return out
 
 
+def _log_resolved_assets(json_body) -> None:
+    """Log (and later emit) the assets resolved by chat_inject.
+
+    Task E 阶段: 同步 /chat 和流式 /chat/stream 都先 log 一行, 把
+    ``StreamEvent.assets_loaded`` 的 payload 写进 structlog. 后续接 chat-shell
+    UI 时, 把 ``logger.info`` 换成 ``resp.write(StreamEvent.assets_loaded(...).to_sse())``
+    (流式) 或塞进 ``ChatResponse`` (同步) 即可. 此处只读 ``getattr`` 不改 schema.
+    """
+    resolved = getattr(json_body, "resolved_assets", None)
+    if not resolved:
+        return
+    try:
+        logger.info(
+            "assets_loaded",
+            agent_code=resolved.get("agent_code"),
+            prompts=resolved.get("prompts") or [],
+            commands=resolved.get("commands") or [],
+            skills=resolved.get("skills") or [],
+            mcps=resolved.get("mcps") or [],
+        )
+    except Exception as e:
+        logger.debug("assets_loaded_log_skipped", error=str(e))
+
+
 def _resolve_injection(request: Request, body: ChatRequest) -> tuple:
     """从 request.ctx 拿到 scenario + injection (middleware 已设置).
 
@@ -172,17 +196,23 @@ def _resolve_injection(request: Request, body: ChatRequest) -> tuple:
 
 
 def _effective_params(body: ChatRequest, injection: Any) -> dict:
-    """从 injection (或兜底用 body) 抽取实际传给 bridge.chat 的参数."""
+    """从 injection (或兜底用 body) 抽取实际传给 bridge.chat 的参数.
+
+    I4 fix: 优先用 body.system_prompt (asset injector 已往里写增强后的 system prompt);
+    injection 在这边只是 fallback —— 这样 asset 注入不会因为 scenario middleware 已经
+    填了 injection 而被丢弃.
+    """
+    body_sp = getattr(body, "system_prompt", None)
     if injection is not None:
         return {
-            "system_prompt": injection.final_system_prompt,
+            "system_prompt": body_sp if body_sp is not None else injection.final_system_prompt,
             "skills": injection.final_skills,
             "tools": injection.final_tools,
         }
     return {
-        "system_prompt": body.system_prompt,
-        "skills": body.skills,
-        "tools": body.tools,
+        "system_prompt": body_sp,
+        "skills": getattr(body, "skills", None),
+        "tools": getattr(body, "tools", None),
     }
 
 
@@ -726,6 +756,8 @@ async def chat(request: Request) -> JSONResponse:
         setting_default_code=getattr(request.app.config, "AGENT_DEFAULT_CODE", None),
     )
 
+    _log_resolved_assets(json_body)
+
     scenario, injection, err = _resolve_injection(request, json_body)
     if err is not None:
         return err
@@ -910,6 +942,17 @@ async def chat_stream(request: Request) -> ResponseStream:
             content_type="text/event-stream",
             headers={"Cache-Control": "no-cache", "Connection": "keep-alive"},
         )
+
+    json_body = await inject_agent_into_chat(
+        request=request,
+        chat_request=json_body,
+        agent_service=getattr(
+            getattr(request.app.ctx, "services", None), "agent", None,
+        ),
+        setting_default_code=getattr(request.app.config, "AGENT_DEFAULT_CODE", None),
+    )
+
+    _log_resolved_assets(json_body)
 
     scenario, injection, err = _resolve_injection(request, json_body)
     if err is not None:
