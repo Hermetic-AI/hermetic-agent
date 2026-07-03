@@ -43,13 +43,14 @@ class MemoryRepository(Repository[M], Generic[M]):
         return None
 
     async def create(self, model: M) -> M:
-        # 应用层生成 id; 这里不强校验
         eid = getattr(model, "id", None)
         if not eid:
             raise ValueError("Model must have id")
-        # 用 ``str(model.id)`` 当 key, 不用 model 本身 (Tortoise Model 不可哈希).
-        # str() 把 UUID / Session ID (``ses_xxx``) / str-id 全部规范成同一种 key,
-        # 后续 ``get_by_id`` 也能用同一种 key 查回来.
+        now = utcnow()
+        if hasattr(model, "created_at") and getattr(model, "created_at", None) is None:
+            model.created_at = now
+        if hasattr(model, "updated_at") and getattr(model, "updated_at", None) is None:
+            model.updated_at = now
         self._store[str(eid)] = model
         return model
 
