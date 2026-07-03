@@ -31,6 +31,7 @@ class ChatRequest(BaseModel):
                          examples=["帮我查一下从北京到上海的航班"])
     session_id: str | None = Field(None, description="会话 ID，不提供则创建新会话")
     agent_name: str | None = Field(None, description="指定 Agent 实例")
+    agent_code: str | None = Field(None, description="Agent 资产编码, 触发 system_prompt/MCP/skill 注入")
     model: str | None = Field(None, description="指定模型")
     system_prompt: str | None = Field(None, description="系统提示词")
     timeout: float | None = Field(None, description="超时时间（秒）")

@@ -375,6 +375,7 @@ async def startup(app: Sanic, settings: Any) -> None:
     try:
         services = await build_container_from_settings(settings)
         app.ctx.services = services
+        app.ctx.service_container = services
         logger.info(
             "service_container_ready",
             backend=settings.storage_backend,

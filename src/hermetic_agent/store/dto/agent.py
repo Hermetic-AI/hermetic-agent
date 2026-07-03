@@ -80,7 +80,13 @@ class AgentResponse(BaseModel):
 
     @classmethod
     def from_model(cls, m) -> AgentResponse:
-        return cls(**{k: getattr(m, k) for k in cls.model_fields})
+        data = {}
+        for k in cls.model_fields:
+            v = getattr(m, k)
+            if k == "id" and v is not None:
+                v = str(v)
+            data[k] = v
+        return cls(**data)
 
 
 class AgentListResponse(BaseModel):

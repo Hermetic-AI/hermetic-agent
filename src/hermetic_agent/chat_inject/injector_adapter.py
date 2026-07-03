@@ -8,6 +8,12 @@ L3 适配层: 把 ``AgentResolver`` + ``AssetRenderer`` 包成一个
 - 不修改入参 ``chat_request`` — 通过 ``copy.copy`` 返回新对象.
 - 无 agent_code / resolve 失败 → 原样返回 chat_request (no-op).
 - 优先级: body.agent_code > X-Agent-Code header > scenario.agent_code > setting_default_code.
+
+Chat-shell 侧信道 (Task E):
+- 解析成功后, 在返回的 chat_request 上挂一个 ``resolved_assets`` 字段
+  (agent_code + 4 类 code 列表), 供 ``chat_controller`` 读取后 emit
+  ``StreamEvent.assets_loaded`` 给前端 chip 行.
+- 这是单纯 attach 字段, 不动 Pydantic model schema, 不破坏现有签名 / 测试.
 """
 from __future__ import annotations
 
@@ -46,6 +52,10 @@ async def inject_agent_into_chat(
 
     不修改 request / chat_request 既有字段名; 通过 ``copy.copy`` 返回新对象.
     无 agent_code 或 resolve 失败时原样返回 chat_request.
+
+    解析成功时, 返回对象上会多一个 ``resolved_assets`` 属性 (dict):
+    ``{agent_code, prompts[], commands[], skills[], mcps[]}``. 供 controller
+    emit ``StreamEvent.assets_loaded``.  ``None`` 表示未解析 (no-op / 失败).
     """
     actor: ActorContext = getattr(
         request.ctx, "actor", ActorContext(user_id="anonymous"),
@@ -74,6 +84,8 @@ async def inject_agent_into_chat(
     )
     new_req = copy.copy(chat_request)
     new_req.system_prompt = new_prompt
+    if not getattr(chat_request, "model", None) and getattr(resolved.agent, "model", None):
+        new_req.model = resolved.agent.model
     new_req.extra_opencode_mcp = {
         **(getattr(chat_request, "extra_opencode_mcp", {}) or {}),
         **new_mcp,
@@ -82,6 +94,29 @@ async def inject_agent_into_chat(
         new_req.warnings = list(
             getattr(chat_request, "warnings", []) or [],
         ) + resolved.warnings
+    # Chat-shell 侧信道: 挂 resolved codes 给 controller.
+    # 用 setattr 避开 Pydantic model 严格字段约束 (BaseModel.copy 后
+    # 不会校验未声明字段; 直接赋值会触发 model_config 警告).
+    resolved_assets = {
+        "agent_code": getattr(resolved.agent, "code", None),
+        "prompts": [p.code for p in (resolved.resolved_prompts or [])],
+        "commands": [c.code for c in (resolved.resolved_commands or [])],
+        "skills": [s.code for s in (resolved.resolved_skills or [])],
+        "mcps": [m.code for m in (resolved.resolved_mcps or [])],
+    }
+    try:
+        setattr(new_req, "resolved_assets", resolved_assets)  # noqa: B010 (动态字段)
+    except Exception as e:
+        # Pydantic v2 严格模式下可能拒绝未声明字段; 退化到 __dict__ 直接挂.
+        logger.debug("resolved_assets_setattr_fallback", error=str(e))
+        try:
+            object.__setattr__(new_req, "resolved_assets", resolved_assets)
+        except Exception as e2:
+            logger.warning(
+                "resolved_assets_attach_failed",
+                error=str(e2),
+                note="chat-shell chip 事件将无法 emit, controller 会跳过",
+            )
     return new_req
 
 

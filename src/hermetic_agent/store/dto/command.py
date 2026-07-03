@@ -47,7 +47,13 @@ class CommandResponse(BaseModel):
 
     @classmethod
     def from_model(cls, m) -> CommandResponse:
-        return cls(**{k: getattr(m, k) for k in cls.model_fields.keys()})
+        data = {}
+        for k in cls.model_fields.keys():
+            v = getattr(m, k)
+            if k == "id" and v is not None:
+                v = str(v)
+            data[k] = v
+        return cls(**data)
 
 
 class CommandListResponse(BaseModel):
