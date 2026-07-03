@@ -1,0 +1,70 @@
+/* DiffViewer — line-level diff */
+
+.diff-viewer {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+  font-family: var(--font-mono, ui-monospace, "JetBrains Mono", monospace);
+}
+
+.diff-header {
+  padding: var(--spacing-2, 8px) var(--spacing-3, 12px);
+  background: var(--color-bg-tertiary, #111);
+  border-bottom: 1px solid var(--color-border, #222);
+  font-weight: 600;
+  font-size: var(--text-sm, 12px);
+  color: var(--color-text, #ddd);
+}
+
+.diff-body {
+  flex: 1;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  background: var(--color-bg-secondary, #0a0a0a);
+}
+
+.diff-line {
+  display: flex;
+  padding: 0;
+  font-size: var(--text-xs, 11px);
+  line-height: 1.4;
+}
+
+.diff-marker {
+  flex: 0 0 24px;
+  text-align: center;
+  color: var(--color-text-muted, #888);
+  user-select: none;
+  border-right: 1px solid var(--color-border, #222);
+}
+
+.diff-text {
+  flex: 1;
+  padding: 0 var(--spacing-2, 8px);
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.diff-line.diff-add {
+  background: rgba(34, 197, 94, 0.1);
+}
+
+.diff-line.diff-add .diff-marker {
+  color: var(--color-success, #86efac);
+  background: rgba(34, 197, 94, 0.15);
+}
+
+.diff-line.diff-del {
+  background: rgba(239, 68, 68, 0.1);
+}
+
+.diff-line.diff-del .diff-marker {
+  color: var(--color-danger, #fca5a5);
+  background: rgba(239, 68, 68, 0.15);
+}
+
+.diff-line.diff-eq {
+  color: var(--color-text-muted, #888);
+}

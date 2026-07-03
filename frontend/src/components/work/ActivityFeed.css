@@ -1,0 +1,104 @@
+/* ActivityFeed — terminal-style rows */
+
+.activity-feed {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-family: var(--font-mono, ui-monospace, "JetBrains Mono", monospace);
+  font-size: var(--text-sm, 12px);
+  line-height: 1.5;
+  overflow-y: auto;
+  height: 100%;
+}
+
+.activity-feed-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--color-text-muted, #888);
+  font-style: italic;
+  padding: var(--spacing-4);
+}
+
+.activity-row {
+  padding: var(--spacing-2) var(--spacing-3);
+  border-left: 2px solid var(--color-border, #333);
+  margin-bottom: 2px;
+}
+
+.activity-row-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 2px;
+}
+
+.activity-kind {
+  font-weight: 600;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 1px 6px;
+  border-radius: 3px;
+}
+
+.activity-kind-tool_io {
+  background: var(--color-info-bg, #1e3a8a);
+  color: var(--color-info, #93c5fd);
+}
+
+.activity-kind-state {
+  background: var(--color-warning-bg, #713f12);
+  color: var(--color-warning, #fcd34d);
+}
+
+.activity-kind-todo {
+  background: var(--color-accent-bg, #4c1d95);
+  color: var(--color-accent, #c4b5fd);
+}
+
+.activity-kind-question {
+  background: var(--color-pink-bg, #831843);
+  color: var(--color-pink, #f9a8d4);
+}
+
+.activity-kind-scenario {
+  background: var(--color-success-bg, #14532d);
+  color: var(--color-success, #86efac);
+}
+
+.activity-kind-card {
+  background: var(--color-info-bg, #1e3a8a);
+  color: var(--color-info, #93c5fd);
+}
+
+.activity-kind-suspend {
+  background: var(--color-warning-bg, #713f12);
+  color: var(--color-warning, #fcd34d);
+}
+
+.activity-kind-product {
+  background: var(--color-accent-bg, #4c1d95);
+  color: var(--color-accent, #c4b5fd);
+}
+
+.activity-kind-error {
+  background: var(--color-danger-bg, #7f1d1d);
+  color: var(--color-danger, #fca5a5);
+}
+
+.activity-time {
+  color: var(--color-text-muted, #888);
+  font-size: 10px;
+  font-family: var(--font-sans, system-ui, sans-serif);
+}
+
+.activity-row-body {
+  padding-left: 4px;
+}
+
+.activity-summary {
+  color: var(--color-text, #ddd);
+  word-break: break-all;
+}

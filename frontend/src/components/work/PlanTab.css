@@ -1,0 +1,135 @@
+/* PlanTab — todos + questions + state transitions */
+
+.plan-tab {
+  padding: var(--spacing-3, 12px);
+  overflow-y: auto;
+  height: 100%;
+}
+
+.plan-section {
+  margin-bottom: var(--spacing-4, 16px);
+}
+
+.plan-section-title {
+  margin: 0 0 var(--spacing-2, 8px);
+  font-size: var(--text-xs, 11px);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--color-text-muted, #888);
+}
+
+.plan-empty {
+  color: var(--color-text-muted, #888);
+  font-style: italic;
+  font-size: var(--text-xs, 11px);
+}
+
+.plan-todos,
+.plan-questions,
+.plan-states {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.plan-todo {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-2, 8px);
+  padding: var(--spacing-2, 8px);
+  background: var(--color-bg-tertiary, #111);
+  border-radius: 3px;
+  font-size: var(--text-sm, 12px);
+}
+
+.plan-todo-marker {
+  flex: 0 0 16px;
+  text-align: center;
+  font-weight: 700;
+  font-family: var(--font-mono, monospace);
+}
+
+.plan-todo-completed .plan-todo-marker,
+.plan-todo-done .plan-todo-marker {
+  color: var(--color-success, #86efac);
+}
+
+.plan-todo-in_progress .plan-todo-marker {
+  color: var(--color-info, #93c5fd);
+}
+
+.plan-todo-pending .plan-todo-marker {
+  color: var(--color-text-muted, #888);
+}
+
+.plan-todo-content {
+  flex: 1;
+}
+
+.plan-todo-priority {
+  font-size: 9px;
+  text-transform: uppercase;
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-weight: 700;
+}
+
+.plan-todo-priority-high {
+  background: rgba(239, 68, 68, 0.2);
+  color: var(--color-danger, #fca5a5);
+}
+
+.plan-todo-priority-medium {
+  background: rgba(245, 158, 11, 0.2);
+  color: #fcd34d;
+}
+
+.plan-todo-priority-low {
+  background: rgba(34, 197, 94, 0.2);
+  color: var(--color-success, #86efac);
+}
+
+.plan-question {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--spacing-2, 8px);
+  padding: var(--spacing-2, 8px);
+  background: var(--color-bg-tertiary, #111);
+  border-radius: 3px;
+  font-size: var(--text-sm, 12px);
+}
+
+.plan-question-status {
+  flex: 0 0 60px;
+  font-size: 9px;
+  text-transform: uppercase;
+  font-weight: 700;
+  color: var(--color-text-muted, #888);
+}
+
+.plan-question-asked .plan-question-status {
+  color: var(--color-warning, #fcd34d);
+}
+
+.plan-question-replied .plan-question-status {
+  color: var(--color-success, #86efac);
+}
+
+.plan-question-rejected .plan-question-status {
+  color: var(--color-danger, #fca5a5);
+}
+
+.plan-question-prompt {
+  flex: 1;
+}
+
+.plan-state {
+  padding: 4px var(--spacing-2, 8px);
+  font-family: var(--font-mono, monospace);
+  font-size: var(--text-xs, 11px);
+  color: var(--color-text-muted, #888);
+}
